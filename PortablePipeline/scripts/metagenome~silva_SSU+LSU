@@ -1,0 +1,132 @@
+#!/bin/bash
+
+explanation='
+rRNA metagenome analysis pipeline
+using SILVA database for 16S rRNA, 18S rRNA and 28S rRNA
+'
+inputdef='
+input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_b:blast option:
+opt_d:bit score threshold:100
+opt_t:Score from top of BLAST hits used in LCA:0.95
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# #input_1#"
+
+export IM_SILVA="c2997108/centos6:2-blast_2.8.1-silva_132-KronaTools_2.7"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+cat << 'EOS' > run-gz.sh
+i=$1
+bitscore="$2"
+top="$3"
+blastop="$5"
+cpu="$4"
+ref=/usr/local/silva/SILVA_132_SSU-LSU_Ref.fasta
+
+set -ex
+
+echo "##count reads"
+n0=`expr $(zcat $i|wc -l) / 4`
+
+echo "##convert fastq to fasta"
+j=${i%.*}.fasta
+zcat $i|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j
+
+echo "##blast"
+blastn -db $ref -query $j -outfmt 6 -out $j.ssu.blast -num_threads $cpu
+echo "blast status: " $?
+rm $j
+
+echo "##filtering"
+cat $j.ssu.blast|awk -F'\t' '$12>'$bitscore'{if(a[$1]==1){if($12>=topbit*'$top'){print $0}}else{a[$1]=1; topbit=$12; print $0}}' > $j.ssu.blast.filtered
+
+echo "##determine LCA"
+awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{print name[$2]"\t"$0}' $ref.name $j.ssu.blast.filtered > $j.ssu.blast.filtered.name
+
+awk -F'\t' '
+function searchLCA(data,  i, j, res, res2, str, n, stopflag){
+ for(i in data){
+  if(n==0){n=split(i,res,";")}
+  else{split(i,res2,";"); for(j in res){if(res[j]!=res2[j]){res[j]=""}}}
+ }
+ if(res[1]!=""){str=res[1]}else{str="unknown"; stopflag=1};
+ for(i=2;i<=n;i++){if(stopflag==0 && res[i]!=""){str=str";"res[i]}else{stopflag=1}}
+ return str;
+}
+{
+ if($2!=old){if(old!=""){print searchLCA(data)"\t"oldstr}; delete data; data[$1]=1; old=$2; oldstr=$0}
+ else{data[$1]=1}
+}
+END{if(length(data)>0){print searchLCA(data)"\t"oldstr}}
+' $j.ssu.blast.filtered.name > $j.ssu.blast.filtered.name.lca
+
+awk -F'\t' '{cnt[$1]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' $j.ssu.blast.filtered.name.lca > $j.ssu.blast.filtered.name.lca.cnt
+awk -F'\t' '{print "root;"$0}' $j.ssu.blast.filtered.name.lca.cnt > $j.ssu.blast.filtered.name.lca.cnt2
+cnt=`awk -F'\t' '{a+=$2} END{if(a==""){a=0}; print a}' $j.ssu.blast.filtered.name.lca.cnt`
+echo -e "No Hit\t"`expr $n0 - $cnt` >> $j.ssu.blast.filtered.name.lca.cnt2
+awk -F'\t' '
+{n=split($1,arr,";"); ORS="\t"; print $2; for(i=1;i<n;i++){print arr[i]}; ORS="\n"; print arr[n]}
+' $j.ssu.blast.filtered.name.lca.cnt2 > $j.ssu.blast.filtered.name.lca.cnt3
+
+echo "##krona"
+/usr/local/KronaTools-2.7/scripts/ImportText.pl $j.ssu.blast.filtered.name.lca.cnt3 -o $i.html
+
+EOS
+
+sed 's/zcat/cat/g' run-gz.sh > run.sh
+
+parallel_setup
+for i in `find $input_1/|egrep "[.]f(ast|)q$"`; do
+ echo $ENV_SILVA bash run.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
+done|DOPARALLEL
+
+for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"`; do
+ echo $ENV_SILVA bash run-gz.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
+done|DOPARALLEL
+
+WAITPARALLEL
+
+DO_SILVA /usr/local/KronaTools-2.7/scripts/ImportText.pl $input_1/*.cnt3 -o all.html
+
+post_processing
+#<option detail>
+#<opt_b>
+USAGE
+  blastn [-h] [-help] [-import_search_strategy filename]
+    [-export_search_strategy filename] [-task task_name] [-db database_name]
+    [-dbsize num_letters] [-gilist filename] [-seqidlist filename]
+    [-negative_gilist filename] [-entrez_query entrez_query]
+    [-db_soft_mask filtering_algorithm] [-db_hard_mask filtering_algorithm]
+    [-subject subject_input_file] [-subject_loc range] [-query input_file]
+    [-out output_file] [-evalue evalue] [-word_size int_value]
+    [-gapopen open_penalty] [-gapextend extend_penalty]
+    [-perc_identity float_value] [-qcov_hsp_perc float_value]
+    [-max_hsps int_value] [-xdrop_ungap float_value] [-xdrop_gap float_value]
+    [-xdrop_gap_final float_value] [-searchsp int_value]
+    [-sum_stats bool_value] [-penalty penalty] [-reward reward] [-no_greedy]
+    [-min_raw_gapped_score int_value] [-template_type type]
+    [-template_length int_value] [-dust DUST_options]
+    [-filtering_db filtering_database]
+    [-window_masker_taxid window_masker_taxid]
+    [-window_masker_db window_masker_db] [-soft_masking soft_masking]
+    [-ungapped] [-culling_limit int_value] [-best_hit_overhang float_value]
+    [-best_hit_score_edge float_value] [-window_size int_value]
+    [-off_diagonal_range int_value] [-use_index boolean] [-index_name string]
+    [-lcase_masking] [-query_loc range] [-strand strand] [-parse_deflines]
+    [-outfmt format] [-show_gis] [-num_descriptions int_value]
+    [-num_alignments int_value] [-line_length line_length] [-html]
+    [-max_target_seqs num_sequences] [-num_threads int_value] [-remote]
+    [-version]
+
+#</opt_b>
+#</option detail>
+

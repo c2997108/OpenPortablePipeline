@@ -1,0 +1,189 @@
+#!/bin/bash
+
+explanation='
+make scatter plot
+'
+inputdef='
+input_1::count table:*
+input_2::significant gene id:*
+input_3::sample name list of x:*
+input_4::sample name list of y:*
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_x:label x:x
+opt_y:label y:y
+opt_p:p:0.05
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -x #opt_x# -y #opt_y# #input_1# #input_2# #input_3# #input_4#"
+
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+countmat=$input_1
+sigmat=$input_2
+listx=$input_3
+listy=$input_4
+label_x=$opt_x
+label_y=$opt_y
+p=${opt_p:-0.05}
+output=`basename $countmat`.`basename $sigmat`
+
+cat $countmat|awk -F'\t' 'FILENAME==ARGV[1]{if(FNR>1){for(i=2;i<=NF;i++){a[i]+=$i}}} FILENAME==ARGV[2]{if(FNR==1){print $0}else{ORS=""; print $1;for(i=2;i<=NF;i++){print "\t"$i/a[i]*1000*1000}; print "\n"}}' /dev/stdin $countmat > $output.cpm
+cat $listx|awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=1} FILENAME==ARGV[2]{if(FNR==1){for(i=1;i<=NF;i++){if(a[$i]==1){b[i]=1}}}; ORS=""; print $1; for(i=2;i<=NF;i++){if(b[i]==1){print "\t"$i}}; print "\n"}' /dev/stdin $output.cpm > $output.cpm_x
+cat $listy|awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=1} FILENAME==ARGV[2]{if(FNR==1){for(i=1;i<=NF;i++){if(a[$i]==1){b[i]=1}}}; ORS=""; print $1; for(i=2;i<=NF;i++){if(b[i]==1){print "\t"$i}}; print "\n"}' /dev/stdin $output.cpm > $output.cpm_y
+cat $sigmat |awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=1} FILENAME==ARGV[2] && (FNR==1 || a[$1]==1){print $0}' /dev/stdin $output.cpm_x > $output.cpm_x_sig
+cat $sigmat |awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=1} FILENAME==ARGV[2] && (FNR==1 || a[$1]==1){print $0}' /dev/stdin $output.cpm_y > $output.cpm_y_sig
+
+cat << EOF2 > $output.R
+
+label_x="$label_x"
+label_y="$label_y"
+file_data_x="$output.cpm_x"
+file_data_y="$output.cpm_y"
+file_sig_data_x="$output.cpm_x_sig"
+file_sig_data_y="$output.cpm_y_sig"
+data_x=round(read.table(file_data_x,sep="\\t",header=T,row.names=1))
+data_y=round(read.table(file_data_y,sep="\\t",header=T,row.names=1))
+sig_data_x=read.table(file_sig_data_x,sep="\\t",header=T,row.names=1)
+if(dim(sig_data_x)[1]!=0){sig_data_x=round(sig_data_x)}
+sig_data_y=read.table(file_sig_data_y,sep="\\t",header=T,row.names=1)
+if(dim(sig_data_y)[1]!=0){sig_data_y=round(sig_data_y)}
+mean_data_x=apply(data_x,1,mean)
+mean_data_y=apply(data_y,1,mean)
+if(dim(data_x)[2]>1){
+ dx=apply(data_x,1,function(i){return(abs(qt($p/2, length(i)-1)) * sd(i) / sqrt(length(i)))})
+}else{
+ dx=0
+}
+if(dim(data_y)[2]>1){
+ dy=apply(data_y,1,function(i){return(abs(qt($p/2, length(i)-1)) * sd(i) / sqrt(length(i)))})
+}else{
+ dy=0
+}
+vx=dx/mean_data_x
+vy=dy/mean_data_y
+vx[is.na(vx)]=0
+vy[is.na(vy)]=0
+#total_var_data=sqrt(dx^2+dy^2)/sqrt(mean_data_x^2+mean_data_y^2)
+#total_var_data[is.na(total_var_data)]=0
+total_var_data=sqrt(vx^2+vy^2)
+mean_sig_data_x=apply(sig_data_x,1,mean)
+mean_sig_data_y=apply(sig_data_y,1,mean)
+min_x=min(mean_data_x[mean_data_x>0])/10
+min_y=min(mean_data_y[mean_data_y>0])/10
+plot_mean_data_x=mean_data_x+min_x
+plot_mean_data_y=mean_data_y+min_y
+plot_mean_sig_data_x=mean_sig_data_x+min_x
+plot_mean_sig_data_y=mean_sig_data_y+min_y
+max_x=max(plot_mean_data_x)
+max_y=max(plot_mean_data_y)
+library(Cairo)
+mainplotfunc=function(){
+if(max(dx,dy)>0){
+ start_class=quantile(total_var_data[total_var_data>0],c(0,1,25,50,75,90,100)/100)[2]
+ end_class=quantile(total_var_data[total_var_data>0],c(0,1,25,50,75,90,100)/100)[6]
+
+ CairoPNG("$output.scatter.png",width=800,height=600)
+ num_class=22
+ library(RColorBrewer)
+ #mycol=colorRampPalette(c(rgb(0.5,0,0.2,0.4),rgb(1,0.8,0.7,1)), alpha=TRUE)(num_class)
+ colPal3 <- colorRampPalette(brewer.pal(9,"YlOrRd")[3:9])
+ mycol=colPal3(num_class)
+
+ layout(matrix(c(1,1,1,1,2),1,5))
+ par(ps = 18)
+ k=0
+ i=end_class
+ n=(total_var_data>=i)
+ xt=plot_mean_data_x[n]
+ yt=plot_mean_data_y[n]
+ plot(xt,yt,log="xy",xlim=c(min_x,max_x),ylim=c(min_y,max_y),cex=2*(k+1)^3/num_class^3,pch=21,col=adjustcolor(mycol[k+1],0),bg=adjustcolor(mycol[k+1],1-0.4*k/num_class),xlab=label_x,ylab=label_y)
+
+ for(k in 1:(num_class-2)){
+  i=end_class+(start_class-end_class)*k/(num_class-2)
+  n=(total_var_data>=i & total_var_data<i+(end_class-start_class)/(num_class-2))
+  xt=plot_mean_data_x[n]
+  yt=plot_mean_data_y[n]
+  par(new=T)
+  plot(xt,yt,log="xy",xlim=c(min_x,max_x),ylim=c(min_y,max_y),cex=2*(k+1)^3/num_class^3,pch=21,col=adjustcolor(mycol[k+1],0),bg=adjustcolor(mycol[k+1],1-0.4*k/num_class),axes=F,xlab="",ylab="")
+ }
+ k=num_class-1
+ i=min(total_var_data)
+ n=(total_var_data>=i & total_var_data<start_class)
+ xt=plot_mean_data_x[n]
+ yt=plot_mean_data_y[n]
+ par(new=T)
+ plot(xt,yt,log="xy",xlim=c(min_x,max_x),ylim=c(min_y,max_y),cex=2*(k+1)^3/num_class^3,pch=21,col=adjustcolor(mycol[k+1],0),bg=adjustcolor(mycol[k+1],1-0.4*k/num_class),axes=F,xlab="",ylab="")
+
+ par(new=T)
+ plot(plot_mean_sig_data_x,plot_mean_sig_data_y,log="xy",xlim=c(min_x,max_x),ylim=c(min_y,max_y),col="green",cex=2,axes=F,xlab="",ylab="")
+
+ plot(c(0,0),c(-1,num_class),xlim=c(0,0),ylim=c(-1,num_class),cex=0,bty="n",axes=F,xlab="",ylab="")
+ for(k in 0:(num_class-2)){
+  i=end_class+(start_class-end_class)*k/(num_class-2)
+  par(new=T)
+  plot(c(0),c(k),xlim=c(0,0),ylim=c(-1,num_class),col=adjustcolor(mycol[k+1],0),bg=adjustcolor(mycol[k+1],1-0.4*k/num_class),pch=21,cex=2*(k+1)^3/num_class^3,bty="n",axes=F,xlab="",ylab="")
+  text(c(0.05),c(k),paste(">=",i),pos=4)
+ }
+ k=num_class-1
+ i=min(total_var_data)
+ par(new=T)
+ plot(c(0),c(k),xlim=c(0,0),ylim=c(-1,num_class),col=adjustcolor(mycol[k+1],0),bg=adjustcolor(mycol[k+1],1-0.4*k/num_class),pch=21,cex=2*(k+1)^3/num_class^3,bty="n",axes=F,xlab="",ylab="")
+ text(c(0.05),c(k),paste(">=",i),pos=4)
+ text(0,num_class+0.2,"95%conf/mean")
+ par(new=T)
+ plot(c(-0.3),c(-1),xlim=c(0,0),ylim=c(-1,num_class),col="green",cex=1,bty="n",axes=F,xlab="",ylab="")
+ text(c(-0.3),c(-1),paste("significant"),pos=4)
+
+ dev.off()
+}
+}
+subplotfunc=function(){
+CairoPNG("$output.scatter.normal.png",width=600,height=600)
+plot(plot_mean_data_x,plot_mean_data_y,log="xy",xlim=c(min_x,max_x),ylim=c(min_y,max_y),cex=0.1,pch=21,col=adjustcolor("#000000",0.5),xlab=label_x,ylab=label_y)
+par(new=T)
+plot(plot_mean_sig_data_x,plot_mean_sig_data_y,log="xy",xlim=c(min_x,max_x),ylim=c(min_y,max_y),col="green",cex=2,axes=F,xlab="",ylab="")
+dev.off()
+}
+
+wflag=0
+while(wflag<=5){
+ restry=NULL
+ restry=try(mainplotfunc(), silent = FALSE)
+ if(class(restry)!="try-error"){break}
+ try(dev.off())
+ Sys.sleep(10+runif(1, min=0,max=100)/10)
+ wflag=wflag+1
+}
+wflag=0
+while(wflag<=5){
+ restry=NULL
+ restry=try(subplotfunc(), silent = FALSE)
+ if(class(restry)!="try-error"){break}
+ try(dev.off())
+ Sys.sleep(10+runif(1, min=0,max=100)/10)
+ wflag=wflag+1
+}
+
+
+EOF2
+
+DO_R R --vanilla < $output.R
+
+rm -f $output.cpm $output.cpm_x $output.cpm_y $output.cpm_x_sig $output.cpm_y_sig
+
+
+
+post_processing
+
+
+#<option detail>
+#</option detail>
+

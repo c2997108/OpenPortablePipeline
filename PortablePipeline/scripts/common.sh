@@ -1,0 +1,235 @@
+#!/bin/bash
+
+
+onerror()
+{
+    status=$?
+    script=$0
+    line=$1
+    shift
+
+    set +x
+
+    args=
+    for i in "$@"; do
+        args+="\"$i\" "
+    done
+
+    echo ""
+    echo "------------------------------------------------------------"
+    echo "Error occured on $script [Line $line]: Status $status"
+    echo ""
+    echo "PID: $$"
+    echo "User: $USER"
+    echo "Current directory: $PWD"
+    echo "Command line: $script $args"
+    echo "------------------------------------------------------------"
+    echo ""
+
+    echo $status > $workdir/fin_status
+
+    if [ "$N_SCRIPT" = 1 ]; then
+     if [ "$CON" = "$CON_DOCKER" ]; then
+      eval $CON $IM_CENTOS6 chmod -R a=rXw $workdir
+     fi
+    fi
+
+}
+
+begintrap()
+{
+    set -e
+    trap 'onerror $LINENO "$@"' ERR
+}
+
+
+container_setup()
+{
+if [ "$DIR_IMG" != "" ]; then
+ DIR_IMG=`readlink -f $DIR_IMG`
+else
+ DIR_IMG=~/img
+fi
+DIR_WORK="."
+
+CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
+CON_SING="singularity exec "
+
+mkdir -p "$DIR_IMG"
+DIR_IMG="`readlink -f "$DIR_IMG"`"
+mkdir -p "$DIR_WORK"
+DIR_WORK="`readlink -f "$DIR_WORK"`"
+DIR_CUR="$PWD"
+if [ `echo "$DIR_IMG"|grep " "|wc -l` = 1 -o `echo "$DIR_WORK"|grep " "|wc -l` = 1 -o `echo "$DIR_CUR"|grep " "|wc -l` = 1 ]; then
+ echo Current, Work and Image directory should not contain space character in absolute path;
+ exit 1;
+fi
+DIR_SRC="$(dirname "`readlink -f "$0"`")"
+
+if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
+ echo using docker;
+ CON="$CON_DOCKER";
+elif [ `$CON_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
+ echo using singularity;
+ CON="$CON_SING""$DIR_IMG/";
+ cd "$DIR_WORK";
+ SCRIPT0=""
+ SCRIPT1=$(echo `eval "cat $0 $SCRIPT0"|sed 's/[ \t'"'"']/\n/g'|grep '^"$scriptdir"/'|sort|uniq`)
+ while [ "$SCRIPT0" != "$SCRIPT1" ]; do
+  SCRIPT0="$SCRIPT1"
+  echo "script: $0 $SCRIPT0"
+  SCRIPT1=$(echo `eval "cat $0 $SCRIPT0"|sed 's/[ \t'"'"']/\n/g'|grep '^"$scriptdir"/'|sort|uniq`)
+ done
+
+IMS=$((eval "cat $0 $SCRIPT0"|grep "^export IM_"|cut -f 2 -d =|sed 's/"//g';
+       set |grep ^IM_|cut -f 2 -d =)|sort|uniq)
+echo $IMS
+
+ for i in $IMS; do
+  if [ ! -e "$DIR_IMG"/$i ]; then
+   set -e
+   singularity pull --name "`basename $i`" docker://$i;
+   mkdir -p "$DIR_IMG/`dirname $i`";
+   mv "`basename $i`" "$DIR_IMG/`dirname $i`";
+   set +e
+  fi
+ done
+ cd "$DIR_CUR";
+else
+ echo docker or singularity should be installed;
+ exit 1;
+fi
+
+for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do export ENV_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
+shopt -s expand_aliases
+for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
+#for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do
+# BASH_ALIASES[$i]=`alias|grep "^alias DO_$i="|sed "s/^alias DO_$i=//; s/^'//; s/'$//"`;
+#done #for bash ver.3
+
+}
+
+parallel_setup(){
+ if [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
+  grep "^#" "$workdir"/wrapper.sh > qsub.sh
+  grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > qsubone.sh
+  echo "#$ -pe def_slot 1" >> qsubone.sh
+  echo 'echo "$*"; eval "$*"' >> qsub.sh
+  echo 'echo "$*"; eval "$*"' >> qsubone.sh
+  chmod 755 qsub.sh qsubone.sh
+  alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
+  alias DOPARALLEL='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
+ else
+  alias DOPARALLELONE='xargs -I {} -P $N_CPU bash -c "{}"'
+  alias WAITPARALLELONE=''
+  alias DOPARALLEL='xargs -I {} -P 1 bash -c "{}"'
+  alias WAITPARALLEL=''
+ fi
+}
+
+usage_exit()
+{
+ echo "$explanation"
+ echo "$runcmd"
+ echo "$inputdef"
+ echo "$optiondef"
+ exit 1
+}
+
+while getopts ":a:b:c:d:e:f:g:hi:j:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:" OPT
+do
+  case $OPT in
+    a) OPT_FLAG_a=1;opt_a=$OPTARG ;;
+    b) OPT_FLAG_b=1;opt_b=$OPTARG ;;
+    c) OPT_FLAG_c=1;opt_c=$OPTARG ;;
+    d) OPT_FLAG_d=1;opt_d=$OPTARG ;;
+    e) OPT_FLAG_e=1;opt_e=$OPTARG ;;
+    f) OPT_FLAG_f=1;opt_f=$OPTARG ;;
+    g) OPT_FLAG_g=1;opt_g=$OPTARG ;;
+    h) OPT_FLAG_h=1;;
+    i) OPT_FLAG_i=1;opt_i=$OPTARG ;;
+    j) OPT_FLAG_j=1;opt_j=$OPTARG ;;
+    k) OPT_FLAG_k=1;opt_k=$OPTARG ;;
+    l) OPT_FLAG_l=1;opt_l=$OPTARG ;;
+    m) OPT_FLAG_m=1;opt_m=$OPTARG ;;
+    n) OPT_FLAG_n=1;opt_n=$OPTARG ;;
+    o) OPT_FLAG_o=1;opt_o=$OPTARG ;;
+    p) OPT_FLAG_p=1;opt_p=$OPTARG ;;
+    q) OPT_FLAG_q=1;opt_q=$OPTARG ;;
+    r) OPT_FLAG_r=1;opt_r=$OPTARG ;;
+    s) OPT_FLAG_s=1;opt_s=$OPTARG ;;
+    t) OPT_FLAG_t=1;opt_t=$OPTARG ;;
+    u) OPT_FLAG_u=1;opt_u=$OPTARG ;;
+    v) OPT_FLAG_v=1;opt_v=$OPTARG ;;
+    w) OPT_FLAG_w=1;opt_w=$OPTARG ;;
+    x) OPT_FLAG_x=1;opt_x=$OPTARG ;;
+    y) OPT_FLAG_y=1;opt_y=$OPTARG ;;
+    z) OPT_FLAG_z=1;opt_z=$OPTARG ;;
+    :) echo  "[ERROR] Option argument is undefined.";;
+    \?) echo "[ERROR] Undefined options.";;
+  esac
+done
+shift $(($OPTIND - 1))
+
+req_args=`echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}'|wc -l`
+if [ "$OPT_FLAG_h" = 1 -o "$#" -lt "$req_args" ]; then
+ usage_exit;
+fi
+for i in `echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}'`; do export $i="$1"; shift; done
+for i in `echo "$optiondef"|tail -n+2|head -n-1|awk -F':' '{print $1}'`; do
+ k=`echo "$optiondef"|tail -n+2|head -n-1|awk -F':' '$1=="'$i'"{print $3}'|head -n 1`;
+ export $i="$(eval echo \${$i:-$k})";
+# export $i="`eval echo \\\$$i`";
+done
+
+
+N_CPU=`cat /proc/cpuinfo 2> /dev/null |grep ^processor|wc -l` #all CPU
+if [ "$N_CPU" = "0" ]; then
+ N_CPU=`getconf _NPROCESSORS_ONLN`
+fi
+N_MEM=`free -k 2> /dev/null |awk 'NR==1{if($6=="available"){flag=1}} NR==2&&flag==1{print $7}'` #free MEM (kB)
+if [ "$N_MEM" = "" ]; then
+ N_MEM=`cat /proc/meminfo 2> /dev/null |grep ^MemAvailable:|awk '{print $2}'` #free MEM (kB)
+fi
+if [ "$N_MEM" = "" ]; then
+ N_MEM=`cat /proc/meminfo 2> /dev/null |grep ^MemTotal:|awk '{print int($2*0.9)}'` #total MEM (kB)
+fi
+if [ "$N_MEM" = "" ]; then
+ N_MEM=`sysctl hw.memsize |awk '{print int($2/1024*0.9)}'` #total MEM (kB) for Mac
+fi
+N_CPU2=$opt_c
+N_MEM2=`echo "$opt_m * 1024 * 1024"|bc 2> /dev/null |awk '{print int($0)}'`
+if [ "$N_CPU" = "0" -a "$N_CPU2" = "" ];then
+ N_CPU=4
+elif [ "$N_CPU" = "0" -a "$N_CPU2" != "" ];then
+ N_CPU=$N_CPU2
+elif [ "$N_CPU" != "0" -a "$N_CPU2" != "" ];then
+ if [ "$N_CPU2" -lt "$N_CPU" ]; then N_CPU=$N_CPU2; fi
+fi
+if [ "$N_MEM" = "" -a "$N_MEM2" = "" ];then
+ N_MEM=4
+elif [ "$N_MEM" = "" -a "$N_MEM2" != "" ];then
+ N_MEM=$N_MEM2
+elif [ "$N_MEM" != "" -a "$N_MEM2" != "" ];then
+ if [ "$N_MEM2" -lt "$N_MEM" ]; then N_MEM=$N_MEM2; fi
+fi
+N_SCRIPT=`expr ${N_SCRIPT:-0} + 1`
+export N_SCRIPT
+
+workdir=$PWD
+scriptdir=$(dirname `readlink -f $0`)
+export IM_CENTOS6=centos:centos6
+begintrap
+container_setup
+
+post_processing(){
+ if [ "$N_SCRIPT" = 1 ]; then
+  if [ "$CON" = "$CON_DOCKER" ]; then
+   DO_CENTOS6 chmod -R a=rXw .
+  fi
+  echo 0 > $workdir/fin_status
+ fi
+ exit
+}

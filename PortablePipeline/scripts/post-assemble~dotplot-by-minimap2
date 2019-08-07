@@ -1,0 +1,205 @@
+#!/bin/bash
+
+explanation='
+compare large genomes by dot plot using minimap2
+'
+inputdef='
+input_1::FASTA (x axis):*.fasta,*.fa
+input_2::FASTA (y axis):*.fasta,*.fa
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+'
+runcmd="$0 -c #opt_c# -m #opt_m# #input_1# #input_2#"
+
+export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.16--h84994c4_0"
+export IM_IMAGEMAGICK="c2997108/centos6:2-imagemagick"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+db=$input_2
+q=$input_1
+outbase=`basename $q`-`basename ${db}`
+cpu=$N_CPU
+
+DO_MINIMAP2 minimap2 -x asm20 -t $cpu $db $q > $outbase.paf
+
+ln -s $db $outbase.db.fa
+ln -s $q $outbase.q.fa
+samtools faidx $outbase.db.fa
+samtools faidx $outbase.q.fa
+
+in=$outbase.paf
+fafai1=$outbase.db.fa.fai
+fafai2=$outbase.q.fa.fai
+DO_AWK awk -F'\t' '
+  function abs(x){if(x<0){return -x}else{return x}}
+  function calcarea(x1, x2, y1, y2, m1, m2){return x2*y1-x1*y2+(x2*(x2+1)-x1*(x1+1))*((y2-y1)/(x2-x1)-m2/m1)/2}
+  FILENAME==ARGV[1]{if($11>=1*1000){
+   if($5=="+"){aln[$1":"$6]["+"]+=abs(calcarea($3,$4,$8,$9,$2,$7)); aln[$1":"$6]["-"]+=abs(calcarea($3,$4,$7-$8,$7-$9,$2,$7))}
+   else{aln[$1":"$6]["+"]+=abs(calcarea($3,$4,$9,$8,$2,$7)); aln[$1":"$6]["-"]+=abs(calcarea($3,$4,$7-$9,$7-$8,$2,$7))}
+   aln3[$1":"$6]+=$11
+  }}
+  FILENAME==ARGV[2]{if($11>=1*1000){if(aln[$1":"$6]["+"]<=aln[$1":"$6]["-"]){print aln3[$1":"$6]"\t+\t"$0}else{print aln3[$1":"$6]"\t-\t"$0}}}
+ ' $in ./$in|sort -k1,1gr -k6,6g > $in.da
+
+DO_AWK awk -F'\t' '
+ FILENAME==ARGV[1]{a[$3][$8]+=$1; b[$8][$3]+=$1; d[$3][$8][length(d[$3][$8])]=$0}
+ FILENAME==ARGV[2]{
+  if(FNR==1){
+   for(i in a){
+    k=0;
+    PROCINFO["sorted_in"] = "@val_num_desc";
+    for(j in a[i]){
+        max1[i]=j;
+        break;
+    }
+    temp_hit_pos=0; temp_bp=0;
+    for(j in d[i][max1[i]]){
+     split(d[i][max1[i]][j],arr,"\t");
+     temp_hit_pos+=arr[11]*(arr[11]-1)/2 - arr[10]*(arr[10]-1)/2
+     temp_bp+=arr[11]-arr[10];
+    };
+    avg1[i]=temp_hit_pos/temp_bp; fmax1[max1[i]][i]=1;
+   }
+   for(i in b){
+    k=0;
+    PROCINFO["sorted_in"] = "@val_num_desc";
+    for(j in b[i]){
+        max2[i]=j;
+        break;
+    }
+    temp_hit_pos=0; temp_bp=0;
+    for(j in d[max2[i]][i]){
+     split(d[max2[i]][i][j],arr,"\t");
+     temp_hit_pos+=arr[6]*(arr[6]-1)/2 - arr[5]*(arr[5]-1)/2
+     temp_bp+=arr[6]-arr[5];
+    };
+    avg2[i]=temp_hit_pos/temp_bp; fmax2[max2[i]][i]=1;
+   }
+  };
+  if(check1[$3]=="" && check2[$8]==""){
+   check1[$3]="+"; check2[$8]=$2;
+   delete(dafter); delete(dbefore); delete(eafter); delete(ebefore);
+   if($3 in fmax2){
+    for(m in fmax2[$3]){
+     if(max2[m]==$3 && check2[m]==""){
+      split(d[max2[m]][m][0] ,arr,"\t");
+      if(arr[1]>arr[9]*0.1){
+       check2[m]=arr[2];
+       if(avg2[m]<($4/2)){dbefore[m]=avg2[m]}else{dafter[m]=avg2[m]}
+      }
+     }
+    }
+   };
+   if($8 in fmax1){
+    for(m in fmax1[$8]){
+     if(max1[m]==$8 && check1[m]==""){
+      split(d[m][max1[m]][0],arr,"\t");
+      if(arr[1]>arr[4]*0.1){
+        if($2=="+"){
+           check1[m]=arr[2]
+           if(avg1[m]<($9/2)){ebefore[m]=avg1[m]}else{eafter[m]=avg1[m]}
+       }else{
+           if(arr[2]=="+"){check1[m]="-"}else{check1[m]="+"}
+           if(avg1[m]>($9/2)){ebefore[m]=$9-avg1[m]}else{eafter[m]=$9-avg1[m]}
+       };
+      }
+     }
+    }
+   };
+   PROCINFO["sorted_in"] = "@val_num_asc";
+   for(m in dbefore){print "info: "dbefore[m]"\t"check1[$3]"\t"check2[m]"\t"d[$3][m][0]}
+   for(m in ebefore){print "info: "ebefore[m]"\t"check1[m]"\t"check2[$8]"\t"d[m][$8][0]}
+   print "main:\t"check1[$3]"\t"check2[$8]"\t"$0;
+   for(m in dafter){print "info: "dafter[m]"\t"check1[$3]"\t"check2[m]"\t"d[$3][m][0]}
+   for(m in eafter){print "info: "eafter[m]"\t"check1[m]"\t"check2[$8]"\t"d[m][$8][0]}
+  }
+ }
+' $in.da ./$in.da > $in.da3
+DO_AWK awk -F'\t' '
+ FILENAME==ARGV[1]{
+    if(!($6 in a)){
+        a[$6][1]=tota*1; a[$6][4]=$2; tota+=$7;
+        if($2=="+"){print $6"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"}
+        else{print ".\t"tota > "'$in'.xp.txt"; print $6"\t"tota > "'$in'.xm.txt"}
+    };
+    if(!($11 in b)){
+        b[$11][1]=totb*1; b[$11][4]=$3; totb+=$12;
+        if($3=="+"){print $11"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}
+        else{print ".\t"totb > "'$in'.yp.txt"; print $11"\t"totb > "'$in'.ym.txt"}
+    }
+ }
+ FILENAME==ARGV[2]{
+    if(!($3 in a)){
+        a[$3][1]=tota*1; a[$3][4]="+"; tota+=$4;
+        print $3"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"
+    };
+    if(!($8 in b)){
+        b[$8][1]=totb*1; b[$8][4]=$2; totb+=$9;
+        if($2=="+"){print $8"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}
+        else{print ".\t"totb > "'$in'.yp.txt"; print $8"\t"totb > "'$in'.ym.txt"}
+    };
+    if(a[$3][4]=="+"){x1=a[$3][1]+$5; x2=a[$3][1]+$6}else{x1=a[$3][1]+$4-$5; x2=a[$3][1]+$4-$6};
+    if(b[$8][4]=="+"){
+        if($7=="+"){y1=b[$8][1]+$10; y2=b[$8][1]+$11}
+        else{y1=b[$8][1]+$11; y2=b[$8][1]+$10}
+    }else{
+        if($7=="+"){y1=b[$8][1]+$9-$10; y2=b[$8][1]+$9-$11}
+        else{y1=b[$8][1]+$9-$11; y2=b[$8][1]+$9-$10}
+    }
+    print x1"\t"x2"\t"y1"\t"y2
+ }
+ FILENAME==ARGV[4]{if($1 in a){}else{tota+=$2; print $1"\t"tota > "'$in'.xp.txt"}}
+
+ FILENAME==ARGV[3]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'$in'.yp.txt"}}
+' $in.da3 $in.da $fafai1 $fafai2 > $in.da4
+DO_R R --vanilla << EOF
+xp=read.table("$in.xp.txt")
+xm=read.table("$in.xm.txt")
+yp=read.table("$in.yp.txt")
+ym=read.table("$in.ym.txt")
+if(nrow(xp)==1){xp2=0}else{xp2=c(0,xp[1:(nrow(xp)-1),2])}
+if(nrow(xm)==1){xm2=0}else{xm2=c(0,xm[1:(nrow(xm)-1),2])}
+if(nrow(yp)==1){yp2=0}else{yp2=c(0,yp[1:(nrow(yp)-1),2])}
+if(nrow(ym)==1){ym2=0}else{ym2=c(0,ym[1:(nrow(ym)-1),2])}
+#png("$in.png",width=4000,height=4000)
+#library("Cairo")
+#CairoPNG("$in.png",width=4000,height=4000)
+pdf("$in.pdf",width=30,height=30)
+b=read.table("$in.da4")
+par(mar=c(10,10,4,4))
+plot(c(0,max(xp[,2])),c(0,max(yp[,2])),col="white",xaxt="n",yaxt="n", xlab="", ylab="")
+axis(1,xp[,2],lab=F)
+axis(2,yp[,2],lab=F)
+for(i in 1:dim(xp)[1]){abline(v=xp[i,2], col='gray', lty=2)}
+abline(v=0, col='gray', lty=2)
+#abline(v=max(b[,1:2]), col='gray', lty=2)
+for(i in 1:dim(yp)[1]){abline(h=yp[i,2], col='gray', lty=2)}
+abline(h=0, col='gray', lty=2)
+#abline(h=max(b[,3:4]), col='gray', lty=2)
+for(i in 1:dim(b)[1]){if((b[i,2]-b[i,1])/1.0*(b[i,4]-b[i,3])/1.0>0){par(col="red")}else{par(col="blue")}; lines(c(b[i,1],b[i,2]),c(b[i,3],b[i,4]))}
+par(xpd=TRUE, col="red")
+text(xp[,2]-(xp[,2]-xp2)/2,par("usr")[3]-1.5,xp[,1],adj=c(1,1),srt=45)
+text(par("usr")[1]-1.5,yp[,2]-(yp[,2]-yp2)/2,yp[,1],adj=c(1,1),srt=45)
+par(xpd=TRUE, col="blue")
+text(xm[,2]-(xm[,2]-xm2)/2,par("usr")[3]-1.5,xm[,1],adj=c(1,1),srt=45)
+text(par("usr")[1]-1.5,ym[,2]-(ym[,2]-ym2)/2,ym[,1],adj=c(1,1),srt=45)
+dev.off()
+EOF
+
+DO_IMAGEMAGICK convert -density 300 $in.pdf $in.png
+
+
+
+
+post_processing
+#<option detail>
+#</option detail>
+

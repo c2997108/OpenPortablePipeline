@@ -1,0 +1,63 @@
+#!/bin/bash
+
+explanation='
+Fast, Parallel k-mer Counting for genome size estimation
+'
+inputdef='
+input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+'
+runcmd="$0 -c #opt_c# -m #opt_m# #input_1#"
+
+export IM_JELLYFISH="quay.io/biocontainers/jellyfish:2.2.10--h2d50403_0"
+export IM_R="c2997108/centos6:2"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eu
+set -o pipefail
+
+cd $input_1
+
+r1=`ls |egrep "[.]f(ast|)q([.]gz|)$" || echo ""`
+
+if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; exit; fi
+
+set -x
+cmd="jellyfish count -m 21 -o output -s $N_MEM -t $N_CPU -C" #kB memory
+for i in $r1; do
+ if [ `echo $i|grep gz$|wc -l` = 1 ];then
+  cmd="$cmd "'<(zcat '$i')'
+ else
+  cmd="$cmd "$i
+ fi
+done
+echo "$cmd"
+eval "DO_JELLYFISH bash -c '$cmd'"
+DO_JELLYFISH jellyfish histo --high=$N_MEM output > output.txt
+rm -f output
+
+echo 'library(Cairo)
+a=read.table("output.txt")
+CairoPNG("kmer-graph.png", width = 1000, height = 1000)
+plot(a,log="xy",type="o", main="K-mer distribution", xlab="K-mer coverage", ylab="K-mer frequency", cex=0.5)
+dev.off()
+
+m=floor(log2(max(a[,1])))
+c=rep(0,m+1)
+for(i in 1:(dim(a)[1])){tempm=floor(log2(a[i,1])); c[tempm+1]=c[tempm+1]+a[i,1]*a[i,2]}
+d=as.matrix(c)
+row.names(d)=2^(0:m)
+CairoPNG("kmer-base-histogram.png", width = 1000, height = 1000)
+barplot(t(d),xlab = "K-mer frequency section", ylab = "K-mer frequency x coverage")
+dev.off()'|DO_R R --vanilla < /dev/stdin
+
+post_processing
+#<option detail>
+#<opt_c>
+#</opt_c>
+#</option detail>
+

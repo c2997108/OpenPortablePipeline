@@ -1,0 +1,93 @@
+#!/bin/bash
+
+explanation='
+edgeR analysis
+'
+inputdef='
+input_1::count table:*
+input_2::sample list:*
+input_3:optional:Trinotate added count table:*
+'
+optiondef='
+opt_i:group 1 name (should be the same one in the sample list):
+opt_j:group 2 name (should be the same one in the sample list):
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_s:script name:run-edgeR.R
+opt_p:p:0.05
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -i #opt_i# -j #opt_j# -p #opt_p# #input_1# #input_2# #input_3#"
+
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+input_3=${1:-}
+script=$opt_s
+inputsamplematrix=$input_2
+inputmatrix=$input_1
+g1=$opt_i
+g2=$opt_j
+if [ "$g1" = "" ]; then g1=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 1`; fi
+if [ "$g2" = "" ]; then g2=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 2|tail -n 1`; fi
+p=$opt_p
+outputfile=edgeR.`basename $inputmatrix`
+samplex=edgeR.`basename $inputsamplematrix`.`basename $inputmatrix`.x
+sampley=edgeR.`basename $inputsamplematrix`.`basename $inputmatrix`.y
+outputfilexup=result.edgeR.`basename $inputmatrix`.$g1.up.$g2.down.txt
+outputfileyup=result.edgeR.`basename $inputmatrix`.$g1.down.$g2.up.txt
+if [ "$input_3" = "" ]; then
+ touch dummy.annotation.txt
+ annotationfile=dummy.annotation.txt
+else
+ annotationfile=${input_3}
+fi
+
+
+gp=`awk -F'\t' -v g1="$g1" -v g2="$g2" 'FILENAME==ARGV[1]{gp[$1]=$2} FILENAME==ARGV[2] && FNR==1{ORS=""; for(i=2;i<=NF;i++){if(gp[$i]==g1){print "1,"}else if(gp[$i]==g2){print "2,"}else{print "3,"}}}' $inputsamplematrix $inputmatrix |sed 's/,$//'`
+
+
+cat << EOF > $script
+library(edgeR)
+x <- round(read.table("$inputmatrix",sep="\\t",header=T,row.names=1))
+group <- factor(c($gp))
+y <- DGEList(counts=x,group=group)
+y <- calcNormFactors(y)
+design <- model.matrix(~group)
+y <- estimateDisp(y,design)
+fit <- glmQLFit(y,design)
+qlf <- glmQLFTest(fit,coef=2)
+res=topTags(qlf,n=dim(x)[1])
+res=res[res\$table\$FDR<$p,]
+write.table(as.data.frame(res),file="$outputfile",quote=F,sep="\\t")
+EOF
+
+
+DO_R R --vanilla < $script || true
+if [ ! -e "$outputfile" ]; then touch "$outputfile"; fi
+awk -F'\t' 'NR>1{print $1}' "$outputfile" > "$outputfile.id"
+awk -F'\t' -v g1=$g1 '$2==g1{print $1}' $inputsamplematrix > $samplex
+awk -F'\t' -v g2=$g2 '$2==g2{print $1}' $inputsamplematrix > $sampley
+bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputmatrix $outputfile.id $samplex $sampley
+tail -n+2 $outputfile|awk '{if($2<=0){print $1"\tx"}else{print $1"\ty"}}' > $outputfile.xy
+awk -F'\t' 'NR==1{print "id\t"$0} NR>1{print $0}' $outputfile| cut -f 1,6|
+ awk -F'\t' 'NR==1{print -1"\t"$0} NR>1{print $2"\t"$0}'|sort -k1,1g|cut -f 2- > $outputfile.p
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="x"){print res[$1]"\t"$2}}}' $outputfile.xy $annotationfile $outputfile.p > $outputfilexup
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="y"){print res[$1]"\t"$2}}}' $outputfile.xy $annotationfile $outputfile.p > $outputfileyup
+i=$outputfilexup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=$outputfileyup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar ${outputfilexup}.temp $outputfilexup.xlsx
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar ${outputfileyup}.temp $outputfileyup.xlsx
+
+rm -f $outputfile.id $samplex $sampley $outputfile.xy $outputfile.p $outputfilexup.temp $outputfileyup.temp
+
+
+post_processing
+
+
+#<option detail>
+#</option detail>
+

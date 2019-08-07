@@ -1,0 +1,114 @@
+#!/bin/bash
+
+explanation='
+Plot histogram of gene expression, tree and MDS plot of sample distances
+'
+inputdef='
+input_1::count table:*
+input_2:option:sample information file [optional]:*.txt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #input_2# #input_1#"
+
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+input_2="${opt_s:-}"
+
+
+countisofile="$input_1"
+numsample=`head -n 1 "$countisofile"|awk -F'\t' '{print NF-1}'`
+histoheight=`expr 100 \* $numsample`
+cat << EOF > run-make-histogram.R
+library(reshape2)
+library(Cairo)
+library(ggplot2)
+library(ggridges)
+data=read.table("$countisofile",sep="\t",header=T,row.names=1)
+df=melt(data)
+df=df[df\$value>0.1,]
+CairoPNG("histo.count.png",width=800,height=min($histoheight,10000))
+ggplot(df, aes(x = value, y = variable, fill = variable,alpha = 0.5)) + geom_density_ridges2() + scale_x_log10() +
+ theme(legend.justification=c(1,0), legend.position=c(1,1))
+dev.off()
+EOF
+DO_R R --vanilla < run-make-histogram.R
+
+#sample.txt
+if [ -e "$input_2" ]; then
+ cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > histo.temp.sample.txt
+else
+ touch histo.temp.sample.txt
+fi
+head -n 1 "$countisofile"|sed 's/\t/\n/g'|tail -n+2| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' histo.temp.sample.txt /dev/stdin > histo.sample.input.txt
+
+samplefile=histo.sample.input.txt
+clusterheight=`expr 10 \* $numsample + 600`
+clusterwidth=`expr 10 \* $numsample + 700`
+mdslegwidth=`expr 300 + 10 \* $numsample`
+
+cat << EOF > run-clusterplot.R
+library(Cairo)
+countData=round(read.table("$countisofile",sep="\\t",header=T,row.names=1))
+colData <- read.csv("$samplefile", row.names=1, sep="\\t")
+
+library(RColorBrewer)
+library(pheatmap)
+c=cor(countData)
+for(i in 1:ncol(c)){c[is.na(c[,i]),i]=0}
+sampleDists <- as.dist(1-c)
+sampleDistMatrix <- as.matrix(as.dist(1-c))
+rownames(sampleDistMatrix) <- rownames(colData)
+colnames(sampleDistMatrix) <- rownames(colData)
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+CairoPNG(paste("sampleDist.png",sep=""),width=min($clusterwidth,5000),height = min($clusterheight,5100))
+pheatmap(sampleDistMatrix, clustering_distance_rows=sampleDists, clustering_distance_cols=sampleDists, col=colors)
+dev.off()
+
+library(vegan)
+mds1<-monoMDS(as.dist(1-c))
+library(ggplot2)
+shape=rownames(colData)
+if(length(shape)>6){
+ for(i in 1:6){shape[seq(i,length(shape),6)]=paste(shape[seq(i,length(shape),6)],collapse=",")}
+}
+mdslegwidth=min($mdslegwidth,4000)
+color=colData[,1]
+p = ggplot(as.data.frame(mds1\$points), aes(x=MDS1, y=MDS2, shape=shape, colour=color))
+p = p + geom_point(size=5)
+p = p + theme_bw(base_size=35)
+p = p + theme(legend.justification=c(0,1), legend.position=c(1,1))+theme(plot.margin = margin(0, mdslegwidth, 0, 0, "pt"))
+library(Cairo)
+CairoPNG(filename = paste("MDSdetail.png",sep=""),width=min($clusterwidth,2000)+mdslegwidth,height = min($clusterheight,2100))
+plot(p)
+dev.off()
+p = ggplot(as.data.frame(mds1\$points), aes(x=MDS1, y=MDS2, colour=color))
+p = p + geom_point(size=5)
+p = p + theme_bw(base_size=35)
+p = p + theme(legend.justification=c(0,1), legend.position=c(1,1))+theme(plot.margin = margin(0, mdslegwidth, 0, 0, "pt"))
+library(Cairo)
+CairoPNG(filename = paste("MDS.png",sep=""),width=min($clusterwidth,2000)+mdslegwidth,height = min($clusterheight,2100))
+plot(p)
+dev.off()
+
+
+EOF
+DO_R R --vanilla < run-clusterplot.R
+
+
+
+post_processing
+
+
+
+#<option detail>
+#</option detail>
+

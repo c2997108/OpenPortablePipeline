@@ -1,0 +1,41 @@
+#!/bin/bash
+
+explanation='
+Fast, Parallel k-mer Counting for genome size estimation
+'
+inputdef='
+input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+'
+runcmd="$0 -c #opt_c# -m #opt_m# #input_1#"
+
+export IM_TEST="c2997108/centos7:1"
+
+scriptdirname=$(dirname `readlink -f $0`)
+if [ "$scriptdirname" = "" ]; then scriptdirname=$(dirname $0); fi
+source "$scriptdirname"/common.sh
+
+set -eu
+set -o pipefail
+
+cd $input_1
+
+r1=`ls |egrep "[.]f(ast|)q([.]gz|)$" || echo ""`
+
+if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; exit; fi
+
+DO_TEST ls > output2.txt
+sleep 3
+DO_TEST touch test2.txt
+
+bash "$scriptdir"/ZZZ~test2 ./
+
+post_processing
+#<option detail>
+#<opt_c>
+#</opt_c>
+#</option detail>
+

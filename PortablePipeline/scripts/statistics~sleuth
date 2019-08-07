@@ -1,0 +1,148 @@
+#!/bin/bash
+
+explanation='
+sleuth analysis
+'
+inputdef='
+input_1::isoform count table:*
+input_2::gene count table:*
+input_3::gene tpm table:*
+input_4::sample list:*
+input_5:directory:kallisto output:*.kallisto.tar.gz
+input_6::transcript to gene file:*
+input_7:optional:Trinotate added isoform count table:*
+input_8:optional:Trinotate added gene count table:*
+'
+optiondef='
+opt_i:group 1 name (should be the same one in the sample list):
+opt_j:group 2 name (should be the same one in the sample list):
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_s:script name:run-sleuth.R
+opt_p:p:0.05
+opt_f:the directory of extracted sleuth input files:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -i #opt_i# -j #opt_j# -p #opt_p# -a #input_7# -b #input_8# #input_1# #input_2# #input_3# #input_4# #input_5# #input_6#"
+
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+input_7=${opt_a:-}
+input_8=${opt_b:-}
+script=$opt_s
+inputsamplematrix=$input_4
+inputmatrix=$input_1
+inputgenematrix=$input_2
+inputgenetpmmatrix=$input_3
+inputt2g=$input_6
+g1=$opt_i
+g2=$opt_j
+if [ "$g1" = "" ]; then g1=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 1`; fi
+if [ "$g2" = "" ]; then g2=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 2|tail -n 1`; fi
+p=$opt_p
+outputfile=sleuth.`basename $inputmatrix`
+samplex=sleuth.`basename $inputsamplematrix`.x
+sampley=sleuth.`basename $inputsamplematrix`.y
+outputfilexup=result.sleuth.`basename $inputmatrix`.$g1.up.$g2.down.txt
+outputfileyup=result.sleuth.`basename $inputmatrix`.$g1.down.$g2.up.txt
+outputgenefile=sleuth.`basename $inputgenematrix`
+outputgenefilexup=result.sleuth.`basename $inputgenematrix`.$g1.up.$g2.down.txt
+outputgenefileyup=result.sleuth.`basename $inputgenematrix`.$g1.down.$g2.up.txt
+if [ "$input_7" = "" ]; then
+ touch dummy.annotation.txt
+ annotationfile=dummy.annotation.txt
+else
+ annotationfile=${input_7}
+fi
+if [ "$input_8" = "" ]; then
+ touch dummy.annotationgene.txt
+ annotationgenefile=dummy.annotationgene.txt
+else
+ annotationgenefile=${input_8}
+fi
+
+if [ "$opt_f" = "" ]; then
+ mkdir -p input.sleuth.extract.$g1.$g2
+ for i in $input_5/*.kallisto.tar.gz; do tar zvxf $i -C input.sleuth.extract.$g1.$g2; done
+else
+ ln -s "$opt_f" input.sleuth.extract.$g1.$g2
+fi
+
+
+cat << EOF > $script
+library("sleuth")
+s2c <- read.table("$inputsamplematrix", header = TRUE, stringsAsFactors=FALSE)
+s2c <- dplyr::select(s2c, sample = id, condition)
+sample_id <- s2c[,1]
+kal_dirs <- file.path("input.sleuth.extract.$g1.$g2", sample_id)
+s2c <- dplyr::mutate(s2c, path = kal_dirs)
+t2g <- read.table("$inputt2g", header = TRUE, stringsAsFactors=FALSE)
+so <- sleuth_prep(s2c, ~ condition, target_mapping = t2g, extra_bootstrap_summary = TRUE)
+so <- sleuth_fit(so)
+so <- sleuth_fit(so, ~1, 'reduced')
+so <- sleuth_lrt(so, 'reduced', 'full')
+sleuth_table <- sleuth_results(so, 'reduced:full', 'lrt', show_all = FALSE)
+sleuth_significant <- dplyr::filter(sleuth_table, qval <= $p)
+write.table("$outputfile",x=sleuth_significant,sep="\\t",row.names=F,quote=F)
+write.table("$outputfile.tpm",x=so\$bs_summary\$obs_tpm,sep="\\t",quote=F)
+
+so <- sleuth_prep(s2c, ~ condition, target_mapping = t2g, extra_bootstrap_summary = TRUE, aggregation_column='ens_gene')
+so <- sleuth_fit(so)
+so <- sleuth_fit(so, ~1, 'reduced')
+so <- sleuth_lrt(so, 'reduced', 'full')
+sleuth_table <- sleuth_results(so, 'reduced:full', 'lrt', show_all = FALSE)
+sleuth_significant <- dplyr::filter(sleuth_table, qval <= $p)
+write.table("$outputgenefile",x=sleuth_significant,sep="\\t",row.names=F,quote=F)
+EOF
+
+DO_R R --vanilla < $script || true
+if [ ! -e "$outputfile" ]; then touch "$outputfile"; fi
+if [ ! -e "$outputgenefile" ]; then touch "$outputgenefile"; fi
+tail -n+2 $outputfile|cut -f 1 > $outputfile.id
+awk -F'\t' -v g1=$g1 '$2==g1{print $1}' $inputsamplematrix > $samplex
+awk -F'\t' -v g2=$g2 '$2==g2{print $1}' $inputsamplematrix > $sampley
+bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputmatrix $outputfile.id $samplex $sampley
+awk -F'\t' 'NR==1{print "id\t"$0} NR>1{print $0}' $outputfile.tpm |
+ awk -F'\t' 'FILENAME==ARGV[1]{x[$1]=1} FILENAME==ARGV[2]{y[$1]=1}
+  FILENAME==ARGV[3]{if(FNR==1){for(i=2;i<=NF;i++){if(x[$i]==1){t[i]=1; xn++}else if(y[$i]==1){t[i]=2; yn++}else{t[i]=3}}}else{delete ave; for(i=2;i<=NF;i++){ave[t[i]]+=$i}; if(ave[1]/xn >= ave[2]/yn){print $1"\tx"}else{print $1"\ty"}}}
+ ' $samplex $sampley /dev/stdin > $outputfile.tpm.xy
+cut -f 1,4 $outputfile|
+ awk -F'\t' 'NR==1{print -1"\t"$0} NR>1{print $2"\t"$0}'|sort -k1,1g|cut -f 2- > $outputfile.p
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="x"){print res[$1]"\t"$2}}}' $outputfile.tpm.xy $annotationfile $outputfile.p > $outputfilexup
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="y"){print res[$1]"\t"$2}}}' $outputfile.tpm.xy $annotationfile $outputfile.p > $outputfileyup
+i=$outputfilexup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=$outputfileyup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar $outputfilexup.temp $outputfilexup.xlsx
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar $outputfileyup.temp $outputfileyup.xlsx
+
+tail -n+2 $outputgenefile|cut -f 1 > $outputgenefile.id
+bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputgenematrix $outputgenefile.id $samplex $sampley
+cat $inputgenetpmmatrix |
+ awk -F'\t' 'FILENAME==ARGV[1]{x[$1]=1} FILENAME==ARGV[2]{y[$1]=1}
+  FILENAME==ARGV[3]{if(FNR==1){for(i=2;i<=NF;i++){if(x[$i]==1){t[i]=1; xn++}else if(y[$i]==1){t[i]=2; yn++}else{t[i]=3}}}else{delete ave; for(i=2;i<=NF;i++){ave[t[i]]+=$i}; if(ave[1]/xn >= ave[2]/yn){print $1"\tx"}else{print $1"\ty"}}}
+ ' $samplex $sampley /dev/stdin > $outputgenefile.tpm.xy
+cut -f 1,5 $outputgenefile|
+ awk -F'\t' 'NR==1{print -1"\t"$0} NR>1{print $2"\t"$0}'|sort -k1,1g|cut -f 2- > $outputgenefile.p
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="x"){print res[$1]"\t"$2}}}' $outputgenefile.tpm.xy $annotationgenefile $outputgenefile.p > $outputgenefilexup
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="y"){print res[$1]"\t"$2}}}' $outputgenefile.tpm.xy $annotationgenefile $outputgenefile.p > $outputgenefileyup
+i=$outputgenefilexup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=$outputgenefileyup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar $outputgenefilexup.temp $outputgenefilexup.xlsx
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar $outputgenefileyup.temp $outputgenefileyup.xlsx
+
+rm -rf input.sleuth.extract.$g1.$g2
+rm -f $outputfile.id $samplex $sampley $outputfile.tpm.xy $outputfile.p $outputfilexup.temp $outputfileyup.temp
+rm -f $outputgenefile.id $outputgenefile.tpm.xy $outputgenefile.p $outputgenefilexup.temp $outputgenefileyup.temp
+
+
+post_processing
+
+
+#<option detail>
+#</option detail>
+

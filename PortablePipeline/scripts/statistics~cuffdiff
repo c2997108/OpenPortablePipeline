@@ -1,0 +1,131 @@
+#!/bin/bash
+
+explanation='
+Cuffdiff analysis
+'
+inputdef='
+input_1::isoform count table:*
+input_2::gene count table:*
+input_3::sample list:*
+input_4:directory:cuffquant output:*.cuffquant.tar.gz
+input_5::reference genome file:*.fa,*.fasta,*.fsa,*.fna
+input_6::reference gtf file:*.gtf
+input_7:optional:Trinotate added isoform count table:*
+input_8:optional:Trinotate added gene count table:*
+'
+optiondef='
+opt_i:group 1 name (should be the same one in the sample list):
+opt_j:group 2 name (should be the same one in the sample list):
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_s:script name:run-cuffdiff.R
+opt_p:p:0.05
+opt_d:cuffdiff option:--library-type fr-firststrand --no-update-check -u
+opt_f:the directory of extracted cuffdiff input files:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -i #opt_i# -j #opt_j# -p #opt_p# -a #input_7# -b #input_8# -d #opt_d# -f #opt_f# #input_1# #input_2# #input_3# #input_4# #input_5# #input_6#"
+
+export IM_CUFF="quay.io/biocontainers/cufflinks:2.2.1--py36_2"
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+input_7=${opt_a:-}
+input_8=${opt_b:-}
+script=$opt_s
+inputsamplematrix=$input_3
+inputmatrix=$input_1
+inputgenematrix=$input_2
+inputref=$input_5
+inputgtf=$input_6
+g1=$opt_i
+g2=$opt_j
+if [ "$g1" = "" ]; then g1=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 1`; fi
+if [ "$g2" = "" ]; then g2=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 2|tail -n 1`; fi
+p=$opt_p
+outputfile=cuffdiff.`basename $inputmatrix`
+samplex=cuffdiff.`basename $inputsamplematrix`.x
+sampley=cuffdiff.`basename $inputsamplematrix`.y
+outputfilexup=result.cuffdiff.`basename $inputmatrix`.$g1.up.$g2.down.txt
+outputfileyup=result.cuffdiff.`basename $inputmatrix`.$g1.down.$g2.up.txt
+outputgenefile=cuffdiff.`basename $inputgenematrix`
+outputgenefilexup=result.cuffdiff.`basename $inputgenematrix`.$g1.up.$g2.down.txt
+outputgenefileyup=result.cuffdiff.`basename $inputgenematrix`.$g1.down.$g2.up.txt
+if [ "$input_7" = "" ]; then
+ touch dummy.annotation.txt
+ annotationfile=dummy.annotation.txt
+else
+ annotationfile=${input_7}
+fi
+if [ "$input_8" = "" ]; then
+ touch dummy.annotationgene.txt
+ annotationgenefile=dummy.annotationgene.txt
+else
+ annotationgenefile=${input_8}
+fi
+if [ "$opt_f" = "" ]; then
+ mkdir -p input.cuffdiff.extract.$g1.$g2
+ for i in $input_4/*.cuffquant.tar.gz; do tar zvxf $i -C input.cuffdiff.extract.$g1.$g2; done
+else
+ ln -s "$opt_f" input.cuffdiff.extract.$g1.$g2
+fi
+
+
+awk -F'\t' -v g1=$g1 '$2==g1{print $1}' $inputsamplematrix > $samplex
+awk -F'\t' -v g2=$g2 '$2==g2{print $1}' $inputsamplematrix > $sampley
+f1=`cat $samplex|awk '{ORS=","; print "'"input.cuffdiff.extract.$g1.$g2"'/"$0"/abundances.cxb"}'|sed 's/,$//'`
+f2=`cat $sampley|awk '{ORS=","; print "'"input.cuffdiff.extract.$g1.$g2"'/"$0"/abundances.cxb"}'|sed 's/,$//'`
+DO_CUFF cuffdiff $opt_d -b $inputref -p $N_CPU -o output.cuffdiff.$g1.$g2 --FDR $p -L $g1,$g2 $inputgtf $f1 $f2
+
+(head -n 1 output.cuffdiff.$g1.$g2/isoform_exp.diff; grep yes$ output.cuffdiff.$g1.$g2/isoform_exp.diff || true) > $outputfile
+(head -n 1 output.cuffdiff.$g1.$g2/gene_exp.diff; grep yes$ output.cuffdiff.$g1.$g2/gene_exp.diff || true) > $outputgenefile
+
+cat << 'EOF' > $script
+set -eux
+inputsamplematrix=$1
+inputmatrix=$2
+g1=$3
+g2=$4
+p=$5
+outputfile=$6
+samplex=$7
+sampley=$8
+outputfilexup=${9}
+outputfileyup=${10}
+annotationfile=${11}
+scriptdir=${12}
+
+tail -n+2 $outputfile|cut -f 1 > $outputfile.id
+bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputmatrix $outputfile.id $samplex $sampley
+tail -n+2 $outputfile|awk -F'\t' '{if($8>=$9){print $1"\tx"}else{print $1"\ty"}}' > $outputfile.xy
+awk -F'\t' 'NR==1{OFS="\t"; $1="id"; print $0} NR>1{print $0}' $outputfile| cut -f 1,13|
+ awk -F'\t' 'NR==1{print -1"\t"$0} NR>1{print $2"\t"$0}'|sort -k1,1g|cut -f 2- > $outputfile.p
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="x"){print res[$1]"\t"$2}}}' $outputfile.xy $annotationfile $outputfile.p > $outputfilexup
+awk -F'\t' 'FILENAME==ARGV[1]{xy[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){header=$0}; res[$1]=$0} FILENAME==ARGV[3]{if(FNR==1){print header"\t"$2}else{if(xy[$1]=="y"){print res[$1]"\t"$2}}}' $outputfile.xy $annotationfile $outputfile.p > $outputfileyup
+i=$outputfilexup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=$outputfileyup; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+EOF
+
+bash $script $inputsamplematrix $inputmatrix $g1 $g2 $p $outputfile $samplex $sampley $outputfilexup $outputfileyup $annotationfile "$scriptdir"
+bash $script $inputsamplematrix $inputgenematrix $g1 $g2 $p $outputgenefile $samplex $sampley $outputgenefilexup $outputgenefileyup $annotationgenefile "$scriptdir"
+
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar ${outputfilexup}.temp $outputfilexup.xlsx
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar ${outputfileyup}.temp $outputfileyup.xlsx
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar ${outputgenefilexup}.temp $outputgenefilexup.xlsx
+DO_R java -Xmx1G -jar /usr/local/bin/excel2.jar ${outputgenefileyup}.temp $outputgenefileyup.xlsx
+
+rm -rf input.cuffdiff.extract.$g1.$g2
+rm -f $outputfile.id $samplex $sampley $outputfile.xy $outputfile.p $outputfilexup.temp $outputfileyup.temp
+rm -f $outputgenefile.id $outputgenefile.xy $outputgenefile.p $outputgenefilexup.temp $outputgenefileyup.temp
+
+
+post_processing
+
+
+#<option detail>
+#</option detail>
+

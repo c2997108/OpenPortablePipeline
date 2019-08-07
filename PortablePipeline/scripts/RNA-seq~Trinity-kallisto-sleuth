@@ -1,0 +1,423 @@
+#!/bin/bash
+
+explanation='
+de novo RNA-seq analysis pipeline
+Trinity, kallisto, sleuth
+'
+inputdef='
+input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:option:sample information file [optional]:*.txt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_f:FDR threshold:0.05
+opt_t:Trinity option ("RF" is for TruSeq Stranded mRNA Sample Preparation):--SS_lib_type RF
+opt_k:kallisto option ("--rf-stranded" is for TruSeq Stranded mRNA Sample Preparation):-b 100 --rf-stranded
+opt_d:bit score threshold:100
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -t #opt_t# -k #opt_k# -d #opt_d# -f #opt_f# #input_1# #input_2#"
+
+export IM_TRINITY="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0"
+export IM_KALLISTO="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0"
+export IM_SAMTOOLS="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0"
+export IM_TRINOTATE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+export IM_MERGE="c2997108/centos6:3"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+input_2=${1:-}
+p=$opt_f
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+
+if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+r2gz=$(for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 $r2gz > /dev/null
+
+input_left=""
+input_right=""
+if [ "$r1" != "" ]; then
+ for i in $r1; do input_left=$input_left","$i; done
+ for i in $r2; do input_right=$input_right","$i; done
+fi
+if [ "$r1gz" != "" ]; then
+ for i in $r1gz; do input_left=$input_left","$i; done
+ for i in $r2gz; do input_right=$input_right","$i; done
+fi
+input_left=`echo $input_left|sed 's/^,//'`
+input_right=`echo $input_right|sed 's/^,//'`
+
+
+#Assemble by Trinity
+echo "#run Trinity"
+DO_TRINITY Trinity $opt_t --seqType fq --max_memory `echo ${N_MEM}|awk '{print $1/1024/1024}'`G --left $input_left --right $input_right --CPU $N_CPU
+
+DO_TRINITY mv trinity_out_dir/Trinity.fasta .
+DO_TRINITY rm -rf trinity_out_dir/
+DO_TRINITY /usr/local/trinityrnaseq-Trinity-v2.8.5/util/TrinityStats.pl Trinity.fasta | tee Trinity.fasta.info.txt
+
+#kallisto index
+echo "#run kallisto index"
+DO_KALLISTO kallisto index -i kallisto.index Trinity.fasta
+if [ ! -e kallisto.output ]; then mkdir kallisto.output; fi
+parallel_setup
+for i in $r1 $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q\([.]gz\|\)/_2.f\1q\2/'`
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ #Mapping and quantification by kallisto
+ #echo "#run kallisto quant of $i"
+ echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i` -t 1 --pseudobam $i $j | $ENV_SAMTOOLS samtools view -@ 1 -Sb - | $ENV_SAMTOOLS samtools sort -@ 1 -o $i.bam - ; $ENV_SAMTOOLS samtools index $i.bam; cd kallisto.output; tar zvcf `basename $i`.kallisto.tar.gz `basename $i`"
+done|DOPARALLELONE
+
+WAITPARALLEL
+
+mkdir -p kallisto.output.tar.gz
+mv kallisto.output/*.kallisto.tar.gz kallisto.output.tar.gz
+
+#for i in $r1 $r1gz; do (echo -e "id\t`echo $i|sed 's/[.]\(fq\|fastq\)\([.]gz\|\)$//'|sed 's/_1$//; s/_R1//'`" ; cut -f 1,4 `basename $i.kallisto`/abundance.tsv|tail -n+2)  > `basename $i.kallisto`.cnt; done
+#for i in $r1 $r1gz; do (echo -e "id\t`echo $i|sed 's/[.]\(fq\|fastq\)\([.]gz\|\)$//'|sed 's/_1$//; s/_R1//'` (tpm)" ; cut -f 1,5 `basename $i.kallisto`/abundance.tsv|tail -n+2)  > `basename $i.kallisto`.tpm; done
+
+DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/get_Trinity_gene_to_trans_map.pl Trinity.fasta > Trinity.fasta.gene_trans_map
+cd kallisto.output
+cp ../Trinity.fasta.gene_trans_map .
+DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/abundance_estimates_to_matrix.pl --est_method kallisto --gene_trans_map Trinity.fasta.gene_trans_map --out_prefix kallisto --name_sample_by_basedir */abundance.tsv
+mv kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.gene.counts.matrix kallisto.gene.TPM.not_cross_norm kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix ..
+cd ..
+
+#/usr/local/Trinotate-Trinotate-v3.1.1/auto/autoTrinotate.pl --Trinotate_sqlite /usr/local/Trinotate-Trinotate-v3.1.1/db/20190618.sqlite --transcripts Trinity.fasta --gene_to_trans_map ../Trinity.fasta.gene_trans_map --conf /usr/local/Trinotate-Trinotate-v3.1.1/auto/conf.txt --CPU 20
+
+bash "$scriptdir"/annotation~Trinotate -c $N_CPU -m $N_MEM Trinity.fasta Trinity.fasta.gene_trans_map
+
+awk -F'\t' '{if(NR==1){OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (counts)"}; print $0}else{print $0}}' kallisto.isoform.counts.matrix > kallisto.isoform.counts.matrix.ren
+awk -F'\t' '{if(NR==1){OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (TPM)"}; print $0}else{print $0}}' kallisto.isoform.TPM.not_cross_norm > kallisto.isoform.TPM.not_cross_norm.ren
+DO_MERGE merge_table.pl -k kallisto.isoform.counts.matrix.ren kallisto.isoform.TPM.not_cross_norm.ren Trinotate.xls3.isoform > Trinotate.xls3.isoform.cnt
+
+DO_TRINOTATE samtools faidx Trinity.fasta
+DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{g2t[$1][$2]=1} FILENAME==ARGV[2]{len[$1]=$2} END{for(i in g2t){for(j in g2t[i]){print len[j]"\t"i"\t"j}}}' Trinity.fasta.gene_trans_map Trinity.fasta.fai|DO_TRINOTATE sort -k2,2V -k1,1nr -k3,3V|DO_MERGE myuniq.pl 2 > Trinity.fasta.rep_isoform
+DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{id[$3]=1} FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; $1="gene_id"; print $0}else{if(id[$2]==1){print $0}}}' Trinity.fasta.rep_isoform Trinotate.xls3 > Trinotate.xls3.gene
+awk -F'\t' '{if(NR==1){OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (counts)"}; print $0}else{print $0}}' kallisto.gene.counts.matrix > kallisto.gene.counts.matrix.ren
+awk -F'\t' '{if(NR==1){OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (TPM)"}; print $0}else{print $0}}' kallisto.gene.TPM.not_cross_norm > kallisto.gene.TPM.not_cross_norm.ren
+DO_MERGE merge_table.pl -k kallisto.gene.counts.matrix.ren kallisto.gene.TPM.not_cross_norm.ren Trinotate.xls3.gene > Trinotate.xls3.gene.cnt
+
+DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{if(FNR==1){print $0; for(i=2;i<=NF;i++){cnt["id"][i]=$i}}else{for(i=2;i<=NF;i++){cnt[$1][i]=$i}}; n1=NF} FILENAME==ARGV[2] && FNR>1 && $13!="."{split($13,arr,"`"); for(i in arr){split(arr[i],arr2,"^"); for(j=2;j<=n1;j++){cnt2[arr2[1]][j]+=cnt[$2][j]}}} END{ORS=""; for(i in cnt2){print i; for(j=2;j<=n1;j++){print "\t"cnt2[i][j]}; print "\n"}}' kallisto.isoform.counts.matrix Trinotate.xls > kallisto.go.counts.matrix
+(echo -e "GO ID\tGO group\tGO name";cut -f 13 Trinotate.xls|tail -n+2|sed 's/`/\n/g'|awk 'a[$0]!=1{print $0; a[$0]=1}'|grep "^GO:"|sed 's/\^/\t/g') > Trinotate.xls3.go
+awk -F'\t' '{if(NR==1){OFS="\t"; $1="GO ID"; for(i=2;i<=NF;i++){$i=$i" (counts)"}; print $0}else{print $0}}' kallisto.go.counts.matrix > kallisto.go.counts.matrix.ren
+DO_MERGE merge_table.pl -k kallisto.go.counts.matrix.ren Trinotate.xls3.go > Trinotate.xls3.go.cnt
+
+
+#sample.txt
+if [ -e "$input_2" ]; then
+ cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
+else
+ touch sample.txt2
+fi
+countisofile=kallisto.isoform.counts.matrix
+head -n 1 $countisofile|sed 's/\t/\n/g'|tail -n+2| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+
+bash "$scriptdir"/statistics~sample_distance -c "$opt_c" -m "$opt_m" -s sample.input.txt kallisto.isoform.counts.matrix || true
+
+echo -e "target_id\tens_gene" > Trinity.fasta.t2g.txt
+cat Trinity.fasta.gene_trans_map|awk -F'\t' '{print $2"\t"$1}' >> Trinity.fasta.t2g.txt
+#p=0.05
+tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|awk '{a[NR]=$1} END{for(i=1;i<=NR-1;i++){for(j=i+1;j<=NR;j++){print a[i]"\t"a[j]}}}' > sample.input.pair.txt
+
+
+#make html
+i=Trinotate.xls3.isoform.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=Trinotate.xls3.gene.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=Trinotate.xls3.go.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.isoform.cnt.temp result.isoform.xlsx
+DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.gene.cnt.temp result.gene.xlsx
+DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.go.cnt.temp result.go.xlsx
+
+cat << 'EOF' > 0_result.html
+<html>
+<header>
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/mermaid/dist/mermaid.min.css">
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js" charset="UTF-8"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad:true
+  });
+</script>
+
+<style type="text/css">
+h2 {
+ padding: 1em;
+ border: 3px solid #ccc;
+ border-radius: 3em .7em 2em .7em/.7em 2em .7em 3em;
+}
+h2:first-letter {
+ margin-right: .1em;
+ font-size: 1.5em;
+}
+h3 {
+  color: #000099;
+  padding-left: 10px;
+  border-width: 0px 0px 2px 15px;
+  border-style: solid;
+  border-color: #9999ff;
+  line-height: 100%;
+}
+.sup{
+  color: #000099;
+  border-left-color: #cc6666;
+  padding: 3px 0px 0px 6px;
+  border-style: solid;
+  border-width: 0px 0px 0px 10px;
+}
+</style>
+</header>
+<body>
+<h2>Flow chart: RNA-seq -> Trinity, kallisto, sleuth</h2>
+<div class="mermaid">
+  graph LR;
+    A((FASTQ))-->C{Trinity v2.8.5};
+    A2((FASTQ))-->C;
+    C-->D(assembled contigs: FASTA);
+    D-->E{kallisto 0.46.0};
+    A-->E
+    A2-->E
+    E-->F{DESeq2 1.22.2};
+    E-->G{sleuth 0.30.0};
+    D-->H{Trinotate v3.1.1}
+    E-->I(annotated gene expression table)
+    H-->I
+    F-->J(0_result.html)
+    G-->J
+    I-->J
+    K[sample_information.txt]-.->F
+    K-.->G
+</div>
+<h2>Quality check</h2>
+ <h3>Histogram of read counts by transcripts</h3>
+  <img src="histo.count.png">
+ <h3>MDS plot</h3>
+  <img src="MDS.png">
+ <h3>Sample-to-sample Distances</h3>
+  <img src="sampleDist.png">
+EOF
+
+cat << 'EOF' > run-make-deg-html.sh
+tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|
+ awk -v countfile="$1" -v stat="$2" -v type="$4" '{a[NR]=$1}
+  END{
+   print "<table class=\"table table-hover table-bordered\">"
+   print "<tr><th></th>";
+   for(i=1;i<=NR-1;i++){print "<th>"a[i]"</th>"}
+   print "</tr>"
+   for(j=2;j<=NR;j++){
+    print "<tr><td><p style=\"transform: rotate( -90deg );\">"a[j]"</p></td>";
+    for(i=1;i<=NR-1;i++){if(i>=j){print "<td></td>"}else{
+     print "<td><img src=\""countfile"."a[i]"."a[j]".txt."stat"."countfile"."a[i]"."a[j]".txt.id.scatter.png\""
+     print " onerror=\"this.onerror=null;this.src='"'"'"countfile"."a[i]"."a[j]".txt."stat"."countfile"."a[i]"."a[j]".txt.id.scatter.normal.png'"'"'\" alt=\"\">"
+     print "<br><a href=\"result."stat"."countfile"."a[i]"."a[j]".txt."a[i]".up."a[j]".down.txt.xlsx\">upregulated "type"s in "a[i]"</a>"
+     print "<br><a href=\"result."stat"."countfile"."a[i]"."a[j]".txt."a[i]".down."a[j]".up.txt.xlsx\">upregulated "type"s in "a[j]"</a>"
+     print "</td>"}
+    }
+    print "</tr>"
+   }
+   print "</table>"
+  }' >> $3
+EOF
+
+countfile=kallisto.isoform.counts.matrix
+countgenefile=kallisto.gene.counts.matrix
+countgofile=kallisto.go.counts.matrix
+echo '
+<h2>Transcript</h2>
+ <h3>Differential transcript expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countfile DESeq2 0_result.html transcript
+echo ' <h3>Differential transcript expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countfile edgeR 0_result.html transcript
+echo ' <h3>Differential transcript expression analysis by sleuth with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countfile sleuth 0_result.html transcript
+echo '
+<h2>Gene</h2>
+ <h3>Differential gene expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile DESeq2 0_result.html gene
+echo ' <h3>Differential gene expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile edgeR 0_result.html gene
+echo ' <h3>Differential gene expression analysis by sleuth with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile sleuth 0_result.html gene
+echo '
+<h2>GO</h2>
+ <h3>Differential GO expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countgofile DESeq2 0_result.html go
+echo ' <h3>Differential GO expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgofile edgeR 0_result.html go
+echo "</body></html>" >> 0_result.html
+
+
+
+parallel_setup
+for i in `seq 1 $(cat sample.input.pair.txt|wc -l)`; do
+ g1=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 1`
+ g2=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 2`
+ countfile=kallisto.isoform.counts.matrix
+ countgenefile=kallisto.gene.counts.matrix
+ countgofile=kallisto.go.counts.matrix
+ tpmgenefile=kallisto.gene.TPM.not_cross_norm
+ annfile=Trinotate.xls3.isoform.cnt
+ anngenefile=Trinotate.xls3.gene.cnt
+ anngofile=Trinotate.xls3.go.cnt
+
+ cat << EOF > run-DE.$g1.$g2.sh
+set -x
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(FNR==1){print \$0}else{if(\$2==g1||\$2==g2){print \$0}}}' sample.input.txt > sample.input.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 '\$2==g1{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.x
+awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.y
+
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $countgenefile.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $countgofile.$g1.$g2.txt
+#DESeq2
+echo bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
+echo bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
+echo bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-DESeq2.$g1.$g2.go.txt 2>&1"
+#edgeR
+echo bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
+echo bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-edgeR.$g1.$g2.gene.txt 2>&1"
+echo bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-edgeR.$g1.$g2.go.txt 2>&1"
+#sleuth
+echo bash "$scriptdir"/statistics~sleuth -f kallisto.output -s run-sleuth.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt $tpmgenefile sample.input.$g1.$g2.txt kallisto.output.tar.gz Trinity.fasta.t2g.txt "> log-sleuth.$g1.$g2.isoform-gene.txt 2>&1"
+
+EOF
+
+ DO_R bash run-DE.$g1.$g2.sh
+done|DOPARALLELONE
+
+WAITPARALLELONE
+
+
+
+
+
+post_processing
+
+
+
+#<option detail>
+#<opt_t>
+#  --include_supertranscripts      :yield supertranscripts fasta and gtf files as outputs.
+#
+#  --SS_lib_type <string>          :Strand-specific RNA-Seq read orientation.
+#                                   if paired: RF or FR,
+#                                   if single: F or R.   (dUTP method = RF)
+#                                   See web documentation.
+#
+#  --CPU <int>                     :number of CPUs to use, default: 2
+#  --min_contig_length <int>       :minimum assembled contig length to report
+#                                   (def=200)
+#
+#  --long_reads <string>           :fasta file containing error-corrected or circular consensus (CCS) pac bio reads
+#                                   (** note: experimental parameter **, this functionality continues to be under development)
+#
+#  --genome_guided_bam <string>    :genome guided mode, provide path to coordinate-sorted bam file.
+#                                   (see genome-guided param section under --show_full_usage_info)
+#
+#  --jaccard_clip                  :option, set if you have paired reads and
+#                                   you expect high gene density with UTR
+#                                   overlap (use FASTQ input file format
+#                                   for reads).
+#                                   (note: jaccard_clip is an expensive
+#                                   operation, so avoid using it unless
+#                                   necessary due to finding excessive fusion
+#                                   transcripts w/o it.)
+#
+#  --trimmomatic                   :run Trimmomatic to quality trim reads
+#                                        see '--quality_trimming_params' under full usage info for tailored settings.
+#
+#
+#  --no_normalize_reads            :Do *not* run in silico normalization of reads. Defaults to max. read coverage of 200.
+#                                       see '--normalize_max_read_cov' under full usage info for tailored settings.
+#                                       (note, as of Sept 21, 2016, normalization is on by default)
+#
+#  --no_distributed_trinity_exec   :do not run Trinity phase 2 (assembly of partitioned reads), and stop after generating command list.
+#
+#
+#  --output <string>               :name of directory for output (will be
+#                                   created if it doesn't already exist)
+#                                   default( your current working directory: "/root/test/trinity_out_dir"
+#                                    note: must include 'trinity' in the name as a safety precaution! )
+#
+#  --workdir <string>              :where Trinity phase-2 assembly computation takes place (defaults to --output setting).
+#                                  (can set this to a node-local drive or RAM disk)
+#
+#  --full_cleanup                  :only retain the Trinity fasta file, rename as ${output_dir}.Trinity.fasta
+#
+#  --cite                          :show the Trinity literature citation
+#
+#  --verbose                       :provide additional job status info during the run.
+#
+#  --version                       :reports Trinity version (Trinity-v2.8.5) and exits.
+#
+#  --show_full_usage_info          :show the many many more options available for running Trinity (expert usage).
+#</opt_t>
+#<opt_k>
+kallisto 0.46.0
+Computes equivalence classes for reads and quantifies abundances
+
+Usage: kallisto quant [arguments] FASTQ-files
+
+Required arguments:
+-i, --index=STRING            Filename for the kallisto index to be used for
+                              quantification
+-o, --output-dir=STRING       Directory to write output to
+
+Optional arguments:
+    --bias                    Perform sequence based bias correction
+-b, --bootstrap-samples=INT   Number of bootstrap samples (default: 0)
+    --seed=INT                Seed for the bootstrap sampling (default: 42)
+    --plaintext               Output plaintext instead of HDF5
+    --fusion                  Search for fusions for Pizzly
+    --single                  Quantify single-end reads
+    --single-overhang         Include reads where unobserved rest of fragment is
+                              predicted to lie outside a transcript
+    --fr-stranded             Strand specific reads, first read forward
+    --rf-stranded             Strand specific reads, first read reverse
+-l, --fragment-length=DOUBLE  Estimated average fragment length
+-s, --sd=DOUBLE               Estimated standard deviation of fragment length
+                              (default: -l, -s values are estimated from paired
+                               end data, but are required when using --single)
+-t, --threads=INT             Number of threads to use (default: 1)
+    --pseudobam               Save pseudoalignments to transcriptome to BAM file
+    --genomebam               Project pseudoalignments to genome sorted BAM file
+-g, --gtf                     GTF file for transcriptome information
+                              (required for --genomebam)
+-c, --chromosomes             Tab separated file with chromosome names and lengths
+                              (optional for --genomebam, but recommended)
+#</opt_k>
+#</option detail>
+

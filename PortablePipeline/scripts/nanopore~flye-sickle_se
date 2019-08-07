@@ -1,0 +1,130 @@
+#!/bin/bash
+
+explanation='
+sickle + flye pipeline
+sickle: Windowed Adaptive Trimming for fastq files using quality
+flye: Fast and accurate de novo assembler for single molecule sequencing reads
+'
+inputdef='
+input_1:directory:FASTQ:*.fastq,*.fq
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_s:sickle option:-t sanger -q 15 -l 5000
+opt_f:Flye option:--genome-size 10M
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -f #opt_f# #input_1#"
+
+export IM_SICKLE="quay.io/biocontainers/sickle-trim:1.33--ha92aebf_4"
+#export IM_FLYE="c2997108/centos6:2-flye-2.4.2-release-3" #for docker only
+export IM_FLYE="quay.io/biocontainers/flye:2.4--py27ha92aebf_0"
+export IM_FASTQC="quay.io/biocontainers/fastqc:0.11.8--1"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+cat `find $input_1/|egrep "[.]f(ast|)q$"` > input.fastq
+DO_FASTQC fastqc -t $N_CPU --extract input.fastq
+rm -f input.fastq
+
+parallel_setup
+for i in `find $input_1/|egrep "[.]f(ast|)q$"`; do
+ echo $ENV_SICKLE sickle se -f $i  -o $i.sickle $opt_s
+done|DOPARALLELONE
+
+WAITPARALLELONE
+
+cat $input_1/*.sickle > output.sickle.fastq
+DO_FASTQC fastqc -t $N_CPU --extract output.sickle.fastq
+rm -f input_1/*.sickle
+DO_FLYE flye --nano-raw output.sickle.fastq --out-dir output.flye --threads $N_CPU $opt_f
+
+
+post_processing
+#<option detail>
+#<opt_s>
+Usage: sickle se [options] -f <fastq sequence file> -t <quality type> -o <trimmed fastq file>
+
+Options:
+-f, --fastq-file, Input fastq file (required)
+-t, --qual-type, Type of quality values (solexa (CASAVA < 1.3), illumina (CASAVA 1.3 to 1.7), sanger (which is CASAVA >= 1.8)) (required)
+-o, --output-file, Output trimmed fastq file (required)
+-q, --qual-threshold, Threshold for trimming based on average quality in a window. Default 20.
+-l, --length-threshold, Threshold to keep a read based on length after trimming. Default 20.
+-x, --no-fiveprime, Don't do five prime trimming.
+-n, --trunc-n, Truncate sequences at position of first N.
+-g, --gzip-output, Output gzipped files.
+--quiet, Don't print out any trimming information
+--help, display this help and exit
+--version, output version information and exit
+
+#</opt_s>
+#<opt_f>
+usage: flye (--pacbio-raw | --pacbio-corr | --nano-raw |
+             --nano-corr | --subassemblies) file1 [file_2 ...]
+             --genome-size SIZE --out-dir PATH
+             [--threads int] [--iterations int] [--min-overlap int]
+             [--meta] [--plasmids] [--no-trestle] [--polish-target]
+             [--debug] [--version] [--help] [--resume]
+
+Assembly of long and error-prone reads
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --pacbio-raw path [path ...]
+                        PacBio raw reads
+  --pacbio-corr path [path ...]
+                        PacBio corrected reads
+  --nano-raw path [path ...]
+                        ONT raw reads
+  --nano-corr path [path ...]
+                        ONT corrected reads
+  --subassemblies path [path ...]
+                        high-quality contigs input
+  -g size, --genome-size size
+                        estimated genome size (for example, 5m or 2.6g)
+  -o path, --out-dir path
+                        Output directory
+  -t int, --threads int
+                        number of parallel threads [1]
+  -i int, --iterations int
+                        number of polishing iterations [1]
+  -m int, --min-overlap int
+                        minimum overlap between reads [auto]
+  --asm-coverage int    reduced coverage for initial disjointig assembly [not
+                        set]
+  --plasmids            rescue short unassembled plasmids
+  --meta                metagenome / uneven coverage mode
+  --no-trestle          skip Trestle stage
+  --polish-target path  run polisher on the target sequence
+  --resume              resume from the last completed stage
+  --resume-from stage_name
+                        resume from a custom stage
+  --debug               enable debug output
+  -v, --version         show program's version number and exit
+Input reads can be in FASTA or FASTQ format, uncompressed
+or compressed with gz. Currently, raw and corrected reads
+from PacBio and ONT are supported. Expected error rates are
+<30% for raw and <2% for corrected reads. Additionally, the
+--subassemblies option performs a consensus assembly of multiple
+sets of high-quality contigs. You may specify multiple
+files with reads (separated by spaces). Mixing different read
+types is not yet supported. The --meta option enables the mode
+for metagenome/uneven coverage assembly.
+You must provide an estimate of the genome size as input,
+which is used for solid k-mers selection. Standard size
+modifiers are supported (e.g. 5m or 2.6g). In the case
+of metagenome assembly, the expected total assembly size
+should be provided.
+To reduce memory consumption for large genome assemblies,
+you can use a subset of the longest reads for initial disjointig
+assembly by specifying --asm-coverage option. Typically,
+30x coverage is enough to produce good disjointigs.
+You can separately run Flye polisher on a target sequence
+using --polish-target option.
+#</opt_f>
+#</option detail>
+
