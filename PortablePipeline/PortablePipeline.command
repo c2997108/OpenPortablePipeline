@@ -1,3 +1,3 @@
 #!/bin/bash
 cd `dirname $0`
-java -jar PortablePipeline.jar
+java-mac/8/Home/bin/java -jar PortablePipeline.jar
