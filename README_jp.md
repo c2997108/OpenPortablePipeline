@@ -16,7 +16,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 https://github.com/c2997108/OpenPortablePipeline/archive/0.7b.zip
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。
-Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSのセキュリティ設定からストアアプリ以外の実行を許可する等の設定が必要かもしれない。
+Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSの「System Preferences」→「Security & Privacy」→「General」タブ→「Open Anyway」をクリックして、実行を許可する必要がある。
 
 3. ソフトウェアが起動したら、「Settings」タブを開いて、Linuxサーバに接続するか(「direct」を選択)、スパコンに接続するか(「ddbj」、「shirokane」を選択)、Windows単体で解析まで実行するか(「WSL」を選択)、Mac単体で解析まで実行するか(「Mac」を選択)を決めて、サーバに接続する場合は、必要なアカウント情報を入力する。
 
