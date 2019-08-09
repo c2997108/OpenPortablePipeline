@@ -14,6 +14,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 ## 操作方法
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。
 https://github.com/c2997108/OpenPortablePipeline/archive/0.7b.zip
+
 Macユーザに必要なファイルが大きすぎて、GitHubのリリースで出来るzipに一つ入らないようなので、下記のファイルを手動でダウンロードして解凍したフォルダの中のPortablePipeline/java-mac/8/Home/jre/lib/rt.jarを置き換える。
 https://github.com/c2997108/OpenPortablePipeline/raw/master/PortablePipeline/java-mac/8/Home/jre/lib/rt.jar
 
