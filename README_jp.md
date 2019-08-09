@@ -1,6 +1,6 @@
 # PortablePipeline
 
-PortablePipelineはWindows、Macユーザが、手元のコンピュータもしくはリモートのサーバ、スパコン上で、NGSの解析をGUIで行うことを可能にするソフトウェアです。グリッドエンジンとしてSGEに対応しており、白金スパコン、遺伝研スパコンにジョブを分散実行可能です。
+PortablePipelineはWindows、Macユーザが、手元のコンピュータもしくはリモートのサーバ、スパコン上で、NGSの解析をGUIで行うことを可能にするソフトウェアです。グリッドエンジンとしてSGEに対応しており、白金スパコン、遺伝研スパコンにジョブを分散実行可能です。また、本ソフトウェアの仕様に従って記述されたスクリプトは、CUIからも容易に呼び出せます。
 
 ## 必要なシステム要件
 ### クライアント (GUI操作を行う端末)
@@ -14,7 +14,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 ## 操作方法
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。
  https://github.com/c2997108/OpenPortablePipeline/archive/0.7b.zip  
-Macユーザは、必要なファイルが大きすぎてGitHubのリリースで出来るzipに入らないファイルが一つあるので、下記のファイルを手動でダウンロードして解凍したフォルダの中のPortablePipeline/java-mac/8/Home/jre/lib/rt.jarを置き換える。  
+Macユーザは、必要なファイルが大きすぎてGitHubのリリースで出来るzipに入らないファイルが一つあるので、下記のファイルを手動でダウンロードして解凍したフォルダの中のPortablePipeline/java-mac/8/Home/jre/lib/rt.jarを置き換える。(もしくは最初からgit clone https://github.com/c2997108/OpenPortablePipeline.git とするか。)  
  https://github.com/c2997108/OpenPortablePipeline/raw/master/PortablePipeline/java-mac/8/Home/jre/lib/rt.jar
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。
