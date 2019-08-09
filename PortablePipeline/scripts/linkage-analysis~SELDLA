@@ -1,0 +1,73 @@
+#!/bin/bash
+
+explanation='
+SELDLA: Scaffold Extender with Low Depth Linkage Analysis
+'
+inputdef='
+input_1::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2::genotype vcf:*.vcf,*.vcf.gz
+input_3::family information:*.txt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_b:SELDLA option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2# #input_3#"
+
+export IM_SELDLA="c2997108/seldla:2.0.7_1"
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_1"; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+DO_SELDLA SELDLA $opt_b --fasta "$input_1" --vcf "$input_2" --family "$input_3"
+
+
+post_processing
+
+#<option detail>
+#<opt_b>
+no input fasta
+no input vcf
+no input family
+SELDLA ver2.0.7
+      --DP=VALUE             DP_threshold [1]
+      --GQ=VALUE             GQ_threshold [0]
+  -p, --hqsnp=VALUE          high quality SNP rate [0.3]
+  -b, --bal=VALUE            0 / 1 balance [0.1]
+      --NonZeroSampleRate=VALUE
+                             exclude ambiquous SNP (0-1) [0.3]
+      --NonZeroPhaseRate=VALUE
+                             exclude ambiquous Phase (0-1) [0.3]
+      --ldnum=VALUE          the minimum number of same LD [1]
+  -s, --exmatch=VALUE        extension match rate [0.7]
+  -v, --spmatch=VALUE        split match rate [0.7]
+  -l, --clmatch=VALUE        cluster match rate [0.8]
+      --cs=VALUE             cluster size [2]
+      --nl=VALUE             near SNP match rate [0.9]
+  -r=VALUE                   the region to merge near SNP (bp) [10000]
+  -o, --output=VALUE         output prefix [seldla]
+      --vcf=VALUE            input VCF file <required>
+      --fasta=VALUE          input FASTA file <required>
+      --family=VALUE         input family file <required>
+      --noNewVcf             no converted vcf output with new position
+      --precleaned=VALUE     pre-calculated cleaned vcf file (if this option is
+                               used, input vcf is not used.)
+      --mode=VALUE           analysis mode (crossbreed, haploid, duploid) [
+                               crossbreed]
+      --MaxLdClusterOnly     use max size LD cluster only
+      --RateOfNotNASNP=VALUE threshold of the ratio that is not NA with each
+                               other when comparing SNP at the clustering step [
+                               0.2]
+      --RateOfNotNALD=VALUE  threshold of the ratio that is not NA with each
+                               other when comparing LD at the clustering step [
+                               0.4]
+  -h, --help                 show help.
+#</opt_b>
+#</option detail>
+

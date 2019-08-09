@@ -16,30 +16,15 @@ opt_f:Flye option:--genome-size 10M
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -f #opt_f# #input_1#"
 
-export IM_SICKLE="quay.io/biocontainers/sickle-trim:1.33--ha92aebf_4"
-#export IM_FLYE="c2997108/centos6:2-flye-2.4.2-release-3" #for docker only
 export IM_FLYE="quay.io/biocontainers/flye:2.4--py27ha92aebf_0"
-export IM_FASTQC="quay.io/biocontainers/fastqc:0.11.8--1"
 
 source $(dirname `readlink -f $0`)/common.sh
 
 set -eux
 set -o pipefail
 
-cat `find $input_1/|egrep "[.]f(ast|)q$"` > input.fastq
-DO_FASTQC fastqc -t $N_CPU --extract input.fastq
-rm -f input.fastq
+bash "$scriptdir"/nanopore~sickle_se -c "$N_CPU" -m "$N_MEM" -s "$opt_s" "input_1/"
 
-parallel_setup
-for i in `find $input_1/|egrep "[.]f(ast|)q$"`; do
- echo $ENV_SICKLE sickle se -f $i  -o $i.sickle $opt_s
-done|DOPARALLELONE
-
-WAITPARALLELONE
-
-cat $input_1/*.sickle > output.sickle.fastq
-DO_FASTQC fastqc -t $N_CPU --extract output.sickle.fastq
-rm -f input_1/*.sickle
 DO_FLYE flye --nano-raw output.sickle.fastq --out-dir output.flye --threads $N_CPU $opt_f
 
 

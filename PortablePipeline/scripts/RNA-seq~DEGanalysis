@@ -1,0 +1,563 @@
+#!/bin/bash
+
+explanation='
+RNA-seq analysis pipeline with reference
+ballgown, Cuffdiff, DESeq2, edgeR
+'
+inputdef='
+input_1:directory:ballgown input (StringTie output):*.stringtie.tar.gz
+input_2:directory:Cuffdiff input (Cuffquant output):*.cuffquant.tar.gz
+input_3::sample information file:*.txt
+input_4::reference genome file:*.fa,*.fasta,*.fsa,*.fna
+input_5::reference gtf file:*.gtf
+input_6:option:Trinotate output file:Trinotate.xls
+input_7:option:Trinotate.xls3.isoform.cnt:Trinotate.xls3.isoform.cnt
+input_8:option:Trinotate.xls3.gene.cnt:Trinotate.xls3.gene.cnt
+input_9:option:Trinotate.xls3.go.cnt:Trinotate.xls3.go.cnt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_f:FDR threshold:0.05
+opt_d:cuffdiff option:--library-type fr-firststrand --no-update-check -u
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -d #opt_d# -s #input_6# -t #input_7# -u #input_8# -v #input_9# #input_1# #input_2# #input_3# #input_4# #input_5#"
+
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_CUFF="quay.io/biocontainers/cufflinks:2.2.1--py36_2"
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_MERGE="c2997108/centos6:3"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+p=$opt_f
+
+mkdir -p input.ballgown
+for i in "$input_1"/*.stringtie.tar.gz; do tar zvxf $i -C input.ballgown; done
+mkdir -p input.cuffdiff
+for i in "$input_2"/*.cuffquant.tar.gz; do tar zvxf $i -C input.cuffdiff; done
+
+#sample.txt
+cat "$input_3" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
+ls input.ballgown| DO_BASE sort -V| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+
+cat << 'EOF' > run-estimate-fpkm.R
+library(ballgown)
+pheno_data = read.table(file ="sample.input.txt", header = TRUE, sep = "\t")
+sample_full_path = paste("input.ballgown",pheno_data[,1], sep = '/')
+bg2 = ballgown(samples=as.vector(sample_full_path),pData=pheno_data)
+whole_tx_table = texpr(bg2, 'all')
+gene_expression = gexpr(bg2)
+write.table(whole_tx_table,file="isoforms.ballgown.txt",sep="\t",row.names=F,quote=F)
+write.table(gene_expression,file="genes.ballgown.txt",sep="\t",row.names=T,quote=F)
+EOF
+DO_R R --vanilla < run-estimate-fpkm.R
+awk -F'\t' '{ORS=""; if(NR==1){gsub(/\tcov[.]/,"\t",$0)}; print $6; for(i=11;i<NF;i=i+2){print "\t"$i}; print "\n"}' isoforms.ballgown.txt > isoforms.count_table
+awk -F'\t' '{ORS=""; if(NR==1){gsub(/\tFPKM[.]/,"\t",$0)}; print $6; for(i=12;i<=NF;i=i+2){print "\t"$i}; print "\n"}' isoforms.ballgown.txt > isoforms.fpkm_table
+cat isoforms.ballgown.txt| DO_BASE awk -F'\t' '{if(NR==1){gsub(/\tcov[.]/,"\t",$0); name[9]=$9; for(i=11;i<NF;i=i+2){name[i]=$i}}else{for(i=11;i<NF;i=i+2){cnt[$9][i]+=$i}}} END{ORS=""; print name[9]; for(i=11;i<=NF;i=i+2){print "\t"name[i]}; print "\n"; for(j in cnt){print j; for(i=11;i<=NF;i=i+2){print "\t"cnt[j][i]}; print "\n"}}' > genes.count_table
+awk -F'\t' '{if(NR==1){gsub(/^FPKM[.]/,"",$0); gsub(/\tFPKM[.]/,"\t",$0); print "id\t"$0}else{print $0}}' genes.ballgown.txt > genes.fpkm_table
+
+if [ "$input_6" != "" ];then
+ DO_R awk -F'\t' 'FILENAME==ARGV[1]{if(FNR==1){print $0; for(i=2;i<=NF;i++){cnt["id"][i]=$i}}else{for(i=2;i<=NF;i++){cnt[$1][i]=$i}}; n1=NF} FILENAME==ARGV[2] && FNR>1 && $13!="."{split($13,arr,"`"); for(i in arr){split(arr[i],arr2,"^"); for(j=2;j<=n1;j++){cnt2[arr2[1]][j]+=cnt[$2][j]}}} END{ORS=""; for(i in cnt2){print i; for(j=2;j<=n1;j++){print "\t"cnt2[i][j]}; print "\n"}}' isoforms.count_table "$input_6" > gos.count_table
+fi
+
+bash "$scriptdir"/statistics~sample_distance -c "$opt_c" -m "$opt_m" -s sample.input.txt isoforms.count_table || true
+
+tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|awk '{a[NR]=$1} END{for(i=1;i<=NR-1;i++){for(j=i+1;j<=NR;j++){print a[i]"\t"a[j]}}}' > sample.input.pair.txt
+
+
+#make html
+cat << 'EOF' > 0_result.html
+<html>
+<header>
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/mermaid/dist/mermaid.min.css">
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js" charset="UTF-8"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad:true
+  });
+</script>
+
+<style type="text/css">
+h2 {
+ padding: 1em;
+ border: 3px solid #ccc;
+ border-radius: 3em .7em 2em .7em/.7em 2em .7em 3em;
+}
+h2:first-letter {
+ margin-right: .1em;
+ font-size: 1.5em;
+}
+h3 {
+  color: #000099;
+  padding-left: 10px;
+  border-width: 0px 0px 2px 15px;
+  border-style: solid;
+  border-color: #9999ff;
+  line-height: 100%;
+}
+.sup{
+  color: #000099;
+  border-left-color: #cc6666;
+  padding: 3px 0px 0px 6px;
+  border-style: solid;
+  border-width: 0px 0px 0px 10px;
+}
+</style>
+</header>
+<body>
+<h2>Flow chart: RNA-seq_statistics -> Cuffdiff, DESeq2, edgeR, ballgown</h2>
+<h2>Quality check</h2>
+ <h3>Histogram of read counts by transcripts</h3>
+  <img src="histo.count.png">
+ <h3>MDS plot</h3>
+  <img src="MDS.png">
+ <h3>Sample-to-sample Distances</h3>
+  <img src="sampleDist.png">
+EOF
+
+cat << 'EOF' > run-make-deg-html.sh
+tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|
+ awk -v countfile="$1" -v stat="$2" -v type="$4" '{a[NR]=$1}
+  END{
+   print "<table class=\"table table-hover table-bordered\">"
+   print "<tr><th></th>";
+   for(i=1;i<=NR-1;i++){print "<th>"a[i]"</th>"}
+   print "</tr>"
+   for(j=2;j<=NR;j++){
+    print "<tr><td><p style=\"transform: rotate( -90deg );\">"a[j]"</p></td>";
+    for(i=1;i<=NR-1;i++){if(i>=j){print "<td></td>"}else{
+     print "<td><img src=\""countfile"."a[i]"."a[j]".txt."stat"."countfile"."a[i]"."a[j]".txt.id.scatter.png\""
+     print " onerror=\"this.onerror=null;this.src='"'"'"countfile"."a[i]"."a[j]".txt."stat"."countfile"."a[i]"."a[j]".txt.id.scatter.normal.png'"'"'\" alt=\"\">"
+     print "<br><a href=\"result."stat"."countfile"."a[i]"."a[j]".txt."a[i]".up."a[j]".down.txt.xlsx\">upregulated "type"s in "a[i]"</a>"
+     print "<br><a href=\"result."stat"."countfile"."a[i]"."a[j]".txt."a[i]".down."a[j]".up.txt.xlsx\">upregulated "type"s in "a[j]"</a>"
+     print "</td>"}
+    }
+    print "</tr>"
+   }
+   print "</table>"
+  }' >> $3
+EOF
+
+
+countfile=isoforms.count_table
+countgenefile=genes.count_table
+countgofile=gos.count_table
+echo '
+<h2>Transcript</h2>
+ <h3>Differential transcript expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countfile DESeq2 0_result.html transcript
+echo ' <h3>Differential transcript expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countfile edgeR 0_result.html transcript
+echo ' <h3>Differential transcript expression analysis by ballgown with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countfile ballgown 0_result.html transcript
+echo ' <h3>Differential transcript expression analysis by Cuffdiff with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countfile cuffdiff 0_result.html transcript
+echo '
+<h2>Gene</h2>
+ <h3>Differential gene expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile DESeq2 0_result.html gene
+echo ' <h3>Differential gene expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile edgeR 0_result.html gene
+echo ' <h3>Differential gene expression analysis by ballgown with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile ballgown 0_result.html gene
+echo ' <h3>Differential gene expression analysis by Cuffdiff with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgenefile cuffdiff 0_result.html gene
+if [ -e $countgofile ]; then
+echo '
+<h2>GO</h2>
+ <h3>Differential go expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countgofile DESeq2 0_result.html go
+echo ' <h3>Differential GO expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countgofile edgeR 0_result.html go
+echo "</body></html>" >> 0_result.html
+fi
+
+for i in `seq 1 $(cat sample.input.pair.txt|wc -l)`; do
+ g1=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 1`
+ g2=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 2`
+ countfile=isoforms.count_table
+ countgenefile=genes.count_table
+ countgofile=gos.count_table
+ if [ "$input_7" = "" ]; then
+  annfile="$countfile"
+ else
+  annfile="$input_7"
+ fi
+ if [ "$input_8" = "" ]; then
+  anngenefile="$countgenefile"
+ else
+  anngenefile="$input_8"
+ fi
+ if [ "$input_9" = "" ]; then
+  anngofile="$countgofile"
+ else
+  anngofile="$input_9"
+ fi
+
+ cat << EOF > run-DE.$g1.$g2.sh
+set -x
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(FNR==1){print \$0}else{if(\$2==g1||\$2==g2){print \$0}}}' sample.input.txt > sample.input.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 '\$2==g1{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.x
+awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.y
+
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $countgenefile.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $countgofile.$g1.$g2.txt
+#DESeq2
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$anngenefile\\'" "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
+if [ -e $countgofile ]; then
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$anngofile\\'" "> log-DESeq2.$g1.$g2.go.txt 2>&1"
+fi
+#edgeR
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$anngenefile\\'" "> log-edgeR.$g1.$g2.gene.txt 2>&1"
+if [ -e $countgofile ]; then
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$anngofile\\'" "> log-edgeR.$g1.$g2.go.txt 2>&1"
+fi
+#ballgown
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~ballgown -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a "\\'$annfile\\'" -b "\\'$anngenefile\\'" $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
+#Cuffdiff
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f input.cuffdiff -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a "\\'$annfile\\'" -b "\\'$anngenefile\\'" -d "\'$opt_d\'" $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.cuffdiff.tar.gz $input_4 $input_5 "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
+
+EOF
+
+ DO_R bash run-DE.$g1.$g2.sh
+done|DOPARALLELONE
+
+WAITPARALLELONE
+
+rm -rf input.ballgown input.cuffdiff
+
+
+post_processing
+
+
+
+#<option detail>
+#<opt_b>
+Options:
+    -c                      reference sequences given on cmd line (as
+                            <reference_in>)
+    --large-index           force generated index to be 'large', even if ref
+                            has fewer than 4 billion nucleotides
+    -a/--noauto             disable automatic -p/--bmax/--dcv memory-fitting
+    -p                      number of threads
+    --bmax <int>            max bucket sz for blockwise suffix-array builder
+    --bmaxdivn <int>        max bucket sz as divisor of ref len (default: 4)
+    --dcv <int>             diff-cover period for blockwise (default: 1024)
+    --nodc                  disable diff-cover (algorithm becomes quadratic)
+    -r/--noref              don't build .3/.4.ht2 (packed reference) portion
+    -3/--justref            just build .3/.4.ht2 (packed reference) portion
+    -o/--offrate <int>      SA is sampled every 2^offRate BWT chars (default: 5)
+    -t/--ftabchars <int>    # of chars consumed in initial lookup (default: 10)
+    --localoffrate <int>    SA (local) is sampled every 2^offRate BWT chars (default: 3)
+    --localftabchars <int>  # of chars consumed in initial lookup in a local index (default: 6)
+    --snp <path>            SNP file name
+    --haplotype <path>      haplotype file name
+    --ss <path>             Splice site file name
+    --exon <path>           Exon file name
+    --seed <int>            seed for random number generator
+    -q/--quiet              verbose output (for debugging)
+    -h/--help               print detailed description of tool and its options
+    --usage                 print this usage message
+    --version               print version information and quit
+#</opt_b>
+#<opt_i>
+Options (defaults in parentheses):
+
+ Input:
+  -q                 query input files are FASTQ .fq/.fastq (default)
+  --qseq             query input files are in Illumina's qseq format
+  -f                 query input files are (multi-)FASTA .fa/.mfa
+  -r                 query input files are raw one-sequence-per-line
+  -c                 <m1>, <m2>, <r> are sequences themselves, not files
+  -s/--skip <int>    skip the first <int> reads/pairs in the input (none)
+  -u/--upto <int>    stop after first <int> reads/pairs (no limit)
+  -5/--trim5 <int>   trim <int> bases from 5'/left end of reads (0)
+  -3/--trim3 <int>   trim <int> bases from 3'/right end of reads (0)
+  --phred33          qualities are Phred+33 (default)
+  --phred64          qualities are Phred+64
+  --int-quals        qualities encoded as space-delimited integers
+  --sra-acc          SRA accession ID
+
+ Alignment:
+  --n-ceil <func>    func for max # non-A/C/G/Ts permitted in aln (L,0,0.15)
+  --ignore-quals     treat all quality values as 30 on Phred scale (off)
+  --nofw             do not align forward (original) version of read (off)
+  --norc             do not align reverse-complement version of read (off)
+
+ Spliced Alignment:
+  --pen-cansplice <int>              penalty for a canonical splice site (0)
+  --pen-noncansplice <int>           penalty for a non-canonical splice site (12)
+  --pen-canintronlen <func>          penalty for long introns (G,-8,1) with canonical splice sites
+  --pen-noncanintronlen <func>       penalty for long introns (G,-8,1) with noncanonical splice sites
+  --min-intronlen <int>              minimum intron length (20)
+  --max-intronlen <int>              maximum intron length (500000)
+  --known-splicesite-infile <path>   provide a list of known splice sites
+  --novel-splicesite-outfile <path>  report a list of splice sites
+  --novel-splicesite-infile <path>   provide a list of novel splice sites
+  --no-temp-splicesite               disable the use of splice sites found
+  --no-spliced-alignment             disable spliced alignment
+  --rna-strandness <string>          specify strand-specific information (unstranded)
+  --tmo                              reports only those alignments within known transcriptome
+  --dta                              reports alignments tailored for transcript assemblers
+  --dta-cufflinks                    reports alignments tailored specifically for cufflinks
+  --avoid-pseudogene                 tries to avoid aligning reads to pseudogenes (experimental option)
+  --no-templatelen-adjustment        disables template length adjustment for RNA-seq reads
+
+ Scoring:
+  --mp <int>,<int>   max and min penalties for mismatch; lower qual = lower penalty <6,2>
+  --sp <int>,<int>   max and min penalties for soft-clipping; lower qual = lower penalty <2,1>
+  --no-softclip      no soft-clipping
+  --np <int>         penalty for non-A/C/G/Ts in read/ref (1)
+  --rdg <int>,<int>  read gap open, extend penalties (5,3)
+  --rfg <int>,<int>  reference gap open, extend penalties (5,3)
+  --score-min <func> min acceptable alignment score w/r/t read length
+                     (L,0.0,-0.2)
+
+ Reporting:
+  -k <int> (default: 5) report up to <int> alns per read
+
+ Paired-end:
+  -I/--minins <int>  minimum fragment length (0), only valid with --no-spliced-alignment
+  -X/--maxins <int>  maximum fragment length (500), only valid with --no-spliced-alignment
+  --fr/--rf/--ff     -1, -2 mates align fw/rev, rev/fw, fw/fw (--fr)
+  --no-mixed         suppress unpaired alignments for paired reads
+  --no-discordant    suppress discordant alignments for paired reads
+
+ Output:
+  -t/--time          print wall-clock time taken by search phases
+  --un <path>           write unpaired reads that didn't align to <path>
+  --al <path>           write unpaired reads that aligned at least once to <path>
+  --un-conc <path>      write pairs that didn't align concordantly to <path>
+  --al-conc <path>      write pairs that aligned concordantly at least once to <path>
+  (Note: for --un, --al, --un-conc, or --al-conc, add '-gz' to the option name, e.g.
+  --un-gz <path>, to gzip compress output, or add '-bz2' to bzip2 compress output.)
+  --summary-file     print alignment summary to this file.
+  --new-summary      print alignment summary in a new style, which is more machine-friendly.
+  --quiet            print nothing to stderr except serious errors
+  --met-file <path>  send metrics to file at <path> (off)
+  --met-stderr       send metrics to stderr (off)
+  --met <int>        report internal counters & metrics every <int> secs (1)
+  --no-head          supppress header lines, i.e. lines starting with @
+  --no-sq            supppress @SQ header lines
+  --rg-id <text>     set read group id, reflected in @RG line and RG:Z: opt field
+  --rg <text>        add <text> ("lab:value") to @RG line of SAM header.
+                     Note: @RG line only printed when --rg-id is set.
+  --omit-sec-seq     put '*' in SEQ and QUAL fields for secondary alignments.
+
+ Performance:
+  -o/--offrate <int> override offrate of index; must be >= index's offrate
+  -p/--threads <int> number of alignment threads to launch (1)
+  --reorder          force SAM output order to match order of input reads
+  --mm               use memory-mapped I/O for index; many 'hisat2's can share
+
+ Other:
+  --qc-filter        filter out reads that are bad according to QSEQ filter
+  --seed <int>       seed for random number generator (0)
+  --non-deterministic seed rand. gen. arbitrarily instead of using read attributes
+  --remove-chrname   remove 'chr' from reference names in alignment
+  --add-chrname      add 'chr' to reference names in alignment
+  --version          print version information and quit
+  -h/--help          print this usage message
+#</opt_i>
+#<opt_t>
+Assemble RNA-Seq alignments into potential transcripts.
+ Options:
+ --version : print just the version at stdout and exit
+ -G reference annotation to use for guiding the assembly process (GTF/GFF3)
+ --rf assume stranded library fr-firststrand
+ --fr assume stranded library fr-secondstrand
+ -l name prefix for output transcripts (default: STRG)
+ -f minimum isoform fraction (default: 0.1)
+ -m minimum assembled transcript length (default: 200)
+ -o output path/file name for the assembled transcripts GTF (default: stdout)
+ -a minimum anchor length for junctions (default: 10)
+ -j minimum junction coverage (default: 1)
+ -t disable trimming of predicted transcripts based on coverage
+    (default: coverage trimming is enabled)
+ -c minimum reads per bp coverage to consider for transcript assembly
+    (default: 2.5)
+ -v verbose (log bundle processing details)
+ -g gap between read mappings triggering a new bundle (default: 50)
+ -C output a file with reference transcripts that are covered by reads
+ -M fraction of bundle allowed to be covered by multi-hit reads (default: 1.0)
+ -p number of threads (CPUs) to use (default: 1)
+ -A gene abundance estimation output file
+ -B enable output of Ballgown table files which will be created in the
+    same directory as the output GTF (requires -G, -o recommended)
+ -b enable output of Ballgown table files but these files will be
+    created under the directory path given as <dir_path>
+ -e only estimate the abundance of given reference transcripts (requires -G)
+ -x do not assemble any transcripts on the given reference sequence(s)
+ -u no multi-mapping correction (default: correction enabled)
+ -h print this usage message and exit
+#</opt_t>
+#<opt_l>
+cuffquant v2.2.1 (4237)
+-----------------------------
+Usage:   cuffdiff [options] <transcripts.gtf> <sample1_hits.sam> <sample2_hits.sam> [... sampleN_hits.sam]
+   Supply replicate SAMs as comma separated lists for each condition: sample1_rep1.sam,sample1_rep2.sam,...sample1_repM.sam
+General Options:
+  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
+  -M/--mask-file               ignore all alignment within transcripts in this file  [ default:   NULL ]
+  -b/--frag-bias-correct       use bias correction - reference fasta required        [ default:   NULL ]
+  -u/--multi-read-correct      use 'rescue method' for multi-reads                   [ default:  FALSE ]
+  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
+  --library-type               Library prep used for input reads                     [ default:  below ]
+
+Advanced Options:
+  -m/--frag-len-mean           average fragment length (unpaired reads only)         [ default:    200 ]
+  -s/--frag-len-std-dev        fragment length std deviation (unpaired reads only)   [ default:     80 ]
+  -c/--min-alignment-count     minimum number of alignments in a locus for testing   [ default:   10 ]
+  --max-mle-iterations         maximum iterations allowed for MLE calculation        [ default:   5000 ]
+  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
+  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
+  --seed                       value of random number generator seed                 [ default:      0 ]
+  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
+  --max-bundle-frags           maximum fragments allowed in a bundle before skipping [ default: 500000 ]
+  --max-frag-multihits         Maximum number of alignments allowed per fragment     [ default: unlim  ]
+  --no-effective-length-correction   No effective length correction                  [ default:  FALSE ]
+  --no-length-correction       No length correction                                  [ default:  FALSE ]
+
+Debugging use only:
+  --read-skip-fraction         Skip a random subset of reads this size               [ default:    0.0 ]
+  --no-read-pairs              Break all read pairs                                  [ default:  FALSE ]
+  --trim-read-length           Trim reads to be this long (keep 5' end)              [ default:   none ]
+  --no-scv-correction          Disable SCV correction                                [ default:  FALSE ]
+
+Supported library types:
+        ff-firststrand
+        ff-secondstrand
+        ff-unstranded
+        fr-firststrand
+        fr-secondstrand
+        fr-unstranded (default)
+        transfrags
+#</opt_l>
+#<opt_n>
+cuffnorm v2.2.1 (4237)
+-----------------------------
+Usage:   cuffnorm [options] <transcripts.gtf> <sample1_expr.cxb> <sample2_expr.cxb> [... sampleN_expr.cxb]
+   Supply replicate CXB files as comma separated lists for each condition: sample1_rep1.cxb,sample1_rep2.cxb,...sample1_repM.cxb
+General Options:
+  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
+  -L/--labels                  comma-separated list of condition labels
+  --norm-standards-file        Housekeeping/spike genes to normalize libraries       [ default:   NULL ]
+  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
+  --library-type               Library prep used for input reads                     [ default:  below ]
+  --library-norm-method        Method used to normalize library sizes                [ default:  below ]
+  --output-format              Format for output tables                              [ default:  below ]
+
+Advanced Options:
+  --compatible-hits-norm       count hits compatible with reference RNAs only        [ default:   TRUE ]
+  --total-hits-norm            count all hits for normalization                      [ default:  FALSE ]
+  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
+  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
+  --seed                       value of random number generator seed                 [ default:      0 ]
+  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
+
+Supported library types:
+        ff-firststrand
+        ff-secondstrand
+        ff-unstranded
+        fr-firststrand
+        fr-secondstrand
+        fr-unstranded (default)
+        transfrags
+
+Supported library normalization methods:
+        classic-fpkm
+        geometric (default)
+        geometric
+        quartile
+
+Supported output formats:
+        cuffdiff
+        simple-table (default)
+#</opt_n>
+#<opt_d>
+cuffdiff v2.2.1 (4237)
+-----------------------------
+Usage:   cuffdiff [options] <transcripts.gtf> <sample1_hits.sam> <sample2_hits.sam> [... sampleN_hits.sam]
+   Supply replicate SAMs as comma separated lists for each condition: sample1_rep1.sam,sample1_rep2.sam,...sample1_repM.sam
+General Options:
+  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
+  -L/--labels                  comma-separated list of condition labels
+  --FDR                        False discovery rate used in testing                  [ default:   0.05 ]
+  -M/--mask-file               ignore all alignment within transcripts in this file  [ default:   NULL ]
+  -C/--contrast-file           Perform the constrasts specified in this file         [ default:   NULL ]
+  -b/--frag-bias-correct       use bias correction - reference fasta required        [ default:   NULL ]
+  -u/--multi-read-correct      use 'rescue method' for multi-reads                   [ default:  FALSE ]
+  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
+  --no-diff                    Don't generate differential analysis files            [ default:  FALSE ]
+  --no-js-tests                Don't perform isoform switching tests                 [ default:  FALSE ]
+  -T/--time-series             treat samples as a time-series                        [ default:  FALSE ]
+  --library-type               Library prep used for input reads                     [ default:  below ]
+  --dispersion-method          Method used to estimate dispersion models             [ default:  below ]
+  --library-norm-method        Method used to normalize library sizes                [ default:  below ]
+
+Advanced Options:
+  -m/--frag-len-mean           average fragment length (unpaired reads only)         [ default:    200 ]
+  -s/--frag-len-std-dev        fragment length std deviation (unpaired reads only)   [ default:     80 ]
+  -c/--min-alignment-count     minimum number of alignments in a locus for testing   [ default:   10 ]
+  --max-mle-iterations         maximum iterations allowed for MLE calculation        [ default:   5000 ]
+  --compatible-hits-norm       count hits compatible with reference RNAs only        [ default:   TRUE ]
+  --total-hits-norm            count all hits for normalization                      [ default:  FALSE ]
+  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
+  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
+  --seed                       value of random number generator seed                 [ default:      0 ]
+  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
+  --emit-count-tables          print count tables used to fit overdispersion         [    DEPRECATED   ]
+  --max-bundle-frags           maximum fragments allowed in a bundle before skipping [ default: 500000 ]
+  --num-frag-count-draws       Number of fragment generation samples                 [ default:    100 ]
+  --num-frag-assign-draws      Number of fragment assignment samples per generation  [ default:     50 ]
+  --max-frag-multihits         Maximum number of alignments allowed per fragment     [ default: unlim  ]
+  --min-outlier-p              Min replicate p value to admit for testing            [    DEPRECATED   ]
+  --min-reps-for-js-test       Replicates needed for relative isoform shift testing  [ default:      3 ]
+  --no-effective-length-correction   No effective length correction                  [ default:  FALSE ]
+  --no-length-correction       No length correction                                  [ default:  FALSE ]
+  -N/--upper-quartile-norm     Deprecated, use --library-norm-method                 [    DEPRECATED   ]
+  --geometric-norm             Deprecated, use --library-norm-method                 [    DEPRECATED   ]
+  --raw-mapped-norm            Deprecated, use --library-norm-method                 [    DEPRECATED   ]
+  --poisson-dispersion         Deprecated, use --dispersion-method                   [    DEPRECATED   ]
+
+Debugging use only:
+  --read-skip-fraction         Skip a random subset of reads this size               [ default:    0.0 ]
+  --no-read-pairs              Break all read pairs                                  [ default:  FALSE ]
+  --trim-read-length           Trim reads to be this long (keep 5' end)              [ default:   none ]
+  --no-scv-correction          Disable SCV correction                                [ default:  FALSE ]
+
+Supported library types:
+        ff-firststrand
+        ff-secondstrand
+        ff-unstranded
+        fr-firststrand
+        fr-secondstrand
+        fr-unstranded (default)
+        transfrags
+
+Supported dispersion methods:
+        blind
+        per-condition
+        poisson
+        pooled (default)
+
+Supported library normalization methods:
+        classic-fpkm
+        geometric (default)
+        geometric
+        quartile
+#</opt_d>
+#</option detail>
+

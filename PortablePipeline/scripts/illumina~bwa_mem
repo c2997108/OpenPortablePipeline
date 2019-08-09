@@ -23,7 +23,6 @@ source $(dirname `readlink -f $0`)/common.sh
 set -eux
 set -o pipefail
 
-input_3=${1:-}
 DO_BWA bwa index "$input_1"
 if [ "$input_3" = "" ]; then
  DO_BWA bwa mem $opt_b -t $N_CPU "$input_1" "$input_2" | DO_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$input_1"`-`basename "$input_2"`.bam

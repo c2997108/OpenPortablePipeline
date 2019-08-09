@@ -15,18 +15,26 @@ opt_s:sickle option:-t sanger -q 15 -l 5000
 runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# #input_1#"
 
 export IM_SICKLE="quay.io/biocontainers/sickle-trim:1.33--ha92aebf_4"
+export IM_FASTQC="quay.io/biocontainers/fastqc:0.11.8--1"
 
 source $(dirname `readlink -f $0`)/common.sh
 
 set -eux
 set -o pipefail
 
+cat `find $input_1/|egrep "[.]f(ast|)q$"` > input.fastq
+DO_FASTQC fastqc -t $N_CPU --extract input.fastq
+rm -f input.fastq
+
 for i in `find $input_1/|egrep "[.]f(ast|)q$"`; do
  echo $ENV_SICKLE sickle se -f $i  -o $i.sickle $opt_s
-done|xargs -I{} -P$N_CPU bash -c "{}"
+done|DOPARALLELONE
+
+WAITPARALLEL
 
 cat $input_1/*.sickle > output.sickle.fastq
-rm -f $input_1/*.sickle
+DO_FASTQC fastqc -t $N_CPU --extract output.sickle.fastq
+rm -f input_1/*.sickle
 
 post_processing
 #<option detail>

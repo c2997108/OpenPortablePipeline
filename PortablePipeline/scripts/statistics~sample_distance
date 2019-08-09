@@ -21,9 +21,6 @@ set -eux
 set -o pipefail
 
 
-input_2="${opt_s:-}"
-
-
 countisofile="$input_1"
 numsample=`head -n 1 "$countisofile"|awk -F'\t' '{print NF-1}'`
 histoheight=`expr 100 \* $numsample`

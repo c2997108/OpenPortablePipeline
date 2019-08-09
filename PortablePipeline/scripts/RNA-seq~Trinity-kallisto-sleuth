@@ -31,7 +31,7 @@ set -eux
 set -o pipefail
 
 
-input_2=${1:-}
+#input_2=${1:-}
 p=$opt_f
 
 r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
@@ -83,7 +83,7 @@ DO_TRINITY /usr/local/trinityrnaseq-Trinity-v2.8.5/util/TrinityStats.pl Trinity.
 echo "#run kallisto index"
 DO_KALLISTO kallisto index -i kallisto.index Trinity.fasta
 if [ ! -e kallisto.output ]; then mkdir kallisto.output; fi
-parallel_setup
+
 for i in $r1 $r1gz; do
  if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q\([.]gz\|\)/_2.f\1q\2/'`
@@ -280,8 +280,6 @@ bash run-make-deg-html.sh $countgofile edgeR 0_result.html go
 echo "</body></html>" >> 0_result.html
 
 
-
-parallel_setup
 for i in `seq 1 $(cat sample.input.pair.txt|wc -l)`; do
  g1=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 1`
  g2=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 2`
@@ -303,15 +301,15 @@ awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $countgenefile.$g1.$g2.txt
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $countgofile.$g1.$g2.txt
 #DESeq2
-echo bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
-echo bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
-echo bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-DESeq2.$g1.$g2.go.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-DESeq2.$g1.$g2.go.txt 2>&1"
 #edgeR
-echo bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
-echo bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-edgeR.$g1.$g2.gene.txt 2>&1"
-echo bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-edgeR.$g1.$g2.go.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-edgeR.$g1.$g2.gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-edgeR.$g1.$g2.go.txt 2>&1"
 #sleuth
-echo bash "$scriptdir"/statistics~sleuth -f kallisto.output -s run-sleuth.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt $tpmgenefile sample.input.$g1.$g2.txt kallisto.output.tar.gz Trinity.fasta.t2g.txt "> log-sleuth.$g1.$g2.isoform-gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~sleuth -f kallisto.output -s run-sleuth.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt $tpmgenefile sample.input.$g1.$g2.txt kallisto.output.tar.gz Trinity.fasta.t2g.txt "> log-sleuth.$g1.$g2.isoform-gene.txt 2>&1"
 
 EOF
 

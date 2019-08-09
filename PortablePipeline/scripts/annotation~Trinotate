@@ -30,13 +30,15 @@ DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.LongOrfs -
 DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.Predict -t $fasta --cpu $N_CPU
 
 transfasta=`basename $fasta`
-parallel_setup
+
 echo '
  '$ENV_TRINOTATE' blastx -db /usr/local/Trinotate-Trinotate-v3.1.1/db/uniprot_sprot.pep -query '$fasta' -num_threads '$N_CPU' -max_target_seqs 1 -outfmt 6 -evalue 1e-5 > swissprot.blastx.outfmt6
  '$ENV_TRINOTATE' blastp -query '$transfasta'.transdecoder.pep -db /usr/local/Trinotate-Trinotate-v3.1.1/db/uniprot_sprot.pep -num_threads '$N_CPU' -max_target_seqs 1 -outfmt 6 -evalue 1e-5 > swissprot.blastp.outfmt6
  '$ENV_TRINOTATE' hmmscan --cpu '$N_CPU' --domtblout TrinotatePFAM.out /usr/local/Trinotate-Trinotate-v3.1.1/db/Pfam-A.hmm '$transfasta'.transdecoder.pep > pfam.log
  '$ENV_BLASTN' blastn -db /usr/local/db/nt.2019-06-18/nt -query '$fasta' -num_threads '$N_CPU' -max_target_seqs 1 -outfmt 6 | '$ENV_MERGE' myuniq.pl 1 > '$fasta'.blastn
 '|tail -n+2|head -n-1 |DOPARALLEL
+
+WAITPARALLEL
 
 echo '
  '$ENV_TRINOTATE' /usr/local/signalp-4.1/signalp -f short -n signalp.out '$transfasta'.transdecoder.pep > sigP.log || true

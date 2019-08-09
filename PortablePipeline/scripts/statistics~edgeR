@@ -25,7 +25,6 @@ source $(dirname `readlink -f $0`)/common.sh
 set -eux
 set -o pipefail
 
-input_3=${1:-}
 script=$opt_s
 inputsamplematrix=$input_2
 inputmatrix=$input_1
@@ -40,8 +39,9 @@ sampley=edgeR.`basename $inputsamplematrix`.`basename $inputmatrix`.y
 outputfilexup=result.edgeR.`basename $inputmatrix`.$g1.up.$g2.down.txt
 outputfileyup=result.edgeR.`basename $inputmatrix`.$g1.down.$g2.up.txt
 if [ "$input_3" = "" ]; then
- touch dummy.annotation.txt
- annotationfile=dummy.annotation.txt
+# touch dummy.annotation.txt
+# annotationfile=dummy.annotation.txt
+ annotationfile=$input_1
 else
  annotationfile=${input_3}
 fi

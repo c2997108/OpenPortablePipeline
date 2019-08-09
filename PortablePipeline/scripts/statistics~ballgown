@@ -30,8 +30,6 @@ set -eux
 set -o pipefail
 
 
-input_5=${opt_a:-}
-input_6=${opt_b:-}
 script=$opt_s
 inputsamplematrix=$input_3
 inputmatrix=$input_1
@@ -50,14 +48,16 @@ outputgenefile=ballgown.`basename $inputgenematrix`
 outputgenefilexup=result.ballgown.`basename $inputgenematrix`.$g1.up.$g2.down.txt
 outputgenefileyup=result.ballgown.`basename $inputgenematrix`.$g1.down.$g2.up.txt
 if [ "$input_5" = "" ]; then
- touch dummy.annotation.txt
- annotationfile=dummy.annotation.txt
+# touch dummy.annotation.txt
+# annotationfile=dummy.annotation.txt
+ annotationfile=$input_1
 else
  annotationfile=${input_5}
 fi
 if [ "$input_6" = "" ]; then
- touch dummy.annotationgene.txt
- annotationgenefile=dummy.annotationgene.txt
+# touch dummy.annotationgene.txt
+# annotationgenefile=dummy.annotationgene.txt
+ annotationgenefile=$input_2
 else
  annotationgenefile=${input_6}
 fi

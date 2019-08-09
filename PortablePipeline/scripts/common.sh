@@ -26,12 +26,12 @@ onerror()
     echo "------------------------------------------------------------"
     echo ""
 
-    echo $status > $workdir/fin_status
 
     if [ "$N_SCRIPT" = 1 ]; then
      if [ "$CON" = "$CON_DOCKER" ]; then
       eval $CON $IM_CENTOS6 chmod -R a=rXw $workdir
      fi
+     echo $status > $workdir/fin_status
     fi
 
 }
@@ -53,7 +53,11 @@ fi
 DIR_WORK="."
 
 CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
-CON_SING="singularity exec "
+if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
+ CON_SING="singularity exec "
+else
+ CON_SING="singularity exec -B $PWD:/mnt --pwd /mnt "
+fi
 
 mkdir -p "$DIR_IMG"
 DIR_IMG="`readlink -f "$DIR_IMG"`"
@@ -111,15 +115,15 @@ for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="$CON"$(e
 
 parallel_setup(){
  if [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
-  grep "^#" "$workdir"/wrapper.sh > qsub.sh
-  grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > qsubone.sh
-  echo "#$ -pe def_slot 1" >> qsubone.sh
-  echo 'echo "$*"; eval "$*"' >> qsub.sh
-  echo 'echo "$*"; eval "$*"' >> qsubone.sh
-  chmod 755 qsub.sh qsubone.sh
-  alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  grep "^#" "$workdir"/wrapper.sh > $workdir/qsub.sh
+  grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > $workdir/qsubone.sh
+  echo "#$ -pe def_slot 1" >> $workdir/qsubone.sh
+  echo 'echo "$*"; eval "$*"' >> $workdir/qsub.sh
+  echo 'echo "$*"; eval "$*"' >> $workdir/qsubone.sh
+  chmod 755 $workdir/qsub.sh $workdir/qsubone.sh
+  alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
-  alias DOPARALLEL='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias DOPARALLEL='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
  else
   alias DOPARALLELONE='xargs -I {} -P $N_CPU bash -c "{}"'
@@ -137,6 +141,8 @@ usage_exit()
  echo "$optiondef"
  exit 1
 }
+
+for i in a b c d e f g h i j k l m n o p q r s t u v w x y z; do unset opt_$i; done
 
 while getopts ":a:b:c:d:e:f:g:hi:j:k:l:m:n:o:p:q:r:s:t:u:v:w:x:y:z:" OPT
 do
@@ -177,7 +183,13 @@ req_args=`echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}
 if [ "$OPT_FLAG_h" = 1 -o "$#" -lt "$req_args" ]; then
  usage_exit;
 fi
-for i in `echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}'`; do export $i="$1"; shift; done
+for i in `echo "$runcmd"|awk '{for(i=1;i<=NF;i++){if($i~"^#input_"){if(old~"^-[a-zA-Z]$"){print substr($i,2,length($i)-2)"=\"${opt_"substr(old,2)":-}\""}}; old=$i}}'`; do
+ eval export $i
+done
+for i in `echo "$runcmd"|awk '{for(i=1;i<=NF;i++){if($i~"^#input_"){if(old!~"^-[a-zA-Z]$"){print substr($i,2,length($i)-2)}}; old=$i}}'`; do
+ export $i="${1:-}"; shift;
+done
+#for i in `echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}'`; do export $i="$1"; shift; done
 for i in `echo "$optiondef"|tail -n+2|head -n-1|awk -F':' '{print $1}'`; do
  k=`echo "$optiondef"|tail -n+2|head -n-1|awk -F':' '$1=="'$i'"{print $3}'|head -n 1`;
  export $i="$(eval echo \${$i:-$k})";
@@ -223,6 +235,7 @@ scriptdir=$(dirname `readlink -f $0`)
 export IM_CENTOS6=centos:centos6
 begintrap
 container_setup
+parallel_setup
 
 post_processing(){
  if [ "$N_SCRIPT" = 1 ]; then
