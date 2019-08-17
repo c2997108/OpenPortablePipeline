@@ -14,8 +14,9 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 ## 操作方法
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。
  https://github.com/c2997108/OpenPortablePipeline/archive/0.7b.zip  
-Macユーザは、必要なファイルが大きすぎてGitHubのリリースで出来るzipに入らないファイルが一つあるので、下記のファイルを手動でダウンロードして解凍したフォルダの中のPortablePipeline/java-mac/8/Home/jre/lib/rt.jarを置き換える。(もしくは最初からgit clone https://github.com/c2997108/OpenPortablePipeline.git とするか。)  
- https://github.com/c2997108/OpenPortablePipeline/raw/master/PortablePipeline/java-mac/8/Home/jre/lib/rt.jar
+Macユーザは、必要なファイルが大きすぎてGitHubのリリースで出来るzipに入らないファイルが一つあるので、下記のファイルを手動でダウンロードして解凍したフォルダの中のPortablePipeline/java-mac/8/Home/jre/lib/rt.jarを置き換える。  
+ https://github.com/c2997108/OpenPortablePipeline/raw/master/PortablePipeline/java-mac/8/Home/jre/lib/rt.jar  
+ もしくはgit lfsを[このリンク先のページ](https://github.com/git-lfs/git-lfs/wiki/Installation)の手順でインストールしたあと、```git clone https://github.com/c2997108/OpenPortablePipeline.git``` とするか。
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。
 Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSの「System Preferences」→「Security & Privacy」→「General」タブ→「Open Anyway」をクリックして、実行を許可する必要がある。
