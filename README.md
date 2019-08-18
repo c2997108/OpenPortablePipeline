@@ -1,6 +1,6 @@
 # PortablePipeline
 
-PortablePipeline is software that allows Windows and Mac users to perform NGS analysis in a GUI on a local or remote server or supercomputer. It supports SGE as a grid engine and can execute jobs on SHIROKANE supercomputer and NIG supercomputer. Scripts can also be easily called from the CUI.
+PortablePipeline is software that allows Windows and Mac users to perform NGS analysis in a GUI on a local or remote server or supercomputer. It supports SGE as a grid engine and can execute jobs on SHIROKANE supercomputer and NIG supercomputer in Japan. Scripts can also be easily called from the CUI.
 
 ## Required System Requirements
 ### Clients (Terminal that performs GUI operations)
@@ -9,7 +9,7 @@ PortablePipeline is software that allows Windows and Mac users to perform NGS an
 
 ### Servers (computer that performs data analysis)
 - Tested with 64 GB of memory. Depending on the data, less may work and more may be needed.
-- Linux (CentOS6, CentOS7, Ubuntu 16, Ubuntu 18) with Docker or Singularity installed and an SSH server [Linux Server Setup Instructions] (#How to set up a Linux server), or Ubuntu with Windows Subsystem for Linux on Windows 10 [WSL Server Setup Instructions](#WSL Server Setup Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac [Mac Server Setup Method](#How to set up your Mac as a server).
+- Linux (CentOS6, CentOS7, Ubuntu 16, Ubuntu 18) with Docker or Singularity installed and an SSH server [Linux Server Setup Instructions] (#linux-server-setup-instructions), or Ubuntu with Windows Subsystem for Linux on Windows 10 [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
@@ -60,7 +60,7 @@ Open "Microsoft Store" from the Start menu by left-clicking the Windows logo in 
 
 Left-click on the Windows logo at the bottom left of the screen and start Ubuntu from the Start menu. When you first start it up, the account creation screen will appear and you will be prompted to enter your user name and password.
 
-## Mac Server Setup Method
+## Mac Server Setup Instructions
 1．Installing Docker
 
 Make sure the OS version is OS X Sierra 10.12 or later. Download Docker Desktop for Mac from [official site] (https://download.docker.com/mac/stable/Docker.dmg), double-click the dmg file and follow the instructions to complete the installation.
