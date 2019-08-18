@@ -9,7 +9,7 @@ PortablePipeline is software that allows Windows and Mac users to perform NGS an
 
 ### Servers (computer that performs data analysis)
 - Tested with 64 GB of memory. Depending on the data, less may work and more may be needed.
-- Linux (CentOS6, CentOS7, Ubuntu 16, Ubuntu 18) with Docker or Singularity installed and an SSH server [Linux Server Setup Instructions](#linux-server-setup-instructions), or Ubuntu with Windows Subsystem for Linux on Windows 10 [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
+- Linux (CentOS6, CentOS7, Ubuntu 16, Ubuntu 18) with Docker or Singularity installed and an SSH server : [Linux Server Setup Instructions](#linux-server-setup-instructions), or Ubuntu with Windows Subsystem for Linux on Windows 10 : [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac : [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
