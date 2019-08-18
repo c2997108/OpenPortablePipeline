@@ -13,10 +13,8 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 
 ## 操作方法
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。
- https://github.com/c2997108/OpenPortablePipeline/archive/0.7b.zip  
-Macユーザは、必要なファイルが大きすぎてGitHubのリリースで出来るzipに入らないファイルが一つあるので、下記のファイルを手動でダウンロードして解凍したフォルダの中のPortablePipeline/java-mac/8/Home/jre/lib/rt.jarを置き換える。  
- https://github.com/c2997108/OpenPortablePipeline/raw/master/PortablePipeline/java-mac/8/Home/jre/lib/rt.jar  
- もしくはgit lfsを[このリンク先のページ](https://github.com/git-lfs/git-lfs/wiki/Installation)の手順でインストールしたあと、```git clone https://github.com/c2997108/OpenPortablePipeline.git``` とする必要がある。
+ Win https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.7d/PortablePipeline-win-v0.7d.zip  
+ Mac https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.7d/PortablePipeline-mac-v0.7d.tar.gz 
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。
 Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSの「System Preferences」→「Security & Privacy」→「General」タブ→「Open Anyway」をクリックして、実行を許可する必要がある。
@@ -26,6 +24,9 @@ Windowsユーザは、ジャンクションファイルの作成に管理者権�
 4. 「Analysis Scripts」タブを選択し、解析したいスクリプトを選ぶと、入力ファイル、オプションを入力する画面が表示される。入力ファイルは、「input_1」などと書かれたボタンをクリックしてから選択し、オプションで変更する必要がある箇所は変更してから、画面下の「Run」ボタンを押すと実行される。
 
 5. 「Run」ボタンが押された後、サーバにデータを転送するので、恐らくしばらく時間がかかる。進捗はJavaとは別にコマンドプロンプトかターミナルが開いているはずで、そちらにデータの転送状況が表示される。「Job List」のステータスが「Running」に変わったら、本ソフトウェアをいったん終了しても大丈夫。立ち上げていれば、30秒おきにサーバに進捗を確認しに行く。
+
+## JAVA開発者用
+GitHubに50 MBを超えるファイルを登録しているので、git cloneで全てのファイルをダウンロードするには、git lfsのインストールが必要。git lfsを[このリンク先のページ](https://github.com/git-lfs/git-lfs/wiki/Installation)の手順でインストールしたあと、```git clone https://github.com/c2997108/OpenPortablePipeline.git``` とすればよい。
 
 ## スクリプト開発者へ仕様というかメモ
 ### 共通の制限というか仕様
