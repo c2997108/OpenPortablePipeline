@@ -58,6 +58,7 @@ if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
 else
  CON_SING="singularity exec -B $PWD:/mnt --pwd /mnt "
 fi
+CHECK_SING="singularity"
 
 mkdir -p "$DIR_IMG"
 DIR_IMG="`readlink -f "$DIR_IMG"`"
@@ -73,7 +74,7 @@ DIR_SRC="$(dirname "`readlink -f "$0"`")"
 if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
  echo using docker;
  CON="$CON_DOCKER";
-elif [ `$CON_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
+elif [ `$CHECK_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
  echo using singularity;
  CON="$CON_SING""$DIR_IMG/";
  cd "$DIR_WORK";

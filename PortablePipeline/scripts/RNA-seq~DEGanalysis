@@ -211,7 +211,9 @@ awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.inp
 
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $countgenefile.$g1.$g2.txt
+if [ -e $countgofile ]; then
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $countgofile.$g1.$g2.txt
+fi
 #DESeq2
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$anngenefile\\'" "> log-DESeq2.$g1.$g2.gene.txt 2>&1"

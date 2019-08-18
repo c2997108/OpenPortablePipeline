@@ -1,0 +1,715 @@
+#!/bin/bash
+
+explanation='
+HISAT2 is a fast and sensitive alignment program for mapping next-generation sequencing reads (both DNA and RNA) to a population of human genomes (as well as to a single reference genome).
+'
+inputdef='
+input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:option:reference genome file (reference genome or index is needed):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:option:reference gene model file (gtf or gff3) [optional]:*.gtf,*.gff,*.gff3,*.gtf.gz,*.gff.gz,*.gff3.gz
+input_4:option directory:reference index file [optional]  (reference genome or index is needed):*.ht2
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_p:prinseq option:-trim_tail_right 5 -trim_qual_right 20 -ns_max_p 20 -min_len 30 -trim_qual_window 5
+opt_b:hisat2-build option:
+opt_i:hisat2 option ("--rna-strandness RF" is for TruSeq Stranded mRNA Sample Preparation):--rna-strandness RF
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -a #input_2# -g #input_3# -s #input_4# #input_1#"
+
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_PRINSEQ="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_HISAT2="quay.io/biocontainers/hisat2:2.1.0--py27h6bb024c_3"
+export IM_SAMTOOLS="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ "$input_2$input_4" = "" ]; then echo reference genome or index is needed; post_processing; fi
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+
+if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+r2gz=$(for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 $r2gz > /dev/null
+
+#decompress input files
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_2"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_3"; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
+ temp_3=`echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
+ DO_BASE gff3ToGenePred "$input_3" /dev/stdout | DO_BASE genePredToGtf file stdin "$temp_3"
+ input_3="$temp_3"
+fi
+
+if [ "$input_4" = "" ];then
+ if [ "$input_3" != "" ];then
+  DO_HISAT2 hisat2_extract_splice_sites.py "$input_3" > "$input_3".ss
+  DO_HISAT2 hisat2_extract_exons.py "$input_3" > "$input_3".exon
+  DO_HISAT2 hisat2-build $opt_b -p $N_CPU --ss "$input_3".ss --exon "$input_3".exon "$input_2" hisat2_index
+ else
+  DO_HISAT2 hisat2-build $opt_b -p $N_CPU "$input_2" hisat2_index
+ fi
+ index=hisat2_index
+else
+ index=`ls $input_4/*.1.ht2|sed 's/.1.ht2$//'`
+fi
+
+mkdir -p output.prinseq
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i`
+ j2=`basename $j`
+ echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
+done
+for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i .gz`
+ j2=`basename $j .gz`
+ echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+done)|DOPARALLELONE
+
+WAITPARALLEL
+
+rm -f output.prinseq/*_singletons.fastq
+r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+
+mkdir -p output.unsorted.bam
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i"'|'$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted.bam/`basename "$i"`.bam
+done)|DOPARALLEL
+
+WAITPARALLEL
+
+rm -rf output.prinseq
+
+mkdir -p output.sorted.bam
+MEMM=`echo ${N_MEM}|awk -v N_CPU=$N_CPU '{print int($1/1024/N_CPU*0.8)}'`
+(for i in output.unsorted.bam/*.bam; do
+ echo $ENV_SAMTOOLS samtools sort -m ${MEMM}M -@ $N_CPU -o output.sorted.bam/`basename $i` $i";" $ENV_SAMTOOLS samtools index output.sorted.bam/`basename $i`
+done)|DOPARALLEL
+
+WAITPARALLEL
+
+post_processing
+#<option detail>
+#<opt_p>
+Options:
+    -help | -h
+            Print the help message; ignore other arguments.
+
+    -man    Print the full documentation; ignore other arguments.
+
+    -version
+            Print program version; ignore other arguments.
+
+    -verbose
+            Prints status and info messages during processing.
+
+    ***** INPUT OPTIONS *****
+    -fastq <file>
+            Input file in FASTQ format that contains the sequence and
+            quality data. Use stdin instead of a file name to read from
+            STDIN (-fasta stdin). This can be useful to process compressed
+            files using Unix pipes.
+
+    -fasta <file>
+            Input file in FASTA format that contains the sequence data. Use
+            stdin instead of a file name to read from STDIN (-fastq stdin).
+            This can be useful to process compressed files using Unix pipes.
+
+    -qual <file>
+            Input file in QUAL format that contains the quality data.
+
+    -fastq2 <file>
+            For paired-end data only. Input file in FASTQ format that
+            contains the sequence and quality data. The sequence identifiers
+            for two matching paired-end sequences in separate files can be
+            marked by /1 and /2, or _L and _R, or _left and _right, or must
+            have the exact same identifier in both input files. The input
+            sequences must be sorted by their sequence identifiers.
+            Singletons are allowed in the input files.
+
+    -fasta2 <file>
+            For paired-end data only. Input file in FASTA format that
+            contains the sequence data. The sequence identifiers for two
+            matching paired-end sequences in separate files can be marked by
+            /1 and /2, or _L and _R, or _left and _right, or must have the
+            exact same identifier in both input files. The input sequences
+            must be sorted by their sequence identifiers. Singletons are
+            allowed in the input files.
+
+    -params <file>
+            Input file in text format that contains PRINSEQ parameters. Each
+            parameter should be specified on a new line and arguments should
+            be separated by spaces or tabs. Comments can be specified on
+            lines starting with the # sign. Can be combined with command
+            line parameters. Parameters specified on the command line will
+            overwrite the arguments in the file (if any).
+
+    -si13   This option was replaced by option -phred64.
+
+    -phred64
+            Quality data in FASTQ file is in Phred+64 format
+            (http://en.wikipedia.org/wiki/FASTQ_format#Encoding). Not
+            required for Illumina 1.8+, Sanger, Roche/454, Ion Torrent,
+            PacBio data.
+
+    -aa     Input is amino acid (protein) sequences instead of nucleic acid
+            (DNA or RNA) sequences. Allowed amino acid characters:
+            ABCDEFGHIKLMNOPQRSTUVWYZXabcdefghiklmmopqrstuvwyzx*- and allowed
+            nucleic acid characters: ACGTURYKMSWBDHVNXacgturykmswbdhvnx-
+
+            The following options are ignored for -aa:
+            stats_dinuc,stats_tag,stats_ns,dna_rna
+
+    ***** OUTPUT OPTIONS *****
+    -out_format <integer>
+            To change the output format, use one of the following options.
+            If not defined, the output format will be the same as the input
+            format.
+
+            1 (FASTA only), 2 (FASTA and QUAL), 3 (FASTQ), 4 (FASTQ and
+            FASTA), or 5 (FASTQ, FASTA and QUAL)
+
+    -out_good <string>
+            By default, the output files are created in the same directory
+            as the input file containing the sequence data with an
+            additional "_prinseq_good_XXXX" in their name (where XXXX is
+            replaced by random characters to prevent overwriting previous
+            files). To change the output filename and location, specify the
+            filename using this option. The file extension will be added
+            automatically (either .fasta, .qual, or .fastq). For paired-end
+            data, filenames contain additionally "_1", "_1_singletons",
+            "_2", and "_2_singletons" before the file extension. Use
+            "-out_good null" to prevent the program from generating the
+            output file(s) for data passing all filters. Use "-out_good
+            stdout" to write data passing all filters to STDOUT (only for
+            FASTA or FASTQ output files).
+
+            Example: use "file_passed" to generate the output file
+            file_passed.fasta in the current directory
+
+    -out_bad <string>
+            By default, the output files are created in the same directory
+            as the input file containing the sequence data with an
+            additional "_prinseq_bad_XXXX" in their name (where XXXX is
+            replaced by random characters to prevent overwriting previous
+            files). To change the output filename and location, specify the
+            filename using this option. The file extension will be added
+            automatically (either .fasta, .qual, or .fastq). For paired-end
+            data, filenames contain additionally "_1" and "_2" before the
+            file extension. Use "-out_bad null" to prevent the program from
+            generating the output file(s) for data not passing any filter.
+            Use "-out_bad stdout" to write data not passing any filter to
+            STDOUT (only for FASTA or FASTQ output files).
+
+            Example: use "file_filtered" to generate the output file
+            file_filtered.fasta in the current directory
+
+            Example: "-out_good stdout -out_bad null" will write data
+            passing filters to STDOUT and data not passing any filter will
+            be ignored
+
+    -log <file>
+            Log file to keep track of parameters, errors, etc. The log file
+            name is optional. If no file name is given, the log file name
+            will be "inputname.log". If the log file already exists, new
+            content will be added to the file.
+
+    -graph_data <file>
+            File that contains the necessary information to generate the
+            graphs similar to the ones in the web version. The file name is
+            optional. If no file name is given, the file name will be
+            "inputname.gd". If the file already exists, new content will
+            overwrite the file. Use "-out_good null -out_bad null" to
+            prevent generating any additional outputs. (See below for more
+            options related to the graph data.)
+
+            The graph data can be used as input for the prinseq-graphs.pl
+            file to generate the PNG graph files or an HTML report file. If
+            you have trouble installing the required prinseq-graphs.pl
+            modules or want to see an output example report, upload the
+            graph data file at: http://edwards.sdsu.edu/prinseq/ -> Choose
+            "Get Report"
+
+    -graph_stats <string>
+            Use this option to select what statistics should be calculated
+            and included in the graph_data file. This is useful if you e.g.
+            do not need sequence complexity information, which requires a
+            lot of computation. Requires to have graph_data specified.
+            Default is all selected.
+
+            Allowed option are (separate multiple by comma with no spaces):
+            ld (Length distribution), gc (GC content distribution), qd (Base
+            quality distribution), ns (Occurence of N), pt (Poly-A/T tails),
+            ts (Tag sequence check), aq (Assembly quality measure), de
+            (Sequence duplication - exact only), da (Sequence duplication -
+            exact + 5'/3'), sc (Sequence complexity), dn (Dinucleotide odds
+            ratios, includes the PCA plots)
+
+            Example use: -graph_stats ld,gc,qd,de
+
+    -qual_noscale
+            Use this option if all your sequences are shorter than 100bp as
+            they do not require to scale quality data to 100 data points in
+            the graph. By default, quality scores of sequences shorter than
+            100bp or longer than 100bp are fit to 100 data points. (To
+            retrieve this information and calculate the graph data would
+            otherwise require to parse the data two times or store all the
+            quality data in memory.)
+
+    -no_qual_header
+            In order to reduce the file size, this option will generate an
+            empty header line for the quality data in FASTQ files. Instead
+            of +header, only the + sign will be output. The header of the
+            sequence data will be left unchanged. This option applies to
+            FASTQ output files only.
+
+    -exact_only
+            Use this option to check for exact (forward and reverse)
+            duplicates only when generating the graph data. This allows to
+            keep the memory requirements low for large input files and is
+            faster. This option will automatically be applied when using
+            -derep options 1 and/or 4 only. Specify option -derep 1 or
+            -derep 4 if you do not want to apply both at the same time.
+
+    -seq_id_mappings <file>
+            Text file containing the old and new (specified with -seq_id)
+            identifiers for later reference. This option is useful if e.g. a
+            renamed sequence has to be identified based on the new sequence
+            identifier. The file name is optional. If no file name is given,
+            the file name will be "inputname_prinseq_good.ids" (only good
+            sequences are renamed). If a file with the same name already
+            exists, new content will overwrite the old file. The text file
+            contains one sequence identifier pair per line, separated by
+            tabs (old-tab-new). Requires option -seq_id.
+
+    ***** FILTER OPTIONS *****
+    -min_len <integer>
+            Filter sequence shorter than min_len.
+
+    -max_len <integer>
+            Filter sequence longer than max_len.
+
+    -range_len <string>
+            Filter sequence by length range. Multiple range values should be
+            separated by comma without spaces.
+
+            Example: -range_len 50-100,250-300
+
+    -min_gc <integer>
+            Filter sequence with GC content below min_gc.
+
+    -max_gc <integer>
+            Filter sequence with GC content above max_gc.
+
+    -range_gc <string>
+            Filter sequence by GC content range. Multiple range values
+            should be separated by comma without spaces.
+
+            Example: -range_gc 50-60,75-90
+
+    -min_qual_score <integer>
+            Filter sequence with at least one quality score below
+            min_qual_score.
+
+    -max_qual_score <integer>
+            Filter sequence with at least one quality score above
+            max_qual_score.
+
+    -min_qual_mean <integer>
+            Filter sequence with quality score mean below min_qual_mean.
+
+    -max_qual_mean <integer>
+            Filter sequence with quality score mean above max_qual_mean.
+
+    -ns_max_p <integer>
+            Filter sequence with more than ns_max_p percentage of Ns.
+
+    -ns_max_n <integer>
+            Filter sequence with more than ns_max_n Ns.
+
+    -noniupac
+            Filter sequence with characters other than A, C, G, T or N.
+
+    -seq_num <integer>
+            Only keep the first seq_num number of sequences (that pass all
+            other filters).
+
+    -derep <integer>
+            Type of duplicates to filter. Allowed values are 1, 2, 3, 4 and
+            5. Use integers for multiple selections (e.g. 124 to use type 1,
+            2 and 4). The order does not matter. Option 2 and 3 will set 1
+            and option 5 will set 4 as these are subsets of the other
+            option.
+
+            1 (exact duplicate), 2 (5' duplicate), 3 (3' duplicate), 4
+            (reverse complement exact duplicate), 5 (reverse complement
+            5'/3' duplicate)
+
+    -derep_min <integer>
+            This option specifies the number of allowed duplicates. If you
+            want to remove sequence duplicates that occur more than x times,
+            then you would specify x+1 as the -derep_min values. For
+            examples, to remove sequences that occur more than 5 times, you
+            would specify -derep_min 6. This option can only be used in
+            combination with -derep 1 and/or 4 (forward and/or reverse exact
+            duplicates). [default : 2]
+
+    -lc_method <string>
+            Method to filter low complexity sequences. The current options
+            are "dust" and "entropy". Use "-lc_method dust" to calculate the
+            complexity using the dust method.
+
+    -lc_threshold <integer>
+            The threshold value (between 0 and 100) used to filter sequences
+            by sequence complexity. The dust method uses this as maximum
+            allowed score and the entropy method as minimum allowed value.
+
+    -custom_params <string>
+            Can be used to specify additional filters. The current set of
+            possible rules is limited and has to follow the specifications
+            below. The custom parameters have to be specified within quotes
+            (either ' or ").
+
+            Please separate parameter values with a space and separate new
+            parameter sets with semicolon (;). Parameters are defined by two
+            values: (1) the pattern (any combination of the letters
+            "ACGTN"), (2) the number of repeats or percentage of occurence
+            Percentage values are defined by a number followed by the %-sign
+            (without space). If no %-sign is given, it is assumed that the
+            given number specifies the number of repeats of the pattern.
+
+            Examples: "AAT 10" (filters out sequences containing
+            AATAATAATAATAATAATAATAATAATAAT anywhere in the sequence), "T
+            70%" (filters out sequences with more than 70% Ts in the
+            sequence), "A 15" (filters out sequences containing
+            AAAAAAAAAAAAAAA anywhere in the sequence), "AAT 10;T 70%;A 15"
+            (apply all three filters)
+
+    ***** TRIM OPTIONS *****
+    -trim_to_len <integer>
+            Trim all sequence from the 3'-end to result in sequence with
+            this length.
+
+    -trim_left <integer>
+            Trim sequence at the 5'-end by trim_left positions.
+
+    -trim_right <integer>
+            Trim sequence at the 3'-end by trim_right positions.
+
+    -trim_left_p <integer>
+            Trim sequence at the 5'-end by trim_left_p percentage of read
+            length. The trim length is rounded towards the lower integer
+            (e.g. 143.6 is rounded to 143 positions). Use an integer between
+            1 and 100 for the percentage value.
+
+    -trim_right_p <integer>
+            Trim sequence at the 3'-end by trim_right_p percentage of read
+            length. The trim length is rounded towards the lower integer
+            (e.g. 143.6 is rounded to 143 positions). Use an integer between
+            1 and 100 for the percentage value.
+
+    -trim_tail_left <integer>
+            Trim poly-A/T tail with a minimum length of trim_tail_left at
+            the 5'-end.
+
+    -trim_tail_right <integer>
+            Trim poly-A/T tail with a minimum length of trim_tail_right at
+            the 3'-end.
+
+    -trim_ns_left <integer>
+            Trim poly-N tail with a minimum length of trim_ns_left at the
+            5'-end.
+
+    -trim_ns_right <integer>
+            Trim poly-N tail with a minimum length of trim_ns_right at the
+            3'-end.
+
+    -trim_qual_left <integer>
+            Trim sequence by quality score from the 5'-end with this
+            threshold score.
+
+    -trim_qual_right <integer>
+            Trim sequence by quality score from the 3'-end with this
+            threshold score.
+
+    -trim_qual_type <string>
+            Type of quality score calculation to use. Allowed options are
+            min, mean, max and sum. [default: min]
+
+    -trim_qual_rule <string>
+            Rule to use to compare quality score to calculated value.
+            Allowed options are lt (less than), gt (greater than) and et
+            (equal to). [default: lt]
+
+    -trim_qual_window <integer>
+            The sliding window size used to calculate quality score by type.
+            To stop at the first base that fails the rule defined, use a
+            window size of 1. [default: 1]
+
+    -trim_qual_step <integer>
+            Step size used to move the sliding window. To move the window
+            over all quality scores without missing any, the step size
+            should be less or equal to the window size. [default: 1]
+
+    ***** REFORMAT OPTIONS *****
+    -seq_case <string>
+            Changes sequence character case to upper or lower case. Allowed
+            options are "upper" and "lower". Use this option to remove
+            soft-masking from your sequences.
+
+    -dna_rna <string>
+            Convert sequence between DNA and RNA. Allowed options are "dna"
+            (convert from RNA to DNA) and "rna" (convert from DNA to RNA).
+
+    -line_width <integer>
+            Sequence characters per line. Use 0 if you want each sequence in
+            a single line. Use 80 for line breaks every 80 characters. Note
+            that this option only applies to FASTA output files, since FASTQ
+            files store sequences without additional line breaks. [default:
+            60]
+
+    -rm_header
+            Remove the sequence header. This includes everything after the
+            sequence identifier (which is kept unchanged).
+
+    -seq_id <string>
+            Rename the sequence identifier. A counter is added to each
+            identifier to assure its uniqueness. Use option -seq_id_mappings
+            to generate a file containing the old and new identifiers for
+            later reference.
+
+            Example: "mySeq_10" will generate the IDs (in FASTA format)
+            >mySeq_101, >mySeq_102, >mySeq_103, ...
+
+    ***** SUMMARY STATISTIC OPTIONS *****
+            The summary statistic values are written to STDOUT in the form:
+            "parameter_name statistic_name value" (without the quotes). For
+            example, "stats_info reads 10000" or "stats_len max 500". Only
+            one statistic is written per line and values are separated by
+            tabs.
+
+            If you specify any statistic option, no other ouput will be
+            generated. To preprocess data, do not specify a statistics
+            option.
+
+    -stats_info
+            Outputs basic information such as number of reads (reads) and
+            total bases (bases).
+
+    -stats_len
+            Outputs minimum (min), maximum (max), range (range), mean
+            (mean), standard deviation (stddev), mode (mode) and mode value
+            (modeval), and median (median) for read length.
+
+    -stats_dinuc
+            Outputs the dinucleotide odds ratio for AA/TT (aatt), AC/GT
+            (acgt), AG/CT (agct), AT (at), CA/TG (catg), CC/GG (ccgg), CG
+            (cg), GA/TC (gatc), GC (gc) and TA (ta).
+
+    -stats_tag
+            Outputs the probability of a tag sequence at the 5'-end (prob5)
+            and 3'-end (prob3) in percentage (0..100). Provides the number
+            of predefined MIDs (midnum) and the MID sequences (midseq,
+            separated by comma, only provided if midnum > 0) that occur in
+            more than 34/100 (approx. 3%) of the reads.
+
+    -stats_dupl
+            Outputs the number of exact duplicates (exact), 5' duplicates
+            (5), 3' duplicates (3), exact duplicates with reverse
+            complements (exactrevcom) and 5'/3' duplicates with reverse
+            complements (revcomp), and total number of duplicates (total).
+            The maximum number of duplicates is given under the value name
+            with an additional "maxd" (e.g. exactmaxd or 5maxd).
+
+    -stats_ns
+            Outputs the number of reads with ambiguous base N (seqswithn),
+            the maximum number of Ns per read (maxn) and the maximum
+            percentage of Ns per read (maxp). The maxn and maxp value are
+            not necessary from the same sequence.
+
+    -stats_assembly
+            Outputs the N50, N90, etc contig sizes. The Nxx contig size is a
+            weighted median that is defined as the length of the smallest
+            contig C in the sorted list of all contigs where the cumulative
+            length from the largest contig to contig C is at least xx% of
+            the total length (sum of contig lengths).
+
+    -stats_all
+            Outputs all available summary statistics.
+
+    ***** ORDER OF PROCESSING *****
+            The available options are processed in the following order:
+
+            seq_num, trim_left, trim_right, trim_left_p, trim_right_p,
+            trim_qual_left, trim_qual_right, trim_tail_left,
+            trim_tail_right, trim_ns_left, trim_ns_right, trim_to_len,
+            min_len, max_len, range_len, min_qual_score, max_qual_score,
+            min_qual_mean, max_qual_mean, min_gc, max_gc, range_gc,
+            ns_max_p, ns_max_n, noniupac, lc_method, derep, seq_id,
+            seq_case, dna_rna, out_format
+#</opt_p>
+#<opt_b>
+Options:
+    -c                      reference sequences given on cmd line (as
+                            <reference_in>)
+    --large-index           force generated index to be 'large', even if ref
+                            has fewer than 4 billion nucleotides
+    -a/--noauto             disable automatic -p/--bmax/--dcv memory-fitting
+    -p                      number of threads
+    --bmax <int>            max bucket sz for blockwise suffix-array builder
+    --bmaxdivn <int>        max bucket sz as divisor of ref len (default: 4)
+    --dcv <int>             diff-cover period for blockwise (default: 1024)
+    --nodc                  disable diff-cover (algorithm becomes quadratic)
+    -r/--noref              don't build .3/.4.ht2 (packed reference) portion
+    -3/--justref            just build .3/.4.ht2 (packed reference) portion
+    -o/--offrate <int>      SA is sampled every 2^offRate BWT chars (default: 5)
+    -t/--ftabchars <int>    # of chars consumed in initial lookup (default: 10)
+    --localoffrate <int>    SA (local) is sampled every 2^offRate BWT chars (default: 3)
+    --localftabchars <int>  # of chars consumed in initial lookup in a local index (default: 6)
+    --snp <path>            SNP file name
+    --haplotype <path>      haplotype file name
+    --ss <path>             Splice site file name
+    --exon <path>           Exon file name
+    --seed <int>            seed for random number generator
+    -q/--quiet              verbose output (for debugging)
+    -h/--help               print detailed description of tool and its options
+    --usage                 print this usage message
+    --version               print version information and quit
+#</opt_b>
+#<opt_i>
+Options (defaults in parentheses):
+
+ Input:
+  -q                 query input files are FASTQ .fq/.fastq (default)
+  --qseq             query input files are in Illumina's qseq format
+  -f                 query input files are (multi-)FASTA .fa/.mfa
+  -r                 query input files are raw one-sequence-per-line
+  -c                 <m1>, <m2>, <r> are sequences themselves, not files
+  -s/--skip <int>    skip the first <int> reads/pairs in the input (none)
+  -u/--upto <int>    stop after first <int> reads/pairs (no limit)
+  -5/--trim5 <int>   trim <int> bases from 5'/left end of reads (0)
+  -3/--trim3 <int>   trim <int> bases from 3'/right end of reads (0)
+  --phred33          qualities are Phred+33 (default)
+  --phred64          qualities are Phred+64
+  --int-quals        qualities encoded as space-delimited integers
+  --sra-acc          SRA accession ID
+
+ Alignment:
+  --n-ceil <func>    func for max # non-A/C/G/Ts permitted in aln (L,0,0.15)
+  --ignore-quals     treat all quality values as 30 on Phred scale (off)
+  --nofw             do not align forward (original) version of read (off)
+  --norc             do not align reverse-complement version of read (off)
+
+ Spliced Alignment:
+  --pen-cansplice <int>              penalty for a canonical splice site (0)
+  --pen-noncansplice <int>           penalty for a non-canonical splice site (12)
+  --pen-canintronlen <func>          penalty for long introns (G,-8,1) with canonical splice sites
+  --pen-noncanintronlen <func>       penalty for long introns (G,-8,1) with noncanonical splice sites
+  --min-intronlen <int>              minimum intron length (20)
+  --max-intronlen <int>              maximum intron length (500000)
+  --known-splicesite-infile <path>   provide a list of known splice sites
+  --novel-splicesite-outfile <path>  report a list of splice sites
+  --novel-splicesite-infile <path>   provide a list of novel splice sites
+  --no-temp-splicesite               disable the use of splice sites found
+  --no-spliced-alignment             disable spliced alignment
+  --rna-strandness <string>          specify strand-specific information (unstranded)
+  --tmo                              reports only those alignments within known transcriptome
+  --dta                              reports alignments tailored for transcript assemblers
+  --dta-cufflinks                    reports alignments tailored specifically for cufflinks
+  --avoid-pseudogene                 tries to avoid aligning reads to pseudogenes (experimental option)
+  --no-templatelen-adjustment        disables template length adjustment for RNA-seq reads
+
+ Scoring:
+  --mp <int>,<int>   max and min penalties for mismatch; lower qual = lower penalty <6,2>
+  --sp <int>,<int>   max and min penalties for soft-clipping; lower qual = lower penalty <2,1>
+  --no-softclip      no soft-clipping
+  --np <int>         penalty for non-A/C/G/Ts in read/ref (1)
+  --rdg <int>,<int>  read gap open, extend penalties (5,3)
+  --rfg <int>,<int>  reference gap open, extend penalties (5,3)
+  --score-min <func> min acceptable alignment score w/r/t read length
+                     (L,0.0,-0.2)
+
+ Reporting:
+  -k <int> (default: 5) report up to <int> alns per read
+
+ Paired-end:
+  -I/--minins <int>  minimum fragment length (0), only valid with --no-spliced-alignment
+  -X/--maxins <int>  maximum fragment length (500), only valid with --no-spliced-alignment
+  --fr/--rf/--ff     -1, -2 mates align fw/rev, rev/fw, fw/fw (--fr)
+  --no-mixed         suppress unpaired alignments for paired reads
+  --no-discordant    suppress discordant alignments for paired reads
+
+ Output:
+  -t/--time          print wall-clock time taken by search phases
+  --un <path>           write unpaired reads that didn't align to <path>
+  --al <path>           write unpaired reads that aligned at least once to <path>
+  --un-conc <path>      write pairs that didn't align concordantly to <path>
+  --al-conc <path>      write pairs that aligned concordantly at least once to <path>
+  (Note: for --un, --al, --un-conc, or --al-conc, add '-gz' to the option name, e.g.
+  --un-gz <path>, to gzip compress output, or add '-bz2' to bzip2 compress output.)
+  --summary-file     print alignment summary to this file.
+  --new-summary      print alignment summary in a new style, which is more machine-friendly.
+  --quiet            print nothing to stderr except serious errors
+  --met-file <path>  send metrics to file at <path> (off)
+  --met-stderr       send metrics to stderr (off)
+  --met <int>        report internal counters & metrics every <int> secs (1)
+  --no-head          supppress header lines, i.e. lines starting with @
+  --no-sq            supppress @SQ header lines
+  --rg-id <text>     set read group id, reflected in @RG line and RG:Z: opt field
+  --rg <text>        add <text> ("lab:value") to @RG line of SAM header.
+                     Note: @RG line only printed when --rg-id is set.
+  --omit-sec-seq     put '*' in SEQ and QUAL fields for secondary alignments.
+
+ Performance:
+  -o/--offrate <int> override offrate of index; must be >= index's offrate
+  -p/--threads <int> number of alignment threads to launch (1)
+  --reorder          force SAM output order to match order of input reads
+  --mm               use memory-mapped I/O for index; many 'hisat2's can share
+
+ Other:
+  --qc-filter        filter out reads that are bad according to QSEQ filter
+  --seed <int>       seed for random number generator (0)
+  --non-deterministic seed rand. gen. arbitrarily instead of using read attributes
+  --remove-chrname   remove 'chr' from reference names in alignment
+  --add-chrname      add 'chr' to reference names in alignment
+  --version          print version information and quit
+  -h/--help          print this usage message
+#</opt_i>
+#</option detail>
+

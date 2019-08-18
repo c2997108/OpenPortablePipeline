@@ -1,0 +1,157 @@
+#!/bin/bash
+
+explanation='
+DESeq2, edgeR
+'
+inputdef='
+input_1::count table:*.txt,*.tsv
+input_2::sample information file:*.txt
+input_3:option:Trinotate.xls3.(isoform or gene).cnt:Trinotate.xls3.isoform.cnt,Trinotate.xls3.gene.cnt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_f:FDR threshold:0.05
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -t #input_3# #input_1# #input_2#"
+
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_MERGE="c2997108/centos6:3"
+
+source $(dirname `readlink -f $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+p=$opt_f
+
+#sample.txt
+cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
+head -n 1 "$input_1"|cut -f 2-|sed 's/\t/\n/g'| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+
+if [ ! -e isoforms.count_table ]; then ln -s "$input_1" isoforms.count_table; fi
+
+tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|awk '{a[NR]=$1} END{for(i=1;i<=NR-1;i++){for(j=i+1;j<=NR;j++){print a[i]"\t"a[j]}}}' > sample.input.pair.txt
+
+
+#make html
+cat << 'EOF' > 0_result.html
+<html>
+<header>
+<link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+<link rel="stylesheet" href="https://unpkg.com/mermaid/dist/mermaid.min.css">
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js" charset="UTF-8"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad:true
+  });
+</script>
+
+<style type="text/css">
+h2 {
+ padding: 1em;
+ border: 3px solid #ccc;
+ border-radius: 3em .7em 2em .7em/.7em 2em .7em 3em;
+}
+h2:first-letter {
+ margin-right: .1em;
+ font-size: 1.5em;
+}
+h3 {
+  color: #000099;
+  padding-left: 10px;
+  border-width: 0px 0px 2px 15px;
+  border-style: solid;
+  border-color: #9999ff;
+  line-height: 100%;
+}
+.sup{
+  color: #000099;
+  border-left-color: #cc6666;
+  padding: 3px 0px 0px 6px;
+  border-style: solid;
+  border-width: 0px 0px 0px 10px;
+}
+</style>
+</header>
+<body>
+EOF
+
+cat << 'EOF' > run-make-deg-html.sh
+tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|
+ awk -v countfile="$1" -v stat="$2" -v type="$4" '{a[NR]=$1}
+  END{
+   print "<table class=\"table table-hover table-bordered\">"
+   print "<tr><th></th>";
+   for(i=1;i<=NR-1;i++){print "<th>"a[i]"</th>"}
+   print "</tr>"
+   for(j=2;j<=NR;j++){
+    print "<tr><td><p style=\"transform: rotate( -90deg );\">"a[j]"</p></td>";
+    for(i=1;i<=NR-1;i++){if(i>=j){print "<td></td>"}else{
+     print "<td><img src=\""countfile"."a[i]"."a[j]".txt."stat"."countfile"."a[i]"."a[j]".txt.id.scatter.png\""
+     print " onerror=\"this.onerror=null;this.src='"'"'"countfile"."a[i]"."a[j]".txt."stat"."countfile"."a[i]"."a[j]".txt.id.scatter.normal.png'"'"'\" alt=\"\">"
+     print "<br><a href=\"result."stat"."countfile"."a[i]"."a[j]".txt."a[i]".up."a[j]".down.txt.xlsx\">upregulated in "a[i]"</a>"
+     print "<br><a href=\"result."stat"."countfile"."a[i]"."a[j]".txt."a[i]".down."a[j]".up.txt.xlsx\">upregulated in "a[j]"</a>"
+     print "</td>"}
+    }
+    print "</tr>"
+   }
+   print "</table>"
+  }' >> $3
+EOF
+
+
+countfile=isoforms.count_table
+echo '
+<h2>DEG analysis</h2>
+ <h3>Differential expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
+' >> 0_result.html
+bash run-make-deg-html.sh $countfile DESeq2 0_result.html transcript
+echo ' <h3>Differential expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
+bash run-make-deg-html.sh $countfile edgeR 0_result.html transcript
+echo "</body></html>" >> 0_result.html
+
+for i in `seq 1 $(cat sample.input.pair.txt|wc -l)`; do
+ g1=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 1`
+ g2=`head -n $i sample.input.pair.txt|tail -n 1|cut -f 2`
+ countfile=isoforms.count_table
+ if [ "$input_3" = "" ]; then
+  awk -F'\t' '
+   FILENAME==ARGV[1]{if(FNR>1){for(i=2;i<=NF;i++){a[i]+=$i}}}
+   FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; for(i=2;i<=NF;i++){$i=$i" (CPM)"; if(a[i]==0){a[i]=1}}; print $0}
+                     else{ORS=""; print $1;for(i=2;i<=NF;i++){print "\t"$i/a[i]*1000*1000}; print "\n"}}
+  ' $countfile ./$countfile > $countfile.cpm
+  annfile=$countfile.cpm
+ else
+  annfile="$input_3"
+ fi
+
+ cat << EOF > run-DE.$g1.$g2.sh
+set -x
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(FNR==1){print \$0}else{if(\$2==g1||\$2==g2){print \$0}}}' sample.input.txt > sample.input.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 '\$2==g1{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.x
+awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.y
+
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
+#DESeq2
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
+#edgeR
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
+
+EOF
+
+ DO_R bash run-DE.$g1.$g2.sh
+done|DOPARALLELONE
+
+WAITPARALLELONE
+
+
+post_processing
+
+
+
+#<option detail>
+#</option detail>
+
