@@ -12,7 +12,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 - DockerもしくはSingularityインストール済みでSSHサーバ設定済みのLinux (CentOS6, CentOS7, Ubuntu16, Ubuntu18)[Linuxサーバセットアップ方法](#Linuxサーバのセットアップ方法)、もしくはWindows 10のWindows Subsystem for Linuxを利用したUbuntu [WSLサーバセットアップ方法](#WSLサーバのセットアップ方法)、もしくはMac OSXでhomebrewのcoreutilsとDocker Desktop for MacをインストールしたMac [Macサーバセットアップ方法](#Macをサーバとして使用する場合のセットアップ方法)。
 
 ## 操作方法
-1. 最新のPortablePipelineのリリースをダウンロードして解凍する。
+1. 最新のPortablePipelineのリリースをダウンロードして解凍する。  
  Win https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.7d/PortablePipeline-win-v0.7d.zip  
  Mac https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.7d/PortablePipeline-mac-v0.7d.tar.gz 
 
