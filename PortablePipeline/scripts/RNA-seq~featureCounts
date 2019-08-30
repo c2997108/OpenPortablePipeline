@@ -4,20 +4,20 @@ explanation='
 featureCounts by subread
 '
 inputdef='
-input_1:directory:BAM files:*.bam
+input_1:directory:BAM files (unsorted bam is recommended):*.bam
 input_2::GTF:*.gtf,*.gtf.gz
 '
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):64
-opt_f:featureCounts option ("-s 2" is for TruSeq Stranded mRNA Sample Preparation):-s 2 -p -t exon -g gene_id
+opt_f:featureCounts option ("-s 2" is for TruSeq Stranded mRNA Sample Preparation. If you want to count by transcripts, change "-g gene_id" to "-O -g transcript_id".):-s 2 -p -t exon -g gene_id
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# #input_1# #input_2#"
 
 export IM_FC="quay.io/biocontainers/subread:1.6.3--h84994c4_1"
 export IM_BASE="c2997108/centos6:4"
 
-source $(dirname `readlink -f $0`)/common.sh
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail
@@ -26,7 +26,7 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$i
 
 DO_FC featureCounts $opt_f -T $N_CPU -a "$input_2" -o count.txt "$input_1"/*.bam
 
-awk -F'\t' '$3=="gene"{print $0}' "$input_2"|grep "gene_id "|grep "; gene_name "|sed 's/.*gene_id "//; s/".*; gene_name "/\t/; s/".*//' |
+awk -F'\t' '$3=="gene" || $3=="transcript"{print $0}' "$input_2"|grep "gene_id "|grep "; gene_name "|sed 's/.*gene_id "//; s/".*; gene_name "/\t/; s/".*//' |
  awk -F'\t' '
   BEGIN{OFS="\t"; name["Geneid"]="name"}
   FILENAME==ARGV[1]{name[$1]=$2}
@@ -37,10 +37,10 @@ head -n 2 count.txt.summary|DO_BASE trans-row-column.sh -|awk -F'/' '{print $NF}
   FILENAME==ARGV[2]{if(FNR==1){for(i=8;i<=NF;i++){name[i]=$i}; OFS="\t"}else{for(i=8;i<=NF;i++){$i=$i/cnt[name[i]]*1000*1000/$7*1000}}; print $0}
  ' /dev/stdin count.genename.txt > count.genename.fpkm.txt
 awk -F'\t' '{OFS="\t"; if($2!=""){$7=$2"_"$1}else{$7=$1}; print $0}' count.genename.txt | cut -f 7- > count.genename.forDEGanalysis.txt
+cut -f 1,8- count.genename.txt > count.id.forDEGanalysis.txt
+
 
 post_processing
-
-
 
 #<option detail>
 #<opt_f>

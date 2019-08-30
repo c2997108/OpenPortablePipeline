@@ -13,11 +13,12 @@
 <?import javafx.scene.layout.AnchorPane?>
 <?import javafx.scene.layout.BorderPane?>
 <?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.FlowPane?>
 <?import javafx.scene.layout.GridPane?>
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.RowConstraints?>
 
-<BorderPane xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="application.JobWindowController">
+<BorderPane fx:id="bp" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="application.JobWindowController">
    <top>
       <TabPane fx:id="tabPane" prefHeight="587.0" prefWidth="957.0" tabClosingPolicy="UNAVAILABLE" BorderPane.alignment="CENTER">
         <tabs>
@@ -42,9 +43,6 @@
               <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
                      <children>
                         <BorderPane layoutX="337.0" layoutY="157.0" prefHeight="558.0" prefWidth="957.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
-                           <top>
-                              <ListView fx:id="scriptlist" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER" />
-                           </top>
                            <center>
                               <BorderPane prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
                                  <bottom>
@@ -63,20 +61,25 @@
                                             </columnConstraints>
                                             <rowConstraints>
                                               <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                              <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                              <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
-                                                <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
                                             </rowConstraints>
                                           </GridPane>
                                        </content>
                                     </ScrollPane>
                                  </center>
+                                 <top>
+                                    <ListView fx:id="scriptlist" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER" />
+                                 </top>
                               </BorderPane>
                            </center>
+                           <top>
+                              <FlowPane nodeOrientation="RIGHT_TO_LEFT" prefHeight="29.0" prefWidth="957.0" BorderPane.alignment="CENTER">
+                                 <children>
+                                    <Label text="   " />
+                                    <Button fx:id="searchbtn" mnemonicParsing="false" text="Search" />
+                                    <TextField fx:id="searchtxt" />
+                                 </children>
+                              </FlowPane>
+                           </top>
                         </BorderPane>
                      </children>
                   </AnchorPane>
@@ -89,8 +92,8 @@
                         <GridPane layoutX="130.0" layoutY="80.0" prefHeight="558.0" prefWidth="957.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                           <columnConstraints>
                               <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" percentWidth="5.0" prefWidth="100.0" />
-                              <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" percentWidth="20.0" prefWidth="100.0" />
-                            <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" percentWidth="20.0" prefWidth="100.0" />
+                              <ColumnConstraints hgrow="SOMETIMES" maxWidth="50.0" minWidth="10.0" percentWidth="10.0" prefWidth="50.0" />
+                            <ColumnConstraints hgrow="SOMETIMES" maxWidth="335.0" minWidth="10.0" percentWidth="30.0" prefWidth="155.0" />
                             <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" prefWidth="100.0" />
                               <ColumnConstraints hgrow="SOMETIMES" minWidth="10.0" percentWidth="5.0" prefWidth="100.0" />
                           </columnConstraints>
@@ -115,16 +118,16 @@
                               <Label text="Port" GridPane.columnIndex="2" GridPane.rowIndex="1" />
                               <Label text="User name" GridPane.columnIndex="2" GridPane.rowIndex="2" />
                               <Label text="Password" GridPane.columnIndex="2" GridPane.rowIndex="3" />
-                              <Label text="OpenSSH private key" GridPane.columnIndex="2" GridPane.rowIndex="4" />
+                              <Label text="OpenSSH private key file contents (paste from &quot;-----BEGIN RSA PRIVATE KEY-----&quot;)" wrapText="true" GridPane.columnIndex="2" GridPane.rowIndex="4" />
                               <TextField fx:id="hostname" GridPane.columnIndex="3" />
                               <TextField fx:id="port" GridPane.columnIndex="3" GridPane.rowIndex="1" />
                               <TextField fx:id="user" GridPane.columnIndex="3" GridPane.rowIndex="2" />
                               <TextField fx:id="password" GridPane.columnIndex="3" GridPane.rowIndex="3" />
                               <TextArea fx:id="privatekey" prefHeight="200.0" prefWidth="200.0" GridPane.columnIndex="3" GridPane.rowIndex="4" />
-                              <TextField fx:id="outputfolder" GridPane.columnIndex="3" GridPane.rowIndex="9" />
-                              <Label text="Default output folder" GridPane.columnIndex="1" GridPane.rowIndex="9" />
-                              <Label text="Script folder" GridPane.columnIndex="1" GridPane.rowIndex="10" />
-                              <TextField fx:id="scriptfolder" GridPane.columnIndex="3" GridPane.rowIndex="10" />
+                              <TextField fx:id="outputfolder" visible="false" GridPane.columnIndex="3" GridPane.rowIndex="9" />
+                              <Label text="Default output folder" visible="false" GridPane.columnIndex="1" GridPane.rowIndex="9" />
+                              <Label text="Script folder" visible="false" GridPane.columnIndex="1" GridPane.rowIndex="10" />
+                              <TextField fx:id="scriptfolder" visible="false" GridPane.columnIndex="3" GridPane.rowIndex="10" />
                               <HBox prefHeight="55.0" prefWidth="588.0" GridPane.columnIndex="2" GridPane.columnSpan="3" GridPane.rowIndex="7">
                                  <children>
                                     <Label text="Preset:  " />
@@ -141,9 +144,9 @@
                                  </children>
                               </HBox>
                               <Button fx:id="savesetting" mnemonicParsing="false" onAction="#onButtonSave" text="Save" GridPane.columnIndex="3" GridPane.rowIndex="12" />
-                              <Label text="Work folder" GridPane.columnIndex="2" GridPane.rowIndex="5" />
+                              <Label text="Work folder (absolute or relative path in the server)" GridPane.columnIndex="2" GridPane.rowIndex="5" />
                               <TextField fx:id="workfolder" GridPane.columnIndex="3" GridPane.rowIndex="5" />
-                              <Label text="Image folder" GridPane.columnIndex="2" GridPane.rowIndex="6" />
+                              <Label text="Singularity image folder (absolute path in the server)" GridPane.columnIndex="2" GridPane.rowIndex="6" />
                               <TextField fx:id="imagefolder" GridPane.columnIndex="3" GridPane.rowIndex="6" />
                            </children>
                         </GridPane>

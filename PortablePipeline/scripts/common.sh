@@ -46,7 +46,7 @@ begintrap()
 container_setup()
 {
 if [ "$DIR_IMG" != "" ]; then
- DIR_IMG=`readlink -f $DIR_IMG`
+ DIR_IMG=`readlink -f $DIR_IMG || echo $DIR_IMG`
 else
  DIR_IMG=~/img
 fi
@@ -61,15 +61,15 @@ fi
 CHECK_SING="singularity"
 
 mkdir -p "$DIR_IMG"
-DIR_IMG="`readlink -f "$DIR_IMG"`"
+DIR_IMG="`readlink -f "$DIR_IMG" || echo $DIR_IMG`"
 mkdir -p "$DIR_WORK"
-DIR_WORK="`readlink -f "$DIR_WORK"`"
+DIR_WORK="`readlink -f "$DIR_WORK" || echo $DIR_WORK`"
 DIR_CUR="$PWD"
 if [ `echo "$DIR_IMG"|grep " "|wc -l` = 1 -o `echo "$DIR_WORK"|grep " "|wc -l` = 1 -o `echo "$DIR_CUR"|grep " "|wc -l` = 1 ]; then
  echo Current, Work and Image directory should not contain space character in absolute path;
  exit 1;
 fi
-DIR_SRC="$(dirname "`readlink -f "$0"`")"
+DIR_SRC="$(dirname "`readlink -f "$0" || echo "$0"`")"
 
 if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
  echo using docker;
@@ -119,8 +119,8 @@ parallel_setup(){
   grep "^#" "$workdir"/wrapper.sh > $workdir/qsub.sh
   grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > $workdir/qsubone.sh
   echo "#$ -pe def_slot 1" >> $workdir/qsubone.sh
-  echo 'echo "$*"; eval "$*"' >> $workdir/qsub.sh
-  echo 'echo "$*"; eval "$*"' >> $workdir/qsubone.sh
+  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> $workdir/qsub.sh
+  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> $workdir/qsubone.sh
   chmod 755 $workdir/qsub.sh $workdir/qsubone.sh
   alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
@@ -180,7 +180,7 @@ do
 done
 shift $(($OPTIND - 1))
 
-req_args=`echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}'|wc -l`
+req_args=`echo "$inputdef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '$2!~"option"{print $1}'|wc -l`
 if [ "$OPT_FLAG_h" = 1 -o "$#" -lt "$req_args" ]; then
  usage_exit;
 fi
@@ -190,9 +190,9 @@ done
 for i in `echo "$runcmd"|awk '{for(i=1;i<=NF;i++){if($i~"^#input_"){if(old!~"^-[a-zA-Z]$"){print substr($i,2,length($i)-2)}}; old=$i}}'`; do
  export $i="${1:-}"; shift;
 done
-#for i in `echo "$inputdef"|tail -n+2|head -n-1|awk -F':' '$2!~"option"{print $1}'`; do export $i="$1"; shift; done
-for i in `echo "$optiondef"|tail -n+2|head -n-1|awk -F':' '{print $1}'`; do
- k=`echo "$optiondef"|tail -n+2|head -n-1|awk -F':' '$1=="'$i'"{print $3}'|head -n 1`;
+#for i in `echo "$inputdef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '$2!~"option"{print $1}'`; do export $i="$1"; shift; done
+for i in `echo "$optiondef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '{print $1}'`; do
+ k=`echo "$optiondef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '$1=="'$i'"{print $3}'|head -n 1`;
  export $i="$(eval echo \${$i:-$k})";
 # export $i="`eval echo \\\$$i`";
 done
@@ -232,7 +232,7 @@ N_SCRIPT=`expr ${N_SCRIPT:-0} + 1`
 export N_SCRIPT
 
 workdir=$PWD
-scriptdir=$(dirname `readlink -f $0`)
+scriptdir=$(dirname `readlink -f "$0" || echo "$0"`)
 export IM_CENTOS6=centos:centos6
 begintrap
 container_setup

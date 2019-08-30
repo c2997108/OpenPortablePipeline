@@ -1,0 +1,40 @@
+#!/bin/bash
+
+explanation='
+extract specific entries in FASTA
+'
+inputdef='
+input_1::FASTA file:*.fasta,*.fa,*.fsa,*.fna,*.faa
+input_2::entry list:*.txt,*.tsv
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+'
+runcmd="$0 -c #opt_c# -m #opt_m# #input_1# #input_2#"
+
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+fasta="$input_1"
+table="$input_2"
+output="`basename ${fasta%.*}`.`basename ${table%.*}`.fasta"
+
+sed 's/\r//' "$table" > "$table.temp"
+
+DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$fasta"|
+ DO_BASE awk -F'\t' '
+  FILENAME==ARGV[1]{split($1,arr," "); flag[arr[1]]=1}
+  FILENAME==ARGV[2]{split($1,arr," "); if(flag[arr[1]]==1){print ">"$1; print $2}}
+ ' "$table.temp" /dev/stdin > "$output"
+
+
+post_processing
+
+#<option detail>
+#</option detail>
+

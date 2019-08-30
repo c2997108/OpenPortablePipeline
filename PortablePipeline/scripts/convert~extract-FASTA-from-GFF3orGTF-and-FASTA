@@ -1,0 +1,130 @@
+#!/bin/bash
+
+explanation='
+extract sequences within gff3 or gtf region
+'
+inputdef='
+input_1::genomic FASTA file:*.fasta,*.fa,*.fsa,*.fna,*.fasta.gz,*.fa.gz,*.fsa.gz,*.fna.gz
+input_2::gene model file (gff3 or gtf):*.gff,*.gff3,*.gff.gz,*.gff3.gz,*.gtf,*.gtf.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_g:gffread option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -g #opt_g# #input_1# #input_2#"
+
+export IM_CUFF="quay.io/biocontainers/cufflinks:2.2.1--py36_1"
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+#decompress input files
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+ DO_BASE gzip -d "$input_1";
+ input_1=`echo "$input_1"|sed 's/[.]gz$//'`;
+fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+ DO_BASE gzip -d "$input_2";
+ input_2=`echo "$input_2"|sed 's/[.]gz$//'`;
+fi
+
+output="`basename $input_2`".fasta
+output2="`basename $input_2`".gene.fasta
+DO_CUFF gffread -g "$input_1" -w "$output" $opt_g "$input_2"
+
+DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$output" | DO_BASE awk -F'\t' '
+ {
+  split($1,arr," "); gene=""; for(i in arr){if(arr[i]~"^gene="){gene=substr(arr[i],6)}};
+  name=arr[1]; if(gene!=""){name=gene}; len[name][arr[1]]=length($2); seq[arr[1]]=$2
+ }
+ END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in len){for(j in len[i]){print ">"i" transcript="j; print seq[j]}}}
+' > "$output2"
+
+
+post_processing
+
+#<option detail>
+#<opt_g>
+Usage:
+gffread <input_gff> [-g <genomic_seqs_fasta> | <dir>][-s <seq_info.fsize>]
+ [-o <outfile.gff>] [-t <tname>] [-r [[<strand>]<chr>:]<start>..<end> [-R]]
+ [-CTVNJMKQAFGUBHZWTOLE] [-w <exons.fa>] [-x <cds.fa>] [-y <tr_cds.fa>]
+ [-i <maxintron>]
+ Filters and/or converts GFF3/GTF2 records.
+ <input_gff> is a GFF file, use '-' if the GFF records will be given at stdin
+
+ Options:
+  -g  full path to a multi-fasta file with the genomic sequences
+      for all input mappings, OR a directory with single-fasta files
+      (one per genomic sequence, with file names matching sequence names)
+  -s  <seq_info.fsize> is a tab-delimited file providing this info
+      for each of the mapped sequences:
+      <seq-name> <seq-length> <seq-description>
+      (useful for -A option with mRNA/EST/protein mappings)
+  -i  discard transcripts having an intron larger than <maxintron>
+  -r  only show transcripts overlapping coordinate range <start>..<end>
+      (on chromosome/contig <chr>, strand <strand> if provided)
+  -R  for -r option, discard all transcripts that are not fully
+      contained within the given range
+  -U  discard single-exon transcripts
+  -C  coding only: discard mRNAs that have no CDS feature
+  -F  full GFF attribute preservation (all attributes are shown)
+  -G  only parse additional exon attributes from the first exon
+      and move them to the mRNA level (useful for GTF input)
+  -A  use the description field from <seq_info.fsize> and add it
+      as the value for a 'descr' attribute to the GFF record
+
+  -O  process also non-transcript GFF records (by default non-transcript
+      records are ignored)
+  -V  discard any mRNAs with CDS having in-frame stop codons
+  -H  for -V option, check and adjust the starting CDS phase
+      if the original phase leads to a translation with an
+      in-frame stop codon
+  -B  for -V option, single-exon transcripts are also checked on the
+      opposite strand
+  -N  discard multi-exon mRNAs that have any intron with a non-canonical
+      splice site consensus (i.e. not GT-AG, GC-AG or AT-AC)
+  -J  discard any mRNAs that either lack initial START codon
+      or the terminal STOP codon, or have an in-frame stop codon
+      (only print mRNAs with a fulll, valid CDS)
+  --no-pseudo: filter out records matching the 'pseudo' keyword
+
+  -M/--merge : cluster the input transcripts into loci, collapsing matching
+       transcripts (those with the same exact introns and fully contained)
+  -d <dupinfo> : for -M option, write collapsing info to file <dupinfo>
+  --cluster-only: same as --merge but without collapsing matching transcripts
+  -K  for -M option: also collapse shorter, fully contained transcripts
+      with fewer introns than the container
+  -Q  for -M option, remove the containment restriction:
+      (multi-exon transcripts will be collapsed if just their introns match,
+      while single-exon transcripts can partially overlap (80%))
+
+  --force-exons: make sure that the lowest level GFF features are printed as
+      "exon" features
+  -E  expose (warn about) duplicate transcript IDs and other potential
+      problems with the given GFF/GTF records
+  -D  decode url encoded characters within attributes
+  -Z  merge close exons into a single exon (for intron size<4)
+  -w  write a fasta file with spliced exons for each GFF transcript
+  -x  write a fasta file with spliced CDS for each GFF transcript
+  -W  for -w and -x options, also write for each fasta record the exon
+      coordinates projected onto the spliced sequence
+  -y  write a protein fasta file with the translation of CDS for each record
+  -L  Ensembl GTF to GFF3 conversion (implies -F; should be used with -m)
+  -m  <chr_replace> is a reference (genomic) sequence replacement table with
+      this format:
+      <original_ref_ID> <new_ref_ID>
+      GFF records on reference sequences that are not found among the
+      <original_ref_ID> entries in this file will be filtered out
+  -o  the "filtered" GFF records will be written to <outfile.gff>
+      (use -o- for printing to stdout)
+  -t  use <trackname> in the second column of each GFF output line
+  -T  -o option will output GTF format instead of GFF3
+#</opt_g>
+#</option detail>
+

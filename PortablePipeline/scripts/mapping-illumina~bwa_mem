@@ -18,7 +18,7 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2# #input_3#"
 export IM_BWA="biocontainers/bwa:v0.7.15_cv4"
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
 
-source $(dirname `readlink -f $0`)/common.sh
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail

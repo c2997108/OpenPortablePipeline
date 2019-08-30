@@ -21,7 +21,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.ResourceBundle;
 import java.util.Vector;
 import java.util.stream.Collectors;
@@ -53,6 +55,7 @@ import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
@@ -68,13 +71,19 @@ import javafx.scene.control.TextField;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
+import javafx.stage.Stage;
 import javafx.util.Callback;
 import javafx.util.Duration;
 
 public class JobWindowController {
+
+    @FXML
+    private BorderPane bp;
 
     @FXML
     private ResourceBundle resources;
@@ -139,6 +148,12 @@ public class JobWindowController {
     @FXML
     private Button savesetting;
 
+    @FXML
+    private Button searchbtn;
+
+    @FXML
+    private TextField searchtxt;
+
     String file_id_rsa = "id_rsa.txt";
 
     ObservableList<String> listRecords = FXCollections.observableArrayList();
@@ -146,6 +161,7 @@ public class JobWindowController {
     static ObservableList<JobNode> jobNodes = FXCollections.observableArrayList();
     ObservableList<String> listScripts = FXCollections.observableArrayList();
     ObservableList<ScriptNode> ScriptNodes = FXCollections.observableArrayList();
+    ObservableList<ScriptNode> ScriptNodesOrig = FXCollections.observableArrayList();
 
     //static ChannelSftp channelSftp = null;
     static Session session = null;
@@ -159,6 +175,10 @@ public class JobWindowController {
     String selectedPreset = null;
     String savedOpenFolder = ".";
     boolean isSending = false;
+
+    Map<String, Map<String, String>> settings = new LinkedHashMap<String, Map<String, String>>();
+    String[] settingPresetKey = {"direct","direct (SGE)","ddbj","shirokane","WSL","Mac"};
+    String[] settingItemKey = {"hostname", "port", "user", "password", "privatekey", "workfolder", "imagefolder"};
 
     @FXML
     @SuppressWarnings("deprecation")
@@ -324,11 +344,16 @@ public class JobWindowController {
                     	String tempworkpath = "";
                     	for(String tempworkpathnode : workdir.split("/")) {
                     		if(tempworkpath.equals("")) {
-                    			tempworkpath=tempworkpathnode;
+                    			if(workdir.startsWith("/")) {
+                    				tempworkpath="/"+tempworkpathnode;
+                    			}else {
+                    				tempworkpath=tempworkpathnode;
+                    			}
                     		}else {
                     			tempworkpath = tempworkpath+"/"+tempworkpathnode;
                     		}
                     		try {
+                    			//System.out.println("mkdir...  "+tempworkpath);
                     			c.mkdir(tempworkpath);
                     		}catch(Exception e2) {
                     			//e2.printStackTrace();
@@ -340,9 +365,12 @@ public class JobWindowController {
                     searchScript(ppSetting.get("scriptfolder"), selectedScript, scriptcontList);
 
                     if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+            			System.out.println("sending...  "+selectedScript);
                     	c.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
+            			System.out.println("sending...  "+"common.sh");
                     	c.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
                     	for(String scripti: scriptcontList) {
+                			System.out.println("sending...  "+scripti);
                     		c.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
                     	}
                     }
@@ -495,6 +523,7 @@ public class JobWindowController {
                         	filewriter.write("#$ -pe def_slot "+numCPU+"\n");
                         	filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G,s_vmem="+Double.valueOf(numMEM)/Double.valueOf(numCPU)+"G\n");
                         	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+                        	filewriter.write("source ~/.bashrc\n");
                         	filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
                         	cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
                     	}else if(selectedPreset.equals("WSL")){
@@ -522,6 +551,7 @@ public class JobWindowController {
                         	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
                         	filewriter.write("export PATH=/usr/local/bin:${PATH}\n");
                         	filewriter.write("export PATH=/usr/local/opt/coreutils/libexec/gnubin:${PATH}\n");
+                        	filewriter.write("source ~/.bash_profile\n");
                         	filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
                         	filewriter.write("echo $! > save_pid.txt\n");
                         	cmdString = "bash wrapper.sh";
@@ -644,6 +674,17 @@ public class JobWindowController {
         assert preset != null : "fx:id=\"preset\" was not injected: check your FXML file 'JobWindow.fxml'.";
         assert savesetting != null : "fx:id=\"savesetting\" was not injected: check your FXML file 'JobWindow.fxml'.";
 
+    	analysisGrid.getColumnConstraints().addAll(new ColumnConstraints(18), new ColumnConstraints(40), new ColumnConstraints(40), new ColumnConstraints(2));
+
+    	for(String iString : settingPresetKey) {
+    		Map<String, String> tempMap = new LinkedHashMap<String, String>();
+//    		for(String jString : settingItemKey) {
+//    			tempMap.put(jString, "");
+//    		}
+    		tempMap.put("changed", "F");
+    		settings.put(iString, tempMap);
+    	}
+
         analysisScrollPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         analysisScrollPane.setFitToWidth(true);
         //String path = new File(".").getAbsoluteFile().getParent();
@@ -694,6 +735,7 @@ public class JobWindowController {
         		);
         savedOutputFolder = ppSetting.get("outputfolder");
         selectedPreset = ppSetting.get("preset");
+
 
         joblog.setItems(listRecords);
 
@@ -764,6 +806,20 @@ public class JobWindowController {
         );
 
 
+        searchbtn.setOnAction((ActionEvent event)->{
+        	//System.out.println(searchtxt.getText());
+        	Platform.runLater( ()->{
+        		ScriptNodes.clear();
+            	for(ScriptNode sNode : ScriptNodesOrig) {
+            		if(sNode.filename.contains(searchtxt.getText()) || sNode.explanation.contains(searchtxt.getText())){
+            			ScriptNodes.add(sNode);
+            		}
+            	}
+
+        	});
+        });
+
+
         File[] scriptFiles = new File(ppSetting.get("scriptfolder")).listFiles();
         java.util.Arrays.sort(scriptFiles, new java.util.Comparator<File>() {
     		public int compare(File file1, File file2){
@@ -802,6 +858,7 @@ public class JobWindowController {
         			e.printStackTrace();
         		}
         		ScriptNodes.add(new ScriptNode(script.getName(), explanationString));
+        		ScriptNodesOrig.add(new ScriptNode(script.getName(), explanationString));
         		listScripts.add(script.getName());
         	}
         }
@@ -929,6 +986,11 @@ public class JobWindowController {
        		    	}
 
        		    	analysisGrid.getChildren().clear();
+//       		    	analysisGrid.setStyle("-fx-border-style: solid inside;"+
+//                            "-fx-border-width: 2;" +
+//                            "-fx-border-insets: 5;" +
+//                            "-fx-border-radius: 5;" +
+//                            "-fx-border-color: blue;");
        		    	//Input分だけボックスを作る
        		    	int num_item = 0;
        		    	for(InputItem item : listInputItems) {
@@ -990,8 +1052,14 @@ public class JobWindowController {
            		    	    	System.out.println(((Button)event.getSource()).getId());
            		    		}
            		    	);
+           		    	//StackPane cellPane = new StackPane();
+           		    	//cellPane.setStyle("border-bottom-color: blue;");
+           		    	//cellPane.getChildren().add(b);
            		    	analysisGrid.add(b, 1, num_item-1);
            		    	Label tempLabel = new Label(item.desc);
+           		    	Tooltip tooltip = new Tooltip();
+           		    	tooltip.setText(item.desc);
+       		    		tempLabel.setTooltip(tooltip);
            		    	analysisGrid.add(tempLabel, 2, num_item-1);
            		    	TextField t = new TextField();
            		    	t.setId(finaltempprefix+item.id);
@@ -1010,14 +1078,41 @@ public class JobWindowController {
        		    		tempLabel.setId("txt.optdesc."+item.id);
        		    		tempLabel.setTooltip(shorttooltip);
            		    	analysisGrid.add(tempLabel, 1, num_item+ num_opt-1);
-           		    	TextArea tempArea = new TextArea(item.longdesc);
-           		    	tempArea.setEditable(false);
-           		    	tempArea.setTooltip(tooltip);
-           		    	analysisGrid.add(tempArea, 2, num_item+ num_opt-1);
+           		    	//TextArea tempArea = new TextArea(item.longdesc);
+           		    	//tempArea.setEditable(false);
+           		    	//tempArea.setTooltip(tooltip);
+           		    	//analysisGrid.add(tempArea, 2, num_item+ num_opt-1);
            		    	TextField t = new TextField(item.defaultopt);
            		    	t.setId("txt.opt."+item.id);
-           		    	t.setTooltip(tooltip);
-           		    	analysisGrid.add(t, 3, num_item+ num_opt-1);
+           		    	if(item.longdesc.compareTo("")!=0) {
+           		    		t.setTooltip(tooltip);
+           		    	}
+           		    	analysisGrid.add(t, 2, num_item+ num_opt-1, 2,1);
+           		    	if(item.longdesc.compareTo("")!=0) {
+           		    		Button b1 = new Button();
+           		    		b1.setText("?");
+           		    		b1.setOnAction(
+           		    				(ActionEvent event)->{
+
+           		    					// 新しいウインドウを生成
+           		    					Stage newStage = new Stage();
+           		    					// モーダルウインドウに設定
+           		    					//newStage.initModality(Modality.APPLICATION_MODAL);
+           		    					// オーナーを設定
+           		    					newStage.initOwner(bp.getScene().getWindow());
+           		    					newStage.setTitle(item.desc);
+
+           		    					// 新しいウインドウ内に配置するコンテンツを生成
+           		    					TextArea helpTextArea = new TextArea(item.longdesc);
+
+           		    					newStage.setScene(new Scene(helpTextArea));
+
+           		    					// 新しいウインドウを表示
+           		    					newStage.show();
+           		    				}
+           		    				);
+           		    		analysisGrid.add(b1, 4, num_item+ num_opt-1);
+           		    	}
        		    	}
        		    }
        		}
@@ -1188,59 +1283,123 @@ public class JobWindowController {
         preset.selectedToggleProperty().addListener(new ChangeListener<Toggle>() {
         	@Override
         	public void changed(ObservableValue<? extends Toggle> ov, Toggle oldToggle, Toggle newToggle) {
-        		System.out.println(((RadioButton) newToggle).getText());
+        		//System.out.println(((RadioButton) newToggle).getText());
         		String mode = ((RadioButton) newToggle).getText();
+
+        		Map<String, String> tempSettingtMap = new LinkedHashMap<String,  String>();
+                tempSettingtMap.put("hostname",hostname.getText());
+                tempSettingtMap.put("port",port.getText());
+                tempSettingtMap.put("user",user.getText());
+                tempSettingtMap.put("password",password.getText());
+                tempSettingtMap.put("privatekey",privatekey.getText());
+                tempSettingtMap.put("workfolder",workfolder.getText());
+                tempSettingtMap.put("imagefolder",imagefolder.getText());
+                tempSettingtMap.put("changed","T");
+                settings.put(((RadioButton) oldToggle).getText(), tempSettingtMap);
+
         		hostname.setDisable(false);
         		port.setDisable(false);
 				password.setDisable(false);
 				privatekey.setDisable(false);
 				user.setDisable(false);
 				password.setDisable(false);
-        		switch(mode) {
-        			case "direct":
-        				hostname.setText("");
-        				port.setText("22");
-        				break;
-        			case "direct (SGE)":
-        				hostname.setText("");
-        				port.setText("22");
-        				break;
-        			case "ddbj":
-        				hostname.setText("gw.ddbj.nig.ac.jp");
-        				port.setText("22");
-        				password.setDisable(true);
-        				password.setText("");
-        				break;
-        			case "shirokane":
-        				hostname.setText("slogin.hgc.jp");
-        				port.setText("22");
-        				password.setDisable(true);
-        				password.setText("");
-        				break;
-        			case "WSL":
-        				hostname.setDisable(true);
-        				hostname.setText("");
-        				port.setDisable(true);
-        				port.setText("");
-        				privatekey.setDisable(true);
-        				privatekey.setText("");
-        				break;
-        			case "Mac":
-        				hostname.setDisable(true);
-        				hostname.setText("");
-        				port.setDisable(true);
-        				port.setText("");
-        				privatekey.setDisable(true);
-        				privatekey.setText("");
-        				user.setDisable(true);
-        				user.setText("");
-        				password.setDisable(true);
-        				password.setText("");
-        				break;
-        			default:
-        				System.out.println("no preset value");
-        		}
+				imagefolder.setDisable(false);
 
+				if(settings.get(mode).get("changed").compareTo("T")==0) {
+					hostname.setText(settings.get(mode).get("hostname"));
+					port.setText(settings.get(mode).get("port"));
+					user.setText(settings.get(mode).get("user"));
+					password.setText(settings.get(mode).get("password"));
+					privatekey.setText(settings.get(mode).get("privatekey"));
+					workfolder.setText(settings.get(mode).get("workfolder"));
+					imagefolder.setText(settings.get(mode).get("imagefolder"));
+					switch(mode) {
+					case "ddbj":
+						password.setDisable(true);
+						password.setText("");
+						break;
+					case "shirokane":
+						password.setDisable(true);
+						password.setText("");
+						break;
+					case "WSL":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						imagefolder.setDisable(true);
+						imagefolder.setText("");
+						break;
+					case "Mac":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						user.setDisable(true);
+						user.setText("");
+						password.setDisable(true);
+						password.setText("");
+						imagefolder.setDisable(true);
+						imagefolder.setText("");
+						break;
+					default:
+						System.out.println("no preset value");
+					}
+
+				}else {
+					switch(mode) {
+					case "direct":
+						hostname.setText("");
+						port.setText("22");
+						break;
+					case "direct (SGE)":
+						hostname.setText("");
+						port.setText("22");
+						break;
+					case "ddbj":
+						hostname.setText("gw.ddbj.nig.ac.jp");
+						port.setText("22");
+						password.setDisable(true);
+						password.setText("");
+						break;
+					case "shirokane":
+						hostname.setText("slogin.hgc.jp");
+						port.setText("22");
+						password.setDisable(true);
+						password.setText("");
+						break;
+					case "WSL":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						imagefolder.setDisable(true);
+						imagefolder.setText("");
+						break;
+					case "Mac":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						user.setDisable(true);
+						user.setText("");
+						password.setDisable(true);
+						password.setText("");
+						imagefolder.setDisable(true);
+						imagefolder.setText("");
+						break;
+					default:
+						System.out.println("no preset value");
+					}
+				}
         	}
 		});
     }

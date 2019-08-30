@@ -23,7 +23,7 @@ export IM_GATK="quay.io/biocontainers/gatk4:4.1.0.0--0"
 export IM_TRINITY="quay.io/biocontainers/trinity:2.8.4--py36pl526h447964c_0"
 export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
 
-source $(dirname `readlink -f $0`)/common.sh
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail

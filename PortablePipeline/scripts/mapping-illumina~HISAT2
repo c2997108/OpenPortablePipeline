@@ -23,7 +23,7 @@ export IM_PRINSEQ="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-
 export IM_HISAT2="quay.io/biocontainers/hisat2:2.1.0--py27h6bb024c_3"
 export IM_SAMTOOLS="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0"
 
-source $(dirname `readlink -f $0`)/common.sh
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail

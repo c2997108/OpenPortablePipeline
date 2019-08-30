@@ -15,7 +15,7 @@ runcmd="$0 -c #opt_c# -m #opt_m# #input_1#"
 export IM_JELLYFISH="quay.io/biocontainers/jellyfish:2.2.10--h2d50403_0"
 export IM_R="c2997108/centos6:2"
 
-source $(dirname `readlink -f $0`)/common.sh
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eu
 set -o pipefail

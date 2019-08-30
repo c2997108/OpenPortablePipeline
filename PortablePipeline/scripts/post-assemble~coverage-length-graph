@@ -19,7 +19,7 @@ export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_BWA="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 
-source $(dirname `readlink -f $0`)/common.sh
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail
