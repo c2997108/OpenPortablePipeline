@@ -84,10 +84,11 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 - javaの引数には-Xmx1Gなどを必ず指定すること。指定が無いとマシンの半分くらいのメモリ？を確保しようとしてこける。
 
 ### Mac用
-- dockerを/usr/local/binにインストールし、Homebrewでcoreutilsを/usr/local/opt/coreutils/libexec/gnubinにインストールする必要あり。
-  coreutilsが無いと、readlink等が意図したように動いてくれない。=>一部対策済み
+- dockerを/usr/local/binにインストールし、Homebrewでcoreutils, gnu-sedを/usr/local/xxx/gnubinにインストールする必要あり。
+  coreutils, gnu-sedが無いと、readlink, sed等が意図したように動いてくれない。=>一部対策済み
 - Macにもともと入っているawkは二次元配列に非対応
 - sedは-iオプションが違うのと、\(aa\|bb\)のような記述には非対応
+- dockerで2つ以上のimageを並列ダウンロードすると仮想PCがメモリを異常に使用して固まる
 
 ### WSL用
 - wslコマンドで起動したら、Ubuntuがデフォルトになるようにインストールしておく必要あり。
