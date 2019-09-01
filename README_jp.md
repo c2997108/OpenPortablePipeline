@@ -85,7 +85,9 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 
 ### Mac用
 - dockerを/usr/local/binにインストールし、Homebrewでcoreutilsを/usr/local/opt/coreutils/libexec/gnubinにインストールする必要あり。
-  coreutilsが無いと、readlink等が意図したように動いてくれない。
+  coreutilsが無いと、readlink等が意図したように動いてくれない。=>一部対策済み
+- Macにもともと入っているawkは二次元配列に非対応
+- sedは-iオプションが違うのと、\(aa\|bb\)のような記述には非対応
 
 ### WSL用
 - wslコマンドで起動したら、Ubuntuがデフォルトになるようにインストールしておく必要あり。
