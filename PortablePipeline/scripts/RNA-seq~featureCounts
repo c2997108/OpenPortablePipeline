@@ -26,7 +26,7 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$i
 
 DO_FC featureCounts $opt_f -T $N_CPU -a "$input_2" -o count.txt "$input_1"/*.bam
 
-awk -F'\t' '$3=="gene" || $3=="transcript"{print $0}' "$input_2"|grep "gene_id "|grep "; gene_name "|sed 's/.*gene_id "//; s/".*; gene_name "/\t/; s/".*//' |
+awk -F'\t' '$3=="gene" || $3=="transcript"{print $0}' "$input_2"|grep "gene_id "|grep "; *gene_name "|sed 's/.*gene_id "//; s/".*; *gene_name "/\t/; s/".*//' |
  awk -F'\t' '
   BEGIN{OFS="\t"; name["Geneid"]="name"}
   FILENAME==ARGV[1]{name[$1]=$2}

@@ -38,7 +38,7 @@
                   </AnchorPane>
             </content>
           </Tab>
-          <Tab text="Analysis Scripts">
+          <Tab fx:id="tabAnalysis" text="Analysis Scripts">
             <content>
               <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
                      <children>
@@ -85,7 +85,7 @@
                   </AnchorPane>
             </content>
           </Tab>
-            <Tab text="Settings">
+            <Tab fx:id="tabSettings" text="Settings">
               <content>
                 <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
                      <children>
@@ -143,7 +143,7 @@
                                     <RadioButton mnemonicParsing="false" text="Mac" toggleGroup="$preset" />
                                  </children>
                               </HBox>
-                              <Button fx:id="savesetting" mnemonicParsing="false" onAction="#onButtonSave" text="Save" GridPane.columnIndex="3" GridPane.rowIndex="12" />
+                              <Button fx:id="savesetting" mnemonicParsing="false" onAction="#onButtonSave" text="Save" visible="false" GridPane.columnIndex="3" GridPane.rowIndex="12" />
                               <Label text="Work folder (absolute or relative path in the server)" GridPane.columnIndex="2" GridPane.rowIndex="5" />
                               <TextField fx:id="workfolder" GridPane.columnIndex="3" GridPane.rowIndex="5" />
                               <Label text="Singularity image folder (absolute path in the server)" GridPane.columnIndex="2" GridPane.rowIndex="6" />

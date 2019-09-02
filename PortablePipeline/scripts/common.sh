@@ -67,41 +67,50 @@ DIR_WORK="`readlink -f "$DIR_WORK" || echo $DIR_WORK`"
 DIR_CUR="$PWD"
 if [ `echo "$DIR_IMG"|grep " "|wc -l` = 1 -o `echo "$DIR_WORK"|grep " "|wc -l` = 1 -o `echo "$DIR_CUR"|grep " "|wc -l` = 1 ]; then
  echo Current, Work and Image directory should not contain space character in absolute path;
+ echo 1 > $workdir/fin_status;
  exit 1;
 fi
 DIR_SRC="$(dirname "`readlink -f "$0" || echo "$0"`")"
 
-if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
- echo using docker;
- CON="$CON_DOCKER";
-elif [ `$CHECK_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
- echo using singularity;
- CON="$CON_SING""$DIR_IMG/";
- cd "$DIR_WORK";
- SCRIPT0=""
+cd "$DIR_WORK";
+SCRIPT0=""
+SCRIPT1=$(echo `eval "cat $0 $SCRIPT0"|sed 's/[ \t'"'"']/\n/g'|grep '^"$scriptdir"/'|sort|uniq`)
+while [ "$SCRIPT0" != "$SCRIPT1" ]; do
+ SCRIPT0="$SCRIPT1"
+ echo "script: $0 $SCRIPT0"
  SCRIPT1=$(echo `eval "cat $0 $SCRIPT0"|sed 's/[ \t'"'"']/\n/g'|grep '^"$scriptdir"/'|sort|uniq`)
- while [ "$SCRIPT0" != "$SCRIPT1" ]; do
-  SCRIPT0="$SCRIPT1"
-  echo "script: $0 $SCRIPT0"
-  SCRIPT1=$(echo `eval "cat $0 $SCRIPT0"|sed 's/[ \t'"'"']/\n/g'|grep '^"$scriptdir"/'|sort|uniq`)
- done
+done
 
 IMS=$((eval "cat $0 $SCRIPT0"|grep "^export IM_"|cut -f 2 -d =|sed 's/"//g';
        set |grep ^IM_|cut -f 2 -d =)|sort|uniq)
 echo $IMS
 
+if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
+ echo using docker;
+ CON="$CON_DOCKER";
+
+ for i in $IMS; do
+  set -ex
+  docker pull $i
+  set +ex
+ done
+elif [ `$CHECK_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
+ echo using singularity;
+ CON="$CON_SING""$DIR_IMG/";
+
  for i in $IMS; do
   if [ ! -e "$DIR_IMG"/$i ]; then
-   set -e
+   set -ex
    singularity pull --name "`basename $i`" docker://$i;
    mkdir -p "$DIR_IMG/`dirname $i`";
    mv "`basename $i`" "$DIR_IMG/`dirname $i`";
-   set +e
+   set +ex
   fi
  done
  cd "$DIR_CUR";
 else
  echo docker or singularity should be installed;
+ echo 1 > $workdir/fin_status;
  exit 1;
 fi
 
@@ -237,6 +246,12 @@ export IM_CENTOS6=centos:centos6
 begintrap
 container_setup
 parallel_setup
+
+#for MacOS
+if [ `uname|awk '{print tolower($0)}'` = "darwin" ]; then
+ export PATH=$(dirname `find /usr/local/|grep /gnu|grep /readlink$|head -n 1`):$PATH
+ export PATH=$(dirname `find /usr/local/|grep /gnu|grep /sed$|head -n 1`):$PATH
+fi
 
 post_processing(){
  if [ "$N_SCRIPT" = 1 ]; then

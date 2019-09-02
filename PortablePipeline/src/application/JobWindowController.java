@@ -104,6 +104,9 @@ public class JobWindowController {
     private ListView<String> joblog;
 
     @FXML
+    private Tab tabAnalysis;
+
+    @FXML
     private ListView<ScriptNode> scriptlist;
 
     @FXML
@@ -114,6 +117,9 @@ public class JobWindowController {
 
     @FXML
     private Button buttonRun;
+
+    @FXML
+    private Tab tabSettings;
 
     @FXML
     private TextField hostname;
@@ -736,6 +742,57 @@ public class JobWindowController {
         savedOutputFolder = ppSetting.get("outputfolder");
         selectedPreset = ppSetting.get("preset");
 
+		switch(selectedPreset) {
+		case "direct":
+			break;
+		case "direct (SGE)":
+			break;
+		case "ddbj":
+			password.setDisable(true);
+			password.setText("");
+			break;
+		case "shirokane":
+			password.setDisable(true);
+			password.setText("");
+			break;
+		case "WSL":
+			hostname.setDisable(true);
+			hostname.setText("");
+			port.setDisable(true);
+			port.setText("");
+			privatekey.setDisable(true);
+			privatekey.setText("");
+			imagefolder.setDisable(true);
+			imagefolder.setText("");
+			workfolder.setDisable(true);
+			workfolder.setText("");
+			break;
+		case "Mac":
+			hostname.setDisable(true);
+			hostname.setText("");
+			port.setDisable(true);
+			port.setText("");
+			privatekey.setDisable(true);
+			privatekey.setText("");
+			user.setDisable(true);
+			user.setText("");
+			password.setDisable(true);
+			password.setText("");
+			imagefolder.setDisable(true);
+			imagefolder.setText("");
+			workfolder.setDisable(true);
+			workfolder.setText("");
+			break;
+		default:
+			System.out.println("no preset value");
+		}
+
+		tabPane.getSelectionModel().selectedItemProperty().addListener((ov, oldTab, newTab) ->{
+			//System.out.println(oldTab.getText()+"; "+ newTab.getText());
+			if(oldTab.getText().compareTo("Settings")==0) {
+				onButtonSave(null);
+			}
+		});
 
         joblog.setItems(listRecords);
 
@@ -1304,6 +1361,7 @@ public class JobWindowController {
 				user.setDisable(false);
 				password.setDisable(false);
 				imagefolder.setDisable(false);
+				workfolder.setDisable(false);
 
 				if(settings.get(mode).get("changed").compareTo("T")==0) {
 					hostname.setText(settings.get(mode).get("hostname"));
@@ -1314,6 +1372,10 @@ public class JobWindowController {
 					workfolder.setText(settings.get(mode).get("workfolder"));
 					imagefolder.setText(settings.get(mode).get("imagefolder"));
 					switch(mode) {
+					case "direct":
+						break;
+					case "direct (SGE)":
+						break;
 					case "ddbj":
 						password.setDisable(true);
 						password.setText("");
@@ -1331,6 +1393,8 @@ public class JobWindowController {
 						privatekey.setText("");
 						imagefolder.setDisable(true);
 						imagefolder.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
 						break;
 					case "Mac":
 						hostname.setDisable(true);
@@ -1345,6 +1409,8 @@ public class JobWindowController {
 						password.setText("");
 						imagefolder.setDisable(true);
 						imagefolder.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
 						break;
 					default:
 						System.out.println("no preset value");
@@ -1355,22 +1421,30 @@ public class JobWindowController {
 					case "direct":
 						hostname.setText("");
 						port.setText("22");
+						workfolder.setText("work");
+						imagefolder.setText("~/img");
 						break;
 					case "direct (SGE)":
 						hostname.setText("");
 						port.setText("22");
+						workfolder.setText("work");
+						imagefolder.setText("~/img");
 						break;
 					case "ddbj":
 						hostname.setText("gw.ddbj.nig.ac.jp");
 						port.setText("22");
 						password.setDisable(true);
 						password.setText("");
+						workfolder.setText("work");
+						imagefolder.setText("~/img");
 						break;
 					case "shirokane":
 						hostname.setText("slogin.hgc.jp");
 						port.setText("22");
 						password.setDisable(true);
 						password.setText("");
+						workfolder.setText("work");
+						imagefolder.setText("~/img");
 						break;
 					case "WSL":
 						hostname.setDisable(true);
@@ -1381,6 +1455,8 @@ public class JobWindowController {
 						privatekey.setText("");
 						imagefolder.setDisable(true);
 						imagefolder.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
 						break;
 					case "Mac":
 						hostname.setDisable(true);
@@ -1395,6 +1471,8 @@ public class JobWindowController {
 						password.setText("");
 						imagefolder.setDisable(true);
 						imagefolder.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
 						break;
 					default:
 						System.out.println("no preset value");

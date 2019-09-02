@@ -58,7 +58,8 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$i
 if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_3"; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
 if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
  temp_3=`echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
- DO_BASE gff3ToGenePred "$input_3" /dev/stdout | DO_BASE genePredToGtf file stdin "$temp_3"
+ #DO_BASE gff3ToGenePred "$input_3" /dev/stdout | DO_BASE genePredToGtf file stdin "$temp_3"
+ bash "$scriptdir"/convert~gff3_to_gtf "$input_3"
  input_3="$temp_3"
 fi
 
@@ -102,24 +103,24 @@ WAITPARALLEL
 rm -f output.prinseq/*_singletons.fastq
 r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
 
-mkdir -p output.unsorted.bam
+mkdir -p output.unsorted_bam
 (for i in $r1; do
  if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i"'|'$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted.bam/`basename "$i"`.bam
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i"'|'$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted_bam/`basename "$i"`.bam
 done)|DOPARALLEL
 
 WAITPARALLEL
 
 rm -rf output.prinseq
 
-mkdir -p output.sorted.bam
+mkdir -p output.sorted_bam
 MEMM=`echo ${N_MEM}|awk -v N_CPU=$N_CPU '{print int($1/1024/N_CPU*0.8)}'`
-(for i in output.unsorted.bam/*.bam; do
- echo $ENV_SAMTOOLS samtools sort -m ${MEMM}M -@ $N_CPU -o output.sorted.bam/`basename $i` $i";" $ENV_SAMTOOLS samtools index output.sorted.bam/`basename $i`
+(for i in output.unsorted_bam/*.bam; do
+ echo $ENV_SAMTOOLS samtools sort -m ${MEMM}M -@ $N_CPU -o output.sorted_bam/`basename $i` $i";" $ENV_SAMTOOLS samtools index output.sorted_bam/`basename $i`
 done)|DOPARALLEL
 
 WAITPARALLEL

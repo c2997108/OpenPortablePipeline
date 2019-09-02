@@ -38,25 +38,25 @@ else
  exit 1
 fi
 
-sed 's/\r//' "$table" > "$table.temp"
+#sed 's/\r//' "$table" > "$table.temp"
 
 DO_BLAST makeblastdb -in "$db" -dbtype $dbtype $opt_d
 
 output="`basename $db`.`basename $query`.$opt_p"
 
 if [ "$table" = "" ];then
- DO_BLAST $opt_p -db "$db" -query "$query" $opt_b > "$output"
+ DO_BLAST $opt_p -db "$db" -query "$query" -num_threads $N_CPU $opt_b > "$output"
 else
- bash "$scriptdir"/preprocessing~extract-only-specific-entries-in-FASTA "$query" "$table.temp"
+ bash "$scriptdir"/preprocessing~extract-only-specific-entries-in-FASTA "$query" "$table" #$table.temp will be created
  newquery="`basename ${query%.*}`.`basename ${table%.*}`.fasta"
- DO_BLAST $opt_p -db "$db" -query "$newquery" $opt_b > "$output"
+ DO_BLAST $opt_p -db "$db" -query "$newquery" -num_threads $N_CPU $opt_b > "$output"
  awk -F'\t' '
   FILENAME==ARGV[1]{if(data[$1]==""){data[$1]=$2; evalue[$1]=$11}}
   FILENAME==ARGV[2]{if($0~"^>"){split($0,arr,"[ \t]"); desc[substr(arr[1],2)]=substr($0,2)}}
   FILENAME==ARGV[3]{if(FNR==1){print $0"\tTop Hit ("ARGV[1]")\te-value"}else{print $0"\t"desc[data[$1]]"\t"evalue[$1]}}
- ' "$output" "$db" "$table.temp" > "$table"."$opt_p".txt
+ ' "$output" "$db" "$table.temp" > `basename "$table"`."$opt_p".txt
 
- DO_EXCEL java -Xmx1G -jar /usr/local/bin/excel2.jar "$table"."$opt_p".txt "$table"."$opt_p".xlsx
+ DO_EXCEL java -Xmx1G -jar /usr/local/bin/excel2.jar `basename "$table"`."$opt_p".txt `basename "$table"`."$opt_p".xlsx
 fi
 
 post_processing
