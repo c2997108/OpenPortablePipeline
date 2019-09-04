@@ -89,10 +89,13 @@ if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
  echo using docker;
  CON="$CON_DOCKER";
 
+ TEMPDOCIMG=`docker images|awk '{print $1":"$2}'|tail -n+2`
  for i in $IMS; do
-  set -ex
-  docker pull $i
-  set +ex
+  if [ `echo "$TEMPDOCIMG"|grep "^$i$"|wc -l` = 0 ]; then
+   set -ex
+   docker pull $i
+   set +ex
+  fi
  done
 elif [ `$CHECK_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
  echo using singularity;
