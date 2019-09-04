@@ -537,7 +537,7 @@ public class JobWindowController {
                     		String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
                     		wslcurDir = wslcurDir.replaceAll("\\\\", "/");
                     		filewriter.write("powershell.exe start-process bash -Wait -ArgumentList '-c \\\"cd "+wslcurDir+"; echo "+password.getText()+"|sudo -S bash WSL-install.sh\\\"'\r\n");
-                    		filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep \\\" is running\\\"|wc -l` = 0 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
+                    		filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
                     		filewriter.write("powershell.exe start-sleep -s 3\r\n");
                     		filewriter.write("powershell.exe start-process bash -ArgumentList '-c \\\"echo Do not close this window.; bash wrapper2.sh\\\"'\r\n");
 
