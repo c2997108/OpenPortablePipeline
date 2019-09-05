@@ -455,7 +455,7 @@ public class JobWindowController {
                             			}
                             			c.put(fileName, workdir+"/"+fileid);
                             		}else {
-                                		System.out.println("copying...  "+fileName);
+                                		System.out.println("creating hard link...  "+fileName);
                             			try {
                             				new File(resultdir+"/"+fileid).mkdirs();
                             			}catch(Exception e2) {
@@ -1546,11 +1546,16 @@ public class JobWindowController {
     		}
     	}else {
     		try {
-    			Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
-    		} catch (IOException e1) {
-    			// TODO 自動生成された catch ブロック
-    			e1.printStackTrace();
-    		}
+    			Files.createLink(Paths.get(link+"/"+Paths.get(target).getFileName()), Paths.get(target).toAbsolutePath());
+    		}catch (Exception e) {
+    			System.err.println(e.getMessage());
+        		try {
+        			Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
+        		} catch (IOException e1) {
+        			// TODO 自動生成された catch ブロック
+        			e1.printStackTrace();
+        		}
+			}
 
         }
     }
