@@ -1,7 +1,7 @@
 #!/bin/bash
 
 explanation='
-Fast, Parallel k-mer Counting for genome size estimation
+test tool 2
 '
 inputdef='
 input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
