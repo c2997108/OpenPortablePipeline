@@ -1577,9 +1577,9 @@ public class JobWindowController {
 
         //Iterate through list of folder content
         for (ChannelSftp.LsEntry item : fileAndFolderList) {
-
+        	//System.out.println( channelSftp.stat(channelSftp.realpath(sourcePath + "/" + item.getFilename())).isDir());
             if (!item.getAttrs().isDir()) { // Check if it is a file (not a directory).
-            	System.out.println("download information... "+sourcePath + "/" + item.getFilename());
+        		System.out.println("download information... "+sourcePath + "/" + item.getFilename());
             	//System.out.println("sftp size:  "+item.getAttrs().getSize());
             	//System.out.println("local size: "+new File(destinationPath + "/" + item.getFilename()).length());
                 if (!(new File(destinationPath + "/" + item.getFilename())).exists()
@@ -1587,8 +1587,15 @@ public class JobWindowController {
                         || (item.getAttrs().getSize() > new File(destinationPath + "/" + item.getFilename()).length()) ) { // Download only if changed later.
 
                 	System.out.println("downloading... "+sourcePath + "/" + item.getFilename());
-                    channelSftp.get(sourcePath + "/" + item.getFilename(),
+                	//System.out.println( channelSftp.realpath(sourcePath + "/" + item.getFilename()));
+                	if(!channelSftp.stat(channelSftp.realpath(sourcePath + "/" + item.getFilename())).isDir()) { //for symbolic link
+                        channelSftp.get(channelSftp.realpath(sourcePath + "/" + item.getFilename()),
                             destinationPath + "/" + item.getFilename()); // Download file from source (source filename, destination filename).
+                	}else {
+                		new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.
+                        recursiveFolderDownload(sourcePath + "/" + item.getFilename(),
+                                destinationPath + "/" + item.getFilename(), channelSftp); // Enter found folder on server to read its contents and create locally.
+                    }
                 }
             } else if (!(".".equals(item.getFilename()) || "..".equals(item.getFilename()))) {
                 new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.

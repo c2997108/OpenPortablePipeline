@@ -87,7 +87,7 @@ END{if(length(data)>0){print searchLCA(data)"\t"oldstr}}
 ' $j.blast.filtered.name > $j.blast.filtered.name.lca
 
 awk -F'\t' '{cnt[$1]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' $j.blast.filtered.name.lca > $j.blast.filtered.name.lca.cnt
-awk -F'\t' '{print "root;"$0}' $j.blast.filtered.name.lca.cnt > $j.blast.filtered.name.lca.cnt2
+awk -F'\t' '{print $0}' $j.blast.filtered.name.lca.cnt > $j.blast.filtered.name.lca.cnt2
 cnt=`awk -F'\t' '{a+=$2} END{if(a==""){a=0}; print a}' $j.blast.filtered.name.lca.cnt`
 echo -e "No Hit\t"`expr $n0 - $cnt` >> $j.blast.filtered.name.lca.cnt2
 awk -F'\t' '
