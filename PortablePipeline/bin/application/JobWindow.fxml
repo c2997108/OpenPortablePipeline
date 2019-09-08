@@ -19,19 +19,19 @@
 <?import javafx.scene.layout.RowConstraints?>
 
 <BorderPane fx:id="bp" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="application.JobWindowController">
-   <top>
-      <TabPane fx:id="tabPane" prefHeight="587.0" prefWidth="957.0" tabClosingPolicy="UNAVAILABLE" BorderPane.alignment="CENTER">
+   <center>
+      <TabPane fx:id="tabPane" maxHeight="1200.0" maxWidth="2000.0" tabClosingPolicy="UNAVAILABLE" BorderPane.alignment="CENTER">
         <tabs>
           <Tab fx:id="tabJobList" text="Job List">
             <content>
-              <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
+              <AnchorPane>
                      <children>
-                        <BorderPane layoutX="172.0" layoutY="60.0" prefHeight="558.0" prefWidth="957.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                        <BorderPane layoutX="172.0" layoutY="60.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                            <top>
                               <ListView fx:id="joblist" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER" />
                            </top>
                            <center>
-                              <ListView fx:id="joblog" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER" />
+                              <ListView fx:id="joblog" BorderPane.alignment="CENTER" />
                            </center>
                         </BorderPane>
                      </children>
@@ -40,16 +40,16 @@
           </Tab>
           <Tab fx:id="tabAnalysis" text="Analysis Scripts">
             <content>
-              <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="180.0" prefWidth="200.0">
+              <AnchorPane>
                      <children>
-                        <BorderPane layoutX="337.0" layoutY="157.0" prefHeight="558.0" prefWidth="957.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                        <BorderPane layoutX="337.0" layoutY="157.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
                            <center>
-                              <BorderPane prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+                              <BorderPane BorderPane.alignment="CENTER">
                                  <bottom>
                                     <Button fx:id="buttonRun" mnemonicParsing="false" onAction="#onButtonRun" text="Run" BorderPane.alignment="CENTER" />
                                  </bottom>
                                  <center>
-                                    <ScrollPane fx:id="analysisScrollPane" prefHeight="200.0" prefWidth="200.0" BorderPane.alignment="CENTER">
+                                    <ScrollPane fx:id="analysisScrollPane" prefWidth="200.0" BorderPane.alignment="CENTER">
                                        <content>
                                           <GridPane fx:id="analysisGrid">
                                             <columnConstraints>
@@ -156,5 +156,5 @@
             </Tab>
         </tabs>
       </TabPane>
-   </top>
+   </center>
 </BorderPane>
