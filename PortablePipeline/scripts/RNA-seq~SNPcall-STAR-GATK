@@ -1,0 +1,260 @@
+#!/bin/bash
+
+explanation='
+GATK SNP call pipeline from RNA-seq data
+'
+inputdef='
+input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:option:STAR index [optional]:Genome,SA,SAindex,chrLength.txt,chrName.txt,chrNameLength.txt,chrStart.txt,genomeParameters.txt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_p:prinseq option:-trim_tail_right 5 -trim_qual_right 20 -ns_max_p 20 -min_len 30 -trim_qual_window 5
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -p #opt_p# #input_1# #input_2# #input_3#"
+
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_PRINSEQ="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
+export IM_GATK3="c2997108/biocontainers:gatk-3.8--7"
+export IM_STAR="quay.io/biocontainers/star:2.7.2b--0"
+export IM_PICARD="quay.io/biocontainers/picard:2.18.27--0"
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' ||true`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' ||true`"
+
+if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+r2gz=$(for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 $r2gz > /dev/null
+
+#decompress input files
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_2"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+
+#prepare FASTA index
+ref="$input_2"
+refbase=`echo $ref|sed 's/[.]\(fa\|fasta\)$//'`
+DO_SAMTOOLS samtools faidx $ref
+if [ ! -e $refbase.dict ];then
+ DO_PICARD picard CreateSequenceDictionary R=$ref O=$refbase.dict
+fi
+
+mkdir -p $ref.dir
+if [ "$input_3" = "" ];then
+ DO_STAR STAR --runMode genomeGenerate --genomeDir $ref.dir --genomeFastaFiles $ref  --runThreadN $N_CPU
+fi
+
+
+mkdir -p output.prinseq
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i`
+ j2=`basename $j`
+ echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
+done
+for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i .gz`
+ j2=`basename $j .gz`
+ echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+done)|DOPARALLELONE
+
+WAITPARALLEL
+
+rm -f output.prinseq/*_singletons.fastq
+r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' ||true`"
+
+cat << 'EOF' > run-STAR.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+ r1="$1"
+ ref="$2"
+ N_CPU=$3
+ if [ `echo $r1|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+  r2=`echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$/_2.f\1q\2/'`;
+  outbase=$(basename `echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ else
+  r2=`echo $r1|sed 's/_R1/_R2/'`
+  outbase=$(basename `echo $r1|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ fi
+
+ echo "analyzing : "$r1 $r2
+ mkdir -p $r1.dir/1pass
+ if [ `echo $r1|grep ".gz$"|wc -l||true` = 1 ]; then
+  optCmd="--readFilesCommand zcat"
+ else
+  optCmd=""
+ fi
+ STAR --genomeDir $ref.dir $optCmd --readFilesIn $r1 $r2 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/1pass/
+ mkdir -p $r1.dir/2pass-ref
+ STAR --runMode genomeGenerate --genomeDir $r1.dir/2pass-ref --genomeFastaFiles $ref --sjdbFileChrStartEnd $r1.dir/1pass/SJ.out.tab --sjdbOverhang 75 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/2pass-ref/
+ mkdir -p $r1.dir/2pass
+ STAR --genomeDir $r1.dir/2pass-ref $optCmd --readFilesIn $r1 $r2 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/2pass/
+ rm -rf $r1.dir/1pass $r1.dir/2pass-ref
+EOF
+
+cat << 'EOF' > run-STAR-only1pass.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+ r1="$1"
+ refdir="$2"
+ N_CPU=$3
+ if [ `echo $r1|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+  r2=`echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$/_2.f\1q\2/'`;
+  outbase=$(basename `echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ else
+  r2=`echo $r1|sed 's/_R1/_R2/'`
+  outbase=$(basename `echo $r1|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ fi
+
+ echo "analyzing : "$r1 $r2
+ if [ `echo $r1|grep ".gz$"|wc -l||true` = 1 ]; then
+  optCmd="--readFilesCommand zcat"
+ else
+  optCmd=""
+ fi
+ mkdir -p $r1.dir/2pass
+ STAR --genomeDir "$refdir" $optCmd --readFilesIn $r1 $r2 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/2pass/
+EOF
+
+cat << 'EOF' > run-picard.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+ r1="$1"
+ N_CPU=$2
+ N_MEM_M=$3
+ if [ `echo $r1|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+  r2=`echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$/_2.f\1q\2/'`;
+  outbase=$(basename `echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ else
+  r2=`echo $r1|sed 's/_R1/_R2/'`
+  outbase=$(basename `echo $r1|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ fi
+
+ picard -Xmx${N_MEM_M}M AddOrReplaceReadGroups I=$r1.dir/2pass/Aligned.out.sam O=$r1.dir/2pass/rg_added_sorted.bam SO=coordinate RGID=$outbase RGLB=library RGPL=Illumina RGPU=Illumina RGSM=$outbase
+ picard -Xmx${N_MEM_M}M MarkDuplicates I=$r1.dir/2pass/rg_added_sorted.bam O=$r1.dir/2pass/dedupped.bam  CREATE_INDEX=true VALIDATION_STRINGENCY=SILENT M=$r1.dir/2pass/output.metrics
+EOF
+
+cat << 'EOF' > run-GATK.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+ r1="$1"
+ ref="$2"
+ N_CPU=$3
+ N_MEM_M=$4
+ if [ `echo $r1|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+  r2=`echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$/_2.f\1q\2/'`;
+  outbase=$(basename `echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ else
+  r2=`echo $r1|sed 's/_R1/_R2/'`
+  outbase=$(basename `echo $r1|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ fi
+
+ gatk3 -Xmx${N_MEM_M}M -T SplitNCigarReads -R $ref -I $r1.dir/2pass/dedupped.bam -o output.STAR/$outbase.bam -rf ReassignOneMappingQuality -RMQF 255 -RMQT 60 -U ALLOW_N_CIGAR_READS
+ rm -rf $r1.dir
+EOF
+
+mkdir -p output.STAR
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+  outbase=$(basename `echo $i|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+  outbase=$(basename `echo $i|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
+ fi
+ if [ "$input_3" = "" ];then
+  echo "($ENV_STAR bash ./run-STAR.sh $i $ref $N_CPU && $ENV_PICARD bash ./run-picard.sh $i $N_CPU $N_MEM_M && $ENV_GATK3 bash ./run-GATK.sh $i $ref $N_CPU $N_MEM_M) > log.`basename $i` 2>&1"
+ else
+  echo "($ENV_STAR bash ./run-STAR-only1pass.sh $i $input_3 $N_CPU && $ENV_PICARD bash ./run-picard.sh $i $N_CPU $N_MEM_M && $ENV_GATK3 bash ./run-GATK.sh $i $ref $N_CPU $N_MEM_M) > log.`basename $i` 2>&1"
+ fi
+
+
+done)|DOPARALLEL
+
+WAITPARALLEL
+
+
+I=""
+for i in output.STAR/*.bam; do
+ I=$I" -I $i";
+done
+DO_GATK3 gatk3 -Xmx${N_MEM_M}M -T HaplotypeCaller -R $ref $I -dontUseSoftClippedBases -stand_call_conf 20.0 -o output.vcf -nct 8
+
+cat output.vcf |grep -v "^##"|awk -F'\t' '
+ {ORS="\t"; print $1"\t"$2"\t"$4"\t"$5"\t"$6"\t"$8;
+  for(i=10;i<=NF;i++){split($i,arr,":"); if(NR==1){print $i}else{if(arr[4]>=10){print arr[1]}else{print "./."}}}; ORS="\n"; print ""
+ }'|sed 's/\t$//'|awk -F'\t' '{n=0;for(i=7;i<=NF;i++){if($i=="./."){n++}}; if(n<NF-6){print $0}}' > output.tsv
+if [ `cat output.tsv|wc -l` -lt 1000000 ]; then
+ DO_BASE java -jar /usr/local/bin/excel2.jar output.tsv output.xlsx
+fi
+
+grep -v "[.]/[.]" output.tsv |awk -F'\t' '
+ NR==1{ORS="\t"; print $1":"$2":"$3":"$4; for(i=7;i<=NF;i++){print $i}; ORS="\n"; print ""}
+ NR>1{ORS="\t"; print $1":"$2":"$3":"$4; for(i=7;i<=NF;i++){split($i,arr2,"/"); if(arr2[1]>1){arr2[1]=1}; if(arr2[2]>1){arr2[2]=1}; print arr2[1]+arr2[2]}; ORS="\n"; print ""}
+'|sed 's/\t$//' > output.nonNA.txt
+cut -f 2- output.nonNA.txt > output.nonNA.tsv
+
+w=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)/10<8){print 8}else{print (NF-6)/10}}'`
+h=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)/10<8){print 4}else{print (NF-6)/20}}'`
+
+echo "a=read.table('output.nonNA.tsv',sep='\t',header=T)
+c=cor(a); for(i in 1:ncol(c)){c[is.na(c[,i]),i]=0}; result=hclust(as.dist(1-c),'ave')
+pdf('sample-relation.pdf',width=$w, height=$h, pointsize=2)
+plot(result)
+dev.off()" > make-sample-relation.R
+
+DO_R R --vanilla < make-sample-relation.R
+
+
+
+
+post_processing
+
+
+
+#<option detail>
+#</option detail>
+

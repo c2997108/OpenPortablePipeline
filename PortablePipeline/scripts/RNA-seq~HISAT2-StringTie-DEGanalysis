@@ -52,14 +52,14 @@ if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder
 
 
 r2=$(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
   echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
  else
   echo $i|sed 's/_R1/_R2/'
  fi
 done)
 r2gz=$(for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
   echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
  else
   echo $i|sed 's/_R1/_R2/'
@@ -88,7 +88,7 @@ fi
 
 mkdir -p output.prinseq
 (for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
  else
   j=`echo $i|sed 's/_R1/_R2/'`
@@ -98,7 +98,7 @@ mkdir -p output.prinseq
  echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
 done
 for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
  else
   j=`echo $i|sed 's/_R1/_R2/'`
@@ -114,7 +114,7 @@ rm -f output.prinseq/*_singletons.fastq
 r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
 
 (for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
  else
   j=`echo $i|sed 's/_R1/_R2/'`

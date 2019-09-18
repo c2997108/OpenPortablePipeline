@@ -127,7 +127,18 @@ for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="$CON"$(e
 }
 
 parallel_setup(){
- if [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
+ #RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\n#$ -l mem_req=N_MEM_GG,s_vmem=N_MEM_GG\nsource ~/.bashrc\necho "$*"\neval "$*"'`
+ #RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\nsource ~/.bashrc\necho "$*"\neval "$*"'`
+ if [ -v RUNPARALLEL ]; then
+  echo "$RUNPARALLEL"|sed 's/N_CPU/'$N_CPU'/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > $workdir/qsub.sh
+  echo "$RUNPARALLEL"|sed 's/N_CPU/1/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > $workdir/qsubone.sh
+  cp $workdir/qsub.sh "$workdir"/wrapper.sh
+  chmod 755 $workdir/qsub.sh $workdir/qsubone.sh
+  alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
+  alias DOPARALLEL='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
+ elif [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
   grep "^#" "$workdir"/wrapper.sh > $workdir/qsub.sh
   grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > $workdir/qsubone.sh
   echo "#$ -pe def_slot 1" >> $workdir/qsubone.sh
@@ -240,6 +251,13 @@ elif [ "$N_MEM" = "" -a "$N_MEM2" != "" ];then
 elif [ "$N_MEM" != "" -a "$N_MEM2" != "" ];then
  if [ "$N_MEM2" -lt "$N_MEM" ]; then N_MEM=$N_MEM2; fi
 fi
+N_MEM_K=`awk -v a=$N_MEM -v b=0.8 'BEGIN {print int(a*b)}'`
+N_MEM_M=`expr $N_MEM_K / 1024`
+N_MEM_G=`expr $N_MEM_M / 1024`
+N_MEM_K1=`expr $N_MEM_K / $N_CPU`
+N_MEM_M1=`expr $N_MEM_M / $N_CPU`
+N_MEM_G1=`expr $N_MEM_G / $N_CPU`
+
 N_SCRIPT=`expr ${N_SCRIPT:-0} + 1`
 export N_SCRIPT
 

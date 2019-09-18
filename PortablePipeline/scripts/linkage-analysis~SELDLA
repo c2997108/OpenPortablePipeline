@@ -11,7 +11,7 @@ input_3::family information:*.txt
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):64
-opt_b:SELDLA option:
+opt_b:SELDLA option:--mode=crossbreed --DP=1 -r 10000 --cs=2
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2# #input_3#"
 
@@ -32,9 +32,6 @@ post_processing
 
 #<option detail>
 #<opt_b>
-no input fasta
-no input vcf
-no input family
 SELDLA ver2.0.7
       --DP=VALUE             DP_threshold [1]
       --GQ=VALUE             GQ_threshold [0]
@@ -68,6 +65,9 @@ SELDLA ver2.0.7
                                other when comparing LD at the clustering step [
                                0.4]
   -h, --help                 show help.
+
+for RAD-seq:    --GQ=20 -r 100 --DP=5 --cs=3 --mode=duploid
+for crossbreed: --GQ=0 -r 10000 --DP=1 --cs=2 --mode=crossbreed
 #</opt_b>
 #</option detail>
 

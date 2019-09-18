@@ -522,12 +522,22 @@ public class JobWindowController {
                         	filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
                         	filewriter.write("echo $! > save_pid.txt\n");
                         	cmdString = "cd "+workdir+"; bash wrapper.sh";
-                    	}else if(selectedPreset.equals("shirokane") || selectedPreset.equals("ddbj") || selectedPreset.equals("direct (SGE)")) {
+                    	}else if(selectedPreset.equals("shirokane") || selectedPreset.equals("ddbj")) {
                         	filewriter.write("#!/bin/bash\n");
                         	filewriter.write("#$ -S /bin/bash\n");
                         	filewriter.write("#$ -cwd\n");
                         	filewriter.write("#$ -pe def_slot "+numCPU+"\n");
                         	filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G,s_vmem="+Double.valueOf(numMEM)/Double.valueOf(numCPU)+"G\n");
+                        	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+                        	filewriter.write("source ~/.bashrc\n");
+                        	filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
+                        	cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
+                    	}else if(selectedPreset.equals("direct (SGE)")) {
+                        	filewriter.write("#!/bin/bash\n");
+                        	filewriter.write("#$ -S /bin/bash\n");
+                        	filewriter.write("#$ -cwd\n");
+                        	filewriter.write("#$ -pe def_slot "+numCPU+"\n");
+                        	filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G\n");
                         	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
                         	filewriter.write("source ~/.bashrc\n");
                         	filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
