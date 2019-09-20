@@ -1,0 +1,337 @@
+#!/bin/bash
+
+explanation='
+make manhattan plot
+'
+inputdef='
+input_1::genotype vcf:*.vcf,*.vcf.gz
+input_2::phenotype information:*.txt
+input_3::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_q:GQ threshold:20
+opt_d:DP threshold:5
+opt_p:p-value threshold to draw:1
+opt_a:draw all chromosome [yes|no]:yes
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -p #opt_p# -a #opt_a# #input_1# #input_2# #input_3#"
+
+export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_5-kegg_4"
+export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
+
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_1"; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_3"; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+
+vcf="$input_1"
+phenotype="$input_2"
+ref="$input_3"
+gq=$opt_q
+dp=$opt_d
+pval=$opt_p
+corax=$opt_a
+
+th_snp=0.4
+additional_chr=1000
+
+set +o pipefail
+pos_dp=`grep -v "^##" $vcf|head -n 2|tail -n 1|awk -F'\t' '{split($9,arr,":"); for(i in arr){if(arr[i]=="DP"){print i}}}'`
+pos_gq=`grep -v "^##" $vcf|head -n 2|tail -n 1|awk -F'\t' '{split($9,arr,":"); for(i in arr){if(arr[i]=="GQ"){print i}}}'`
+set +o pipefail
+
+ln -sf $ref `basename $vcf`.`basename $ref`
+ref=`basename $vcf`.`basename $ref`
+DO_SAMTOOLS samtools faidx $ref
+sort -k2,2nr -t$'\t' $ref.fai |awk '{print $1"\t"NR"\t"$2"\t0\t0\t0\t0\t2"}' > $ref.fai.axis
+
+grep -v "^##" $vcf |awk -F'\t' '
+BEGIN{gq='$gq'; pos_gq="'$pos_gq'"+0; dp='$dp'; pos_dp="'$pos_dp'"+0}
+NR==1{print $0}
+NR>1 && $5!~","{
+ ORS="\t";
+ for(i=1;i<=9;i++){print $i};
+ for(i=10;i<=NF;i++){
+  split($i,arr,":");
+  if((pos_gq==0 || arr[pos_gq]+0>=gq) && (pos_dp==0 || arr[pos_dp]+0>=dp)){
+   if(arr[1]=="0/0"||arr[1]=="0|0"){print 0}else if(arr[1]=="0/1"||arr[1]=="0|1"||arr[1]=="1|0"){print 1}else if(arr[1]=="1/1"||arr[1]=="1|1"){print 2}else{print -1}
+  }else{print -1}
+ };
+ ORS="\n"; print ""
+}'|sed 's/\t$//' |awk -F'\t' 'NR==1{print $0} NR>1{cnt=0; for(i=10;i<=NF;i++){if($i==-1){cnt++}}; if(cnt<(NF-9)*(1-'$th_snp')){print $0}}' > $vcf.GQ$gq.DP$dp.rm$th_snp
+
+runRmanhattan(){
+filename=$1
+echo "library(qqman)
+a=read.table('$filename')
+a[,3]=a[,3]-a[,4]
+a[,5]=a[,5]-a[,6]
+ax=read.table('$ref.fai.axis')
+ax2=read.table('$filename.axis')
+myfisher=function(row){contab=matrix(as.integer(row),nrow=2,byrow=F); pval=fisher.test(contab)\$p.value; return(pval)}
+a[,7]=apply(a[,3:6],1,'myfisher')
+#for(i in 1:dim(a)[1]){b=fisher.test(matrix(as.numeric(a[i,3:6]), ncol=2)); a[i,7]=b\$p.value}
+#a[,7]=p.adjust(a[,7], method="BH") #Benjamini-Hochberg FDR
+colnames(a)[1]='CHR'
+colnames(a)[2]='BP'
+colnames(a)[7]='P'
+write.table(a[order(a[,7]),],'$filename.fisher',quote=F,sep='\\t',row.names=F)
+b=a[-log10(a[,7])>=$pval,]
+if('$corax'=='yes'){
+ tempax=ax
+}else{
+ tempax=ax2
+}
+colnames(tempax)[2]='CHR'
+colnames(tempax)[3]='BP'
+colnames(tempax)[4]='V3'
+colnames(tempax)[5]='V4'
+colnames(tempax)[6]='V5'
+colnames(tempax)[7]='V6'
+colnames(tempax)[8]='P'
+b=rbind(b,tempax[,2:8])
+library(Cairo)
+CairoPNG('$filename.png', width=2000, height=1000)
+manhattan(b, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
+dev.off()" | DO_R R --vanilla < /dev/stdin
+
+(echo -e "p-value\tmatch rate\tCHROM\tPOS\tthe number of sample 1 individuals\tthe number of sample 1 positive individuals\tthe number of sample 2 individuals\tthe number of sample 2 positive individu
+als\t"|tr -d '\n';
+ grep -v "^##" $vcf| head -n 1;
+ awk -F'\t' 'FILENAME==ARGV[1]{p[$1":"$2]=$7} FILENAME==ARGV[2]{print $0"\t"p[$1":"$2]}' $filename.fisher $filename|
+  awk -F'\t' 'FILENAME==ARGV[1]{p[FNR]=$7} FILENAME==ARGV[2]{print p[FNR]"\t"$0}' /dev/stdin `echo $filename|sed 's/2$//'`
+)|sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g' > $filename.fisher.txt;
+cat $filename.fisher.txt|sort -k1,1g|awk 'NR==1{print $0} $1<=1e-05 && $2>0.5{print $0}' > $filename.fisher.1e-05.txt
+
+}
+
+#obs="male"
+for obs in `cut -f 2 $phenotype|sort|uniq|sed '/^$/d'`; do
+
+(awk -F'\t' '
+BEGIN{obs="'$obs'"}
+FILENAME==ARGV[1]{pheno[$1]=$2}
+FILENAME==ARGV[2]{
+ if(FNR==1){
+  for(i=10;i<=NF;i++){if(pheno[$i]==obs){id["ph1"]=id["ph1"]","i}else if(pheno[$i]!=""){id["ph2"]=id["ph2"]","i}};
+  split(id["ph1"],ph1,","); split(id["ph2"],ph2,",")
+ }else{
+  nph1=0; aph1=0; nph2=0; aph2=0;
+  for(i=2;i<=length(ph1);i++){if($ph1[i]==-1){nph1++}else{aph1++}};
+  for(i=2;i<=length(ph2);i++){if($ph2[i]==-1){nph2++}else{aph2++}};
+  print aph1/(aph1+nph1)*nph2/(aph2+nph2)"\t"$1"\t"$2"\t"aph1+nph1"\t"aph1"\t"aph2+nph2"\t"aph2"\t"$0
+ }
+}' $phenotype $vcf.GQ$gq.DP$dp.rm$th_snp|sort -k1,1nr > $vcf.GQ$gq.DP$dp.rm$th_snp.sp.$obs
+#cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.sp.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|sed 's/^'$chrname'//'|awk -F'\t' '
+# BEGIN{n='$additional_chr'} {if($1~"^[0-9]+$"){print $0}else{if(cnt[$1]==0){n++; cnt[$1]=n}; $1=cnt[$1]; OFS="\t"; print $0}}
+#'|sort -k1,1V -k2,2n > $vcf.GQ$gq.DP$dp.rm$th_snp.sp.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.sp.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{id[$1]=$2; len[$1]=$3}
+ FILENAME==ARGV[2]{$1=id[$1]; OFS="\t"; print $0}
+' $ref.fai.axis /dev/stdin > $vcf.GQ$gq.DP$dp.rm$th_snp.sp.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.sp.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{flag[$1]=1}
+ FILENAME==ARGV[2]{if(flag[$1]==1){print $0}}
+' /dev/stdin $ref.fai.axis > $vcf.GQ$gq.DP$dp.rm$th_snp.sp.${obs}2.axis
+
+
+runRmanhattan $vcf.GQ$gq.DP$dp.rm$th_snp.sp.${obs}2
+) &
+
+(awk -F'\t' '
+BEGIN{obs="'$obs'"}
+FILENAME==ARGV[1]{pheno[$1]=$2}
+FILENAME==ARGV[2]{
+ if(FNR==1){
+  for(i=10;i<=NF;i++){if(pheno[$i]==obs){id["ph1"]=id["ph1"]","i}else if(pheno[$i]!=""){id["ph2"]=id["ph2"]","i}};
+  split(id["ph1"],ph1,","); split(id["ph2"],ph2,",")
+ }else{
+  nph1=0; aph1=0; nph2=0; aph2=0; delete dph1; delete dph2;
+  for(i=2;i<=length(ph1);i++){dph1[$ph1[i]]++};
+  for(i=2;i<=length(ph2);i++){dph2[$ph2[i]]++};
+  if(dph1[0]>=dph1[2]){homo=0}else{homo=2};
+  if(dph1[homo]+dph1[1]==0 || dph2[homo]+dph2[1]==0){rate=0}else{rate=dph1[homo]/(dph1[homo]+dph1[1])*dph2[1]/(dph2[homo]+dph2[1])};
+  print rate"\t"$1"\t"$2"\t"dph1[homo]+dph1[1]"\t"dph1[homo]"\t"dph2[homo]+dph2[1]"\t"dph2[homo]"\t"$0
+ }
+}' $phenotype $vcf.GQ$gq.DP$dp.rm$th_snp|sort -k1,1nr > $vcf.GQ$gq.DP$dp.rm$th_snp.homo.$obs
+#cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.homo.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|sed 's/^'$chrname'//'|awk -F'\t' '
+# BEGIN{n='$additional_chr'} {if($1~"^[0-9]+$"){print $0}else{if(cnt[$1]==0){n++; cnt[$1]=n}; $1=cnt[$1]; OFS="\t"; print $0}}
+#'|sort -k1,1V -k2,2n > $vcf.GQ$gq.DP$dp.rm$th_snp.homo.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.homo.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{id[$1]=$2; len[$1]=$3}
+ FILENAME==ARGV[2]{$1=id[$1]; OFS="\t"; print $0}
+' $ref.fai.axis /dev/stdin > $vcf.GQ$gq.DP$dp.rm$th_snp.homo.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.homo.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{flag[$1]=1}
+ FILENAME==ARGV[2]{if(flag[$1]==1){print $0}}
+' /dev/stdin $ref.fai.axis > $vcf.GQ$gq.DP$dp.rm$th_snp.homo.${obs}2.axis
+
+runRmanhattan $vcf.GQ$gq.DP$dp.rm$th_snp.homo.${obs}2
+) &
+
+(awk -F'\t' '
+BEGIN{obs="'$obs'"}
+FILENAME==ARGV[1]{pheno[$1]=$2}
+FILENAME==ARGV[2]{
+ if(FNR==1){
+  for(i=10;i<=NF;i++){if(pheno[$i]==obs){id["ph1"]=id["ph1"]","i}else if(pheno[$i]!=""){id["ph2"]=id["ph2"]","i}};
+  split(id["ph1"],ph1,","); split(id["ph2"],ph2,",")
+ }else{
+  nph1=0; aph1=0; nph2=0; aph2=0; delete dph1; delete dph2;
+  for(i=2;i<=length(ph1);i++){dph1[$ph1[i]]++};
+  for(i=2;i<=length(ph2);i++){dph2[$ph2[i]]++};
+  if(dph2[0]>=dph2[2]){homo=0}else{homo=2};
+  if(dph1[homo]+dph1[1]==0 || dph2[homo]+dph2[1]==0){rate=0}else{rate=dph1[1]/(dph1[homo]+dph1[1])*dph2[homo]/(dph2[homo]+dph2[1])};
+  print rate"\t"$1"\t"$2"\t"dph1[homo]+dph1[1]"\t"dph1[1]"\t"dph2[homo]+dph2[1]"\t"dph2[1]"\t"$0
+ }
+}' $phenotype $vcf.GQ$gq.DP$dp.rm$th_snp|sort -k1,1nr > $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.$obs
+#cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|sed 's/^'$chrname'//'|awk -F'\t' '
+# BEGIN{n='$additional_chr'} {if($1~"^[0-9]+$"){print $0}else{if(cnt[$1]==0){n++; cnt[$1]=n}; $1=cnt[$1]; OFS="\t"; print $0}}
+#'|sort -k1,1V -k2,2n > $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{id[$1]=$2; len[$1]=$3}
+ FILENAME==ARGV[2]{$1=id[$1]; OFS="\t"; print $0}
+' $ref.fai.axis /dev/stdin > $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{flag[$1]=1}
+ FILENAME==ARGV[2]{if(flag[$1]==1){print $0}}
+' /dev/stdin $ref.fai.axis > $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.${obs}2.axis
+
+runRmanhattan $vcf.GQ$gq.DP$dp.rm$th_snp.hetero.${obs}2
+) &
+
+(class="hetero-homoalt";
+awk -F'\t' '
+BEGIN{obs="'$obs'"}
+FILENAME==ARGV[1]{pheno[$1]=$2}
+FILENAME==ARGV[2]{
+ if(FNR==1){
+  for(i=10;i<=NF;i++){if(pheno[$i]==obs){id["ph1"]=id["ph1"]","i}else if(pheno[$i]!=""){id["ph2"]=id["ph2"]","i}};
+  split(id["ph1"],ph1,","); split(id["ph2"],ph2,",")
+ }else{
+  nph1=0; aph1=0; nph2=0; aph2=0; delete dph1; delete dph2;
+  for(i=2;i<=length(ph1);i++){dph1[$ph1[i]]++};
+  for(i=2;i<=length(ph2);i++){dph2[$ph2[i]]++};
+  tot1=dph1[0]+dph1[1]+dph1[2];
+  tot2=dph2[0]+dph2[1]+dph2[2];
+  pos1=dph1[1]+dph1[2];
+  pos2=dph2[1]+dph2[2];
+  neg2=dph2[0];
+  if(tot1==0 || tot2==0){rate=0}else{rate=pos1/tot1*neg2/tot2};
+  print rate"\t"$1"\t"$2"\t"tot1"\t"pos1"\t"tot2"\t"pos2"\t"$0
+ }
+}' $phenotype $vcf.GQ$gq.DP$dp.rm$th_snp|sort -k1,1nr > $vcf.GQ$gq.DP$dp.rm$th_snp.$class.$obs
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.$class.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{id[$1]=$2; len[$1]=$3}
+ FILENAME==ARGV[2]{$1=id[$1]; OFS="\t"; print $0}
+' $ref.fai.axis /dev/stdin > $vcf.GQ$gq.DP$dp.rm$th_snp.$class.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.$class.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{flag[$1]=1}
+ FILENAME==ARGV[2]{if(flag[$1]==1){print $0}}
+' /dev/stdin $ref.fai.axis > $vcf.GQ$gq.DP$dp.rm$th_snp.$class.${obs}2.axis
+
+runRmanhattan $vcf.GQ$gq.DP$dp.rm$th_snp.$class.${obs}2
+) &
+
+(class="hetero-homoref";
+awk -F'\t' '
+BEGIN{obs="'$obs'"}
+FILENAME==ARGV[1]{pheno[$1]=$2}
+FILENAME==ARGV[2]{
+ if(FNR==1){
+  for(i=10;i<=NF;i++){if(pheno[$i]==obs){id["ph1"]=id["ph1"]","i}else if(pheno[$i]!=""){id["ph2"]=id["ph2"]","i}};
+  split(id["ph1"],ph1,","); split(id["ph2"],ph2,",")
+ }else{
+  nph1=0; aph1=0; nph2=0; aph2=0; delete dph1; delete dph2;
+  for(i=2;i<=length(ph1);i++){dph1[$ph1[i]]++};
+  for(i=2;i<=length(ph2);i++){dph2[$ph2[i]]++};
+  tot1=dph1[0]+dph1[1]+dph1[2];
+  tot2=dph2[0]+dph2[1]+dph2[2];
+  pos1=dph1[1]+dph1[0];
+  pos2=dph2[1]+dph2[0];
+  neg2=dph2[2];
+  if(tot1==0 || tot2==0){rate=0}else{rate=pos1/tot1*neg2/tot2};
+  print rate"\t"$1"\t"$2"\t"tot1"\t"pos1"\t"tot2"\t"pos2"\t"$0
+ }
+}' $phenotype $vcf.GQ$gq.DP$dp.rm$th_snp|sort -k1,1nr > $vcf.GQ$gq.DP$dp.rm$th_snp.$class.$obs
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.$class.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{id[$1]=$2; len[$1]=$3}
+ FILENAME==ARGV[2]{$1=id[$1]; OFS="\t"; print $0}
+' $ref.fai.axis /dev/stdin > $vcf.GQ$gq.DP$dp.rm$th_snp.$class.${obs}2
+cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.$class.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{flag[$1]=1}
+ FILENAME==ARGV[2]{if(flag[$1]==1){print $0}}
+' /dev/stdin $ref.fai.axis > $vcf.GQ$gq.DP$dp.rm$th_snp.$class.${obs}2.axis
+
+runRmanhattan $vcf.GQ$gq.DP$dp.rm$th_snp.$class.${obs}2
+) &
+
+done
+
+wait
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+post_processing
+
+#<option detail>
+#<opt_b>
+SELDLA ver2.0.7
+      --DP=VALUE             DP_threshold [1]
+      --GQ=VALUE             GQ_threshold [0]
+  -p, --hqsnp=VALUE          high quality SNP rate [0.3]
+  -b, --bal=VALUE            0 / 1 balance [0.1]
+      --NonZeroSampleRate=VALUE
+                             exclude ambiquous SNP (0-1) [0.3]
+      --NonZeroPhaseRate=VALUE
+                             exclude ambiquous Phase (0-1) [0.3]
+      --ldnum=VALUE          the minimum number of same LD [1]
+  -s, --exmatch=VALUE        extension match rate [0.7]
+  -v, --spmatch=VALUE        split match rate [0.7]
+  -l, --clmatch=VALUE        cluster match rate [0.8]
+      --cs=VALUE             cluster size [2]
+      --nl=VALUE             near SNP match rate [0.9]
+  -r=VALUE                   the region to merge near SNP (bp) [10000]
+  -o, --output=VALUE         output prefix [seldla]
+      --vcf=VALUE            input VCF file <required>
+      --fasta=VALUE          input FASTA file <required>
+      --family=VALUE         input family file <required>
+      --noNewVcf             no converted vcf output with new position
+      --precleaned=VALUE     pre-calculated cleaned vcf file (if this option is
+                               used, input vcf is not used.)
+      --mode=VALUE           analysis mode (crossbreed, haploid, duploid) [
+                               crossbreed]
+      --MaxLdClusterOnly     use max size LD cluster only
+      --RateOfNotNASNP=VALUE threshold of the ratio that is not NA with each
+                               other when comparing SNP at the clustering step [
+                               0.2]
+      --RateOfNotNALD=VALUE  threshold of the ratio that is not NA with each
+                               other when comparing LD at the clustering step [
+                               0.4]
+  -h, --help                 show help.
+
+for RAD-seq:    --GQ=20 -r 100 --DP=5 --cs=3 --mode=duploid
+for crossbreed: --GQ=0 -r 10000 --DP=1 --cs=2 --mode=crossbreed
+#</opt_b>
+#</option detail>
+

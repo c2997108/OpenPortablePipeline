@@ -4,7 +4,7 @@ explanation='
 HISAT2 is a fast and sensitive alignment program for mapping next-generation sequencing reads (both DNA and RNA) to a population of human genomes (as well as to a single reference genome).
 '
 inputdef='
-input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_1:directory:paired-end or single-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2:option:reference genome file (reference genome or index is needed):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
 input_3:option:reference gene model file (gtf or gff3) [optional]:*.gtf,*.gff,*.gff3,*.gtf.gz,*.gff.gz,*.gff3.gz
 input_4:option directory:reference index file [optional]  (reference genome or index is needed):*.ht2
@@ -30,10 +30,13 @@ set -o pipefail
 
 if [ "$input_2$input_4" = "" ]; then echo reference genome or index is needed; post_processing; fi
 
-r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
-r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true`"
 
-if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+rs="`find $input_1/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$' || true`"
+rsgz="`find $input_1/ |egrep '[.]f(ast|)q[.]gz$'|egrep -v '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true`"
+
+if [ "$r1$r1gz$rs$rsgz" = "" ]; then echo Place FASTQ files in this folder; post_processing; fi
 
 r2=$(for i in $r1; do
  if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
@@ -95,13 +98,23 @@ for i in $r1gz; do
  fi
  i2=`basename $i .gz`
  j2=`basename $j .gz`
- echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
-done)|DOPARALLELONE
+ echo $ENV_BASE zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+done
+for i in $rs; do
+ i2=`basename $i`
+ echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}.fastq output.prinseq/$i2
+done
+for i in $rsgz; do
+ i2=`basename $i .gz`
+ echo $ENV_BASE zcat $i ">" $i2";" echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}.fastq output.prinseq/$i2";"rm -f $i2
+done
+)|DOPARALLELONE
 
 WAITPARALLEL
 
-rm -f output.prinseq/*_singletons.fastq
-r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+rm -f output.prinseq/*_singletons.fastq || true
+r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true`"
+rs="`find output.prinseq/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$' || true`"
 
 mkdir -p output.unsorted_bam
 (for i in $r1; do
@@ -111,6 +124,9 @@ mkdir -p output.unsorted_bam
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
  echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i"'|'$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted_bam/`basename "$i"`.bam
+done
+for i in $rs; do
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -U "$i" --rg-id $i --rg "SM:$i"'|'$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted_bam/`basename "$i"`.bam
 done)|DOPARALLEL
 
 WAITPARALLEL
