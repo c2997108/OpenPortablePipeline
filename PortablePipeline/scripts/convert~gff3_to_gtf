@@ -22,7 +22,7 @@ set -o pipefail
 
 #decompress input files
 if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then
- DO_BASE gzip -d "$input_1";
+ DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`;
  input_1=`echo "$input_1"|sed 's/[.]gz$//'`;
 fi
 

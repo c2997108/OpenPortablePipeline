@@ -55,7 +55,7 @@ echo "#Check paired-end"
 ls $r2 $r2gz > /dev/null
 
 #decompress input files
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_2"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 
 #prepare FASTA index
 ref="$input_2"

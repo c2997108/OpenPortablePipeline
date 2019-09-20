@@ -28,8 +28,8 @@ set -eux
 set -o pipefail
 
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_1"; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_3"; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
 
 vcf="$input_1"
 phenotype="$input_2"

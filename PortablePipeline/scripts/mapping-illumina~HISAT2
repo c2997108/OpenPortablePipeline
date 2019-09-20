@@ -57,8 +57,8 @@ echo "#Check paired-end"
 ls $r2 $r2gz > /dev/null
 
 #decompress input files
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_2"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_3"; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
 if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
  temp_3=`echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
  #DO_BASE gff3ToGenePred "$input_3" /dev/stdout | DO_BASE genePredToGtf file stdin "$temp_3"
@@ -106,7 +106,7 @@ for i in $rs; do
 done
 for i in $rsgz; do
  i2=`basename $i .gz`
- echo $ENV_BASE zcat $i ">" $i2";" echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}.fastq output.prinseq/$i2";"rm -f $i2
+ echo $ENV_BASE zcat $i ">" $i2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}.fastq output.prinseq/$i2";"rm -f $i2
 done
 )|DOPARALLELONE
 

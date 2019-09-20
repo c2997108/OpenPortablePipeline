@@ -30,7 +30,7 @@ set -eux
 set -o pipefail
 
 
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -d "$input_2"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 refbase=`echo "$input_2"|sed 's/[.]\(fa\|fasta\|fsa\|fna\)$//'`
 if [ -e "$refbase".dict ]; then DO_PICARD rm -f "$refbase".dict; fi
 DO_PICARD picard CreateSequenceDictionary R="$input_2" O="$refbase".dict
