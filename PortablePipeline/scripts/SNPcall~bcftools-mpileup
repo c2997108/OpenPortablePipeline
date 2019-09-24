@@ -30,7 +30,7 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$
 DO_SAMTOOLS samtools faidx "$input_2"
 ref="$input_2"
 
-DO_BCF bcftools mpileup -Ou $opt_g -f "${ref}" "$input_1"/*.bam | bcftools call $opt_b -o output.vcf
+DO_BCF bcftools mpileup -Ou $opt_g -f "${ref}" "$input_1"/*.bam | DO_BCF bcftools call $opt_b -o output.vcf
 
 
 post_processing
