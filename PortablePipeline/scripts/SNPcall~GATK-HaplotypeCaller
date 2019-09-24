@@ -35,7 +35,7 @@ DO_SAMTOOLS samtools faidx "$input_2"
 ref="$input_2"
 I=""
 for i in "$input_1"/*.bam; do
- I="-I $i"
+ I="$I -I $i"
 done
 DO_GATK gatk --java-options "-Xmx${N_MEM_G}g" HaplotypeCaller $opt_g $I -R $ref -O output.vcf
 
