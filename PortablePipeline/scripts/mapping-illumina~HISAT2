@@ -33,8 +33,8 @@ if [ "$input_2$input_4" = "" ]; then echo reference genome or index is needed; p
 r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true`"
 r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true`"
 
-rs="`find $input_1/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$' || true`"
-rsgz="`find $input_1/ |egrep '[.]f(ast|)q[.]gz$'|egrep -v '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true`"
+rs="`find $input_1/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$'|egrep -v '(_R2.*|_2)[.]f(ast|)q$' || true`"
+rsgz="`find $input_1/ |egrep '[.]f(ast|)q[.]gz$'|egrep -v '(_R1.*|_1)[.]f(ast|)q[.]gz$'|egrep -v '(_R2.*|_2)[.]f(ast|)q[.]gz$' || true`"
 
 if [ "$r1$r1gz$rs$rsgz" = "" ]; then echo Place FASTQ files in this folder; post_processing; fi
 
@@ -114,7 +114,7 @@ WAITPARALLEL
 
 rm -f output.prinseq/*_singletons.fastq || true
 r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true`"
-rs="`find output.prinseq/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$' || true`"
+rs="`find output.prinseq/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$'|egrep -v '(_R2.*|_2)[.]f(ast|)q$' || true`"
 
 mkdir -p output.unsorted_bam
 (for i in $r1; do

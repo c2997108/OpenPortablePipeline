@@ -26,7 +26,7 @@ if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then
  input_1=`echo "$input_1"|sed 's/[.]gz$//'`;
 fi
 
-awk -F'\t' '{OFS="\t"; gsub(/%../,"_",$9); gsub(/[^0-9a-zA-Z_;=-]/,"_",$9); print $0}' "$input_1"|
+awk -F'\t' '{OFS="\t"; gsub(/%../,"_",$9); gsub(/[^0-9a-zA-Z_;=.-]/,"_",$9); print $0}' "$input_1"|
  awk -F'\t' '{
   split($9,arr,";"); str=""; for(i=1;i<=length(arr);i++){if(arr[i]!~"^[_0-9]"){if(str==""){str=arr[i]}else{str=str";"arr[i]}}};
   $9=str; OFS="\t"; print $0

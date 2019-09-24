@@ -102,10 +102,10 @@ EOS
 sed -i 's%/replaced/to/ref%'"$input_2"'.mod.fasta%' run-gz.sh
 sed 's/zcat/cat/g' run-gz.sh > run.sh
 
-(for i in `find $input_1/|egrep "[.]f(ast|)q$"`; do
+(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
  echo $ENV_BLAST bash run.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
 done
-for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"`; do
+for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
  echo $ENV_BLAST bash run-gz.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
 done)|DOPARALLEL
 

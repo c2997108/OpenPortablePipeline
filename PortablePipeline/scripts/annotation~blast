@@ -4,8 +4,8 @@ explanation='
 add blast annotation
 '
 inputdef='
-input_1::query (FASTA file):*.fasta,*.fa,*.fsa,*.fna,*.faa
-input_2::database (FASTA file):*.fasta,*.fa,*.fsa,*.fna,*.faa
+input_1::query (FASTA file):*.fasta,*.fa,*.fsa,*.fna,*.faa,*.fasta.gz,*.fa.gz,*.fsa.gz,*.fna.gz,*.faa.gz
+input_2::database (FASTA file):*.fasta,*.fa,*.fsa,*.fna,*.faa,*.fasta.gz,*.fa.gz,*.fsa.gz,*.fna.gz,*.faa.gz
 input_3:option:Gene expression file to be annotated (optional):*.txt,*.tsv
 '
 optiondef='
@@ -24,6 +24,9 @@ source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_EXCEL gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_EXCEL gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 
 query="$input_1"
 db="$input_2"
