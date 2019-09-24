@@ -6,7 +6,7 @@ GATK SNP call pipeline from RNA-seq data
 inputdef='
 input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_3:option:STAR index [optional]:Genome,SA,SAindex,chrLength.txt,chrName.txt,chrNameLength.txt,chrStart.txt,genomeParameters.txt
+input_3:option directory:STAR index [optional]:Genome,SA,SAindex,chrLength.txt,chrName.txt,chrNameLength.txt,chrStart.txt,genomeParameters.txt
 '
 optiondef='
 opt_c:cpu threads:8
@@ -223,32 +223,7 @@ for i in output.STAR/*.bam; do
 done
 DO_GATK3 gatk3 -Xmx${N_MEM_M}M -T HaplotypeCaller -R $ref $I -dontUseSoftClippedBases -stand_call_conf 20.0 -o output.vcf -nct 8
 
-cat output.vcf |grep -v "^##"|awk -F'\t' '
- {ORS="\t"; print $1"\t"$2"\t"$4"\t"$5"\t"$6"\t"$8;
-  for(i=10;i<=NF;i++){split($i,arr,":"); if(NR==1){print $i}else{if(arr[4]>=10){print arr[1]}else{print "./."}}}; ORS="\n"; print ""
- }'|sed 's/\t$//'|awk -F'\t' '{n=0;for(i=7;i<=NF;i++){if($i=="./."){n++}}; if(n<NF-6){print $0}}' > output.tsv
-if [ `cat output.tsv|wc -l` -lt 1000000 ]; then
- DO_BASE java -jar /usr/local/bin/excel2.jar output.tsv output.xlsx
-fi
-
-grep -v "[.]/[.]" output.tsv |awk -F'\t' '
- NR==1{ORS="\t"; print $1":"$2":"$3":"$4; for(i=7;i<=NF;i++){print $i}; ORS="\n"; print ""}
- NR>1{ORS="\t"; print $1":"$2":"$3":"$4; for(i=7;i<=NF;i++){split($i,arr2,"/"); if(arr2[1]>1){arr2[1]=1}; if(arr2[2]>1){arr2[2]=1}; print arr2[1]+arr2[2]}; ORS="\n"; print ""}
-'|sed 's/\t$//' > output.nonNA.txt
-cut -f 2- output.nonNA.txt > output.nonNA.tsv
-
-w=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)/10<8){print 8}else{print (NF-6)/10}}'`
-h=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)/10<8){print 4}else{print (NF-6)/20}}'`
-
-echo "a=read.table('output.nonNA.tsv',sep='\t',header=T)
-c=cor(a); for(i in 1:ncol(c)){c[is.na(c[,i]),i]=0}; result=hclust(as.dist(1-c),'ave')
-pdf('sample-relation.pdf',width=$w, height=$h, pointsize=2)
-plot(result)
-dev.off()" > make-sample-relation.R
-
-DO_R R --vanilla < make-sample-relation.R
-
-
+bash "$scriptdir"/graph~VCFtoTree -q 10 output.vcf
 
 
 post_processing
