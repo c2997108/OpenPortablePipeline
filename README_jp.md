@@ -163,7 +163,7 @@ Macに標準で入っているコマンドラインツールは10年くらい前
 sudo mkdir -p /usr/local/sbin /usr/local/opt
 sudo chown $USER /usr/local/sbin /usr/local/opt
 
-brew install grep gawk gzip ed htop iftop
+brew install grep gawk gzip ed htop iftop bash
 brew install gnu-tar gnu-sed gnu-time gnu-getopt
 brew install binutils findutils diffutils coreutils moreutils
 
