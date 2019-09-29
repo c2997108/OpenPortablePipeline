@@ -155,19 +155,21 @@ Hello from Docker! と表示されればOK
 
 4．Homebrewのインストール
 
-Macに標準で入っているコマンドラインツールは10年くらい前のものなどもあって古いので、新しい必須のツール群をインストールしておく。ターミナルを開いて、
+Macに標準で入っているコマンドラインツールは10年くらい前のものなどもあって古いので、新しい必須のツール群をインストールしておく。ターミナルを開いて、下記のコマンドを一行ずつコピー＆ペーストする。
 ```
 /usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
 
-echo "export PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:/usr/local/sbin:${PATH} >> ~/.bash_profile"
-source ~/.bash_profile
-
-#次の2行は不要かも？もしbrew installでエラーが出るようならば実行する必要あり。
+#次の2行は不要かもしれないけど、一応実行する。
 sudo mkdir -p /usr/local/sbin /usr/local/opt
 sudo chown $USER /usr/local/sbin /usr/local/opt
 
 brew install grep gawk gzip ed htop iftop
 brew install gnu-tar gnu-sed gnu-time gnu-getopt
 brew install binutils findutils diffutils coreutils moreutils
+
+echo 'export PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:/usr/local/sbin:${PATH}
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/grep$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/xargs$`|head -n 1))':$PATH' >> ~/.bash_profile
+source ~/.bash_profile
 ```
 途中でMacのパスワードが聞かれるはずなので、入力する。
