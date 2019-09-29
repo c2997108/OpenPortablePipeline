@@ -169,6 +169,7 @@ brew install binutils findutils diffutils coreutils moreutils
 
 echo 'export PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:/usr/local/sbin:${PATH}
 export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/grep$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/bash$`|head -n 1))':$PATH
 export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/xargs$`|head -n 1))':$PATH' >> ~/.bash_profile
 source ~/.bash_profile
 ```
