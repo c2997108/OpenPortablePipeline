@@ -301,17 +301,17 @@ public class JobWindowController {
 
     					//workフォルダの中の最大IDを取得
     					int tempworkid=0;
-    					File[] listFile = new File(savedOutputFolder).listFiles();
-    					for(File file: listFile) {
-    						try {
+    					try {
+    						File[] listFile = new File(savedOutputFolder).listFiles();
+    						for(File file: listFile) {
     							int tempworkid2 = Integer.valueOf(file.getName());
     							if(tempworkid2>tempworkid) {
     								tempworkid=tempworkid2;
     							}
-    						}catch(Exception e2) {
-
     						}
+    					}catch(Exception e2) {
     					}
+
     					if(tempworkid>Integer.valueOf(tempid)) {
     						tempid=String.valueOf(tempworkid);
     					}
