@@ -59,6 +59,8 @@ import javafx.scene.Scene;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -160,6 +162,9 @@ public class JobWindowController {
     @FXML
     private TextField searchtxt;
 
+    @FXML
+    private CheckBox checkdelete;
+
     String file_id_rsa = "id_rsa.txt";
 
     ObservableList<String> listRecords = FXCollections.observableArrayList();
@@ -170,8 +175,8 @@ public class JobWindowController {
     ObservableList<ScriptNode> ScriptNodesOrig = FXCollections.observableArrayList();
 
     //static ChannelSftp channelSftp = null;
-    static Session session = null;
-    static Channel channel = null;
+    //static Session session = null;
+    //static Channel channel = null;
 
     ArrayNode arrayNode;
 
@@ -209,6 +214,11 @@ public class JobWindowController {
 	        jsonGenerator.writeStringField("outputfolder",outputfolder.getText());jsonGenerator.writeRaw("\n");
 	        jsonGenerator.writeStringField("scriptfolder",scriptfolder.getText());jsonGenerator.writeRaw("\n");
 	        jsonGenerator.writeStringField("imagefolder",imagefolder.getText());jsonGenerator.writeRaw("\n");
+	        if(checkdelete.isSelected()==true) {
+		        jsonGenerator.writeStringField("checkdelete", "true");jsonGenerator.writeRaw("\n");
+	        }else {
+		        jsonGenerator.writeStringField("checkdelete", "false");jsonGenerator.writeRaw("\n");
+	        }
 	        jsonGenerator.writeEndObject();
 	        jsonGenerator.flush();
 
@@ -234,449 +244,486 @@ public class JobWindowController {
     @FXML
     void onButtonRun(ActionEvent event) {
 
-        Task<Boolean> task   = new Task<Boolean>()
-        {
-            @Override
-            protected Boolean call() throws Exception
-            {
+    	String userdir = System.getProperty("user.dir");
+    	if((containsUnicode(userdir)||userdir.contains(" "))
+    			&&( (((RadioButton)preset.getSelectedToggle()).getText()).equals("WSL")||(((RadioButton)preset.getSelectedToggle()).getText()).equals("Mac")) ) {
+    		Alert dialogAlert = new Alert(AlertType.INFORMATION, "Don't put Portable Pipelines in a folder which contains Unicode or space characters.",
+    										ButtonType.YES);
+    		dialogAlert.showAndWait();
+    	}else {
 
-                for(Node i : analysisGrid.getChildren()) {
-                	if(i.getId()!=null && i.getId().startsWith("txt.input.")) {
-                		if(i.getId().substring(12,13).equals("r")) {
-                			//System.out.println(i.getId()+":"+((TextField)i).getText());
-                			if(((TextField)i).getText().equals("")) {
-                				//System.out.println("no input");
-                				Platform.runLater(()->{
-                					Alert alert = new Alert(AlertType.WARNING);
-                					alert.setContentText(i.getId().substring(14)+" is required!");
-                					alert.showAndWait();
-                				});
-                				return false;
-                			}
-                		}
+    		Task<Boolean> task   = new Task<Boolean>()
+    		{
+    			@Override
+    			protected Boolean call() throws Exception
+    			{
 
-                	}
-                }
+    				for(Node i : analysisGrid.getChildren()) {
+    					if(i.getId()!=null && i.getId().startsWith("txt.input.")) {
+    						if(i.getId().substring(12,13).equals("r")) {
+    							//System.out.println(i.getId()+":"+((TextField)i).getText());
+    							if(((TextField)i).getText().equals("")) {
+    								//System.out.println("no input");
+    								Platform.runLater(()->{
+    									Alert alert = new Alert(AlertType.WARNING);
+    									alert.setContentText(i.getId().substring(14)+" is required!");
+    									alert.showAndWait();
+    								});
+    								return false;
+    							}
+    						}
 
-
-                Platform.runLater(()->{
-                	tabPane.getSelectionModel().select(tabJobList);
-                });
-
-
-                isSending = true;
-            	int workid = 0;
-            	JobNode tempJobNode = null;
-                try {
-
-                    String jobdesc = selectedScript;
-                	ObjectNode feature = new ObjectMapper().createObjectNode();
-                	String tempid;
-                	try {
-                		tempid = jobNodes.get(jobNodes.size()-1).id;
-                	}catch(Exception e) {
-                		tempid = "0";
-                	}
-                	//String tempid = arrayNode.get(arrayNode.size()-1).get("id").toString().replace("\"", "");
-                	System.out.println(tempid);
-                	workid = Integer.valueOf(tempid)+1;
-                	feature.put("id", String.valueOf(workid));
-                	feature.put("status", "preparing");
-                	arrayNode.add(feature);
-                	JobNode newJobNode = new JobNode(String.valueOf(workid),"preparing");
-                	tempJobNode = newJobNode;
-                	Platform.runLater( () -> {
-                		jobNodes.add(newJobNode);
-                		joblist.scrollTo(newJobNode);
-                		joblist.getSelectionModel().select(newJobNode);
-                    	saveJobList();
-                	});
-                	//Platform.runLater( () -> listRecordsJob.add(String.valueOf(workid)) );
-
-                	//File saveFolder = new File(savedOutputFolder+"/"+workid);
-                	//saveFolder.mkdirs();
-                	new File(savedOutputFolder+"/"+workid+"/results").mkdirs();
-
-        	        Writer out = new PrintWriter(savedOutputFolder+"/"+workid+"/"+"settings.json");
-        	        JsonFactory jsonFactory = new JsonFactory();
-        			JsonGenerator jsonGenerator = jsonFactory.createJsonGenerator(out);
-
-        			PPSetting ppSetting = new PPSetting();
-        	        jsonGenerator.writeStartObject();
-        	        jsonGenerator.writeStringField("hostname",ppSetting.get("hostname"));
-        	        jsonGenerator.writeStringField("port",ppSetting.get("port"));
-        	        jsonGenerator.writeStringField("user",ppSetting.get("user"));
-        	        jsonGenerator.writeStringField("password",ppSetting.get("password"));
-        	        jsonGenerator.writeStringField("privatekey",ppSetting.get("privatekey"));
-        	        jsonGenerator.writeStringField("workfolder",ppSetting.get("workfolder"));
-        	        jsonGenerator.writeStringField("preset",ppSetting.get("preset"));
-        	        jsonGenerator.writeStringField("outputfolder",ppSetting.get("outputfolder"));
-        	        jsonGenerator.writeStringField("scriptfolder",ppSetting.get("scriptfolder"));
-        	        jsonGenerator.writeStringField("imagefolder",ppSetting.get("imagefolder"));
-        	        jsonGenerator.writeEndObject();
-        	        jsonGenerator.flush();
+    					}
+    				}
 
 
-                    JSch jsch = new JSch();
-                    ChannelSftp c = null;
+    				Platform.runLater(()->{
+    					tabPane.getSelectionModel().select(tabJobList);
+    				});
 
-                    if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
-                    	if((new File(file_id_rsa)).exists()) {
-                    		jsch.addIdentity(file_id_rsa);
-                    	}
-                    	System.out.println("identity added ");
-                    	session = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
-                    	System.out.println("session created.");
 
-                    	session.setConfig("StrictHostKeyChecking", "no");
-                    	session.setPassword(ppSetting.get("password"));
+    				isSending = true;
+    				int workid = 0;
+    				JobNode tempJobNode = null;
+    				try {
 
-                    	session.connect();
-                    	System.out.println("session connected.....");
+    					String jobdesc = selectedScript;
+    					ObjectNode feature = new ObjectMapper().createObjectNode();
+    					//jobリストの最大IDを取得
+    					String tempid;
+    					try {
+    						tempid = jobNodes.get(jobNodes.size()-1).id;
+    					}catch(Exception e) {
+    						tempid = "0";
+    					}
+    					//String tempid = arrayNode.get(arrayNode.size()-1).get("id").toString().replace("\"", "");
+    					System.out.println(tempid);
 
-                    	channel = session.openChannel("sftp");
-                    	channel.setInputStream(System.in);
-                    	channel.setOutputStream(System.out);
-                    	channel.connect();
-                    	System.out.println("shell channel connected....");
+    					//workフォルダの中の最大IDを取得
+    					int tempworkid=0;
+    					File[] listFile = new File(savedOutputFolder).listFiles();
+    					for(File file: listFile) {
+    						try {
+    							int tempworkid2 = Integer.valueOf(file.getName());
+    							if(tempworkid2>tempworkid) {
+    								tempworkid=tempworkid2;
+    							}
+    						}catch(Exception e2) {
 
-                    	c = (ChannelSftp) channel;
-                    }
-                    //mkdir work
-                    String workdir = ppSetting.get("workfolder")+"/"+workid;
-                    String resultdir = ppSetting.get("outputfolder")+"/"+workid+"/results";
+    						}
+    					}
+    					if(tempworkid>Integer.valueOf(tempid)) {
+    						tempid=String.valueOf(tempworkid);
+    					}
 
-                    if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
-                    	String tempworkpath = "";
-                    	for(String tempworkpathnode : workdir.split("/")) {
-                    		if(tempworkpath.equals("")) {
-                    			if(workdir.startsWith("/")) {
-                    				tempworkpath="/"+tempworkpathnode;
-                    			}else {
-                    				tempworkpath=tempworkpathnode;
-                    			}
-                    		}else {
-                    			tempworkpath = tempworkpath+"/"+tempworkpathnode;
-                    		}
-                    		try {
-                    			//System.out.println("mkdir...  "+tempworkpath);
-                    			c.mkdir(tempworkpath);
-                    		}catch(Exception e2) {
-                    			//e2.printStackTrace();
-                    		}
-                    	}
-                    }
-                    //transfer the script file
-                    List<String> scriptcontList = new ArrayList<String>();
-                    searchScript(ppSetting.get("scriptfolder"), selectedScript, scriptcontList);
+    					workid = Integer.valueOf(tempid)+1;
+    					feature.put("id", String.valueOf(workid));
+    					feature.put("status", "preparing");
+    					arrayNode.add(feature);
+    					JobNode newJobNode = new JobNode(String.valueOf(workid),"preparing");
+    					tempJobNode = newJobNode;
+    					Platform.runLater( () -> {
+    						jobNodes.add(newJobNode);
+    						joblist.scrollTo(newJobNode);
+    						joblist.getSelectionModel().select(newJobNode);
+    						saveJobList();
+    					});
+    					//Platform.runLater( () -> listRecordsJob.add(String.valueOf(workid)) );
 
-                    if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
-            			System.out.println("sending...  "+selectedScript);
-                    	c.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
-            			System.out.println("sending...  "+"common.sh");
-                    	c.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
-                    	for(String scripti: scriptcontList) {
-                			System.out.println("sending...  "+scripti);
-                    		c.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
-                    	}
-                    }
-                    mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+selectedScript, resultdir);
-                    mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/common.sh", resultdir);
-                	for(String scripti: scriptcontList) {
-                		mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+scripti, resultdir);
-                	}
+    					//File saveFolder = new File(savedOutputFolder+"/"+workid);
+    					//saveFolder.mkdirs();
+    					new File(savedOutputFolder+"/"+workid+"/results").mkdirs();
 
-                    //analysisGrid.getScene().getRoot().applyCss();
-                    //System.out.println("aaaa: "+((Label) analysisGrid.lookup("#txt.opt.opt_1")).getText());
-            		String runcmd = "";
-            		String currentOptDesc = "";
-            		String numCPU = "1";
-            		String numMEM = "8";
-                    for(Node i : analysisGrid.getChildren()) {
-                    	//System.out.println("childId: "+i.getId());
-                    	if(i.getId()!=null && i.getId().startsWith("txt.optdesc.")) {
-                    		currentOptDesc = ((Label)i).getText();
-                    		//System.out.println("cuD: "+currentOptDesc);
-                    	}
-                    	if(i.getId()!=null && i.getId().startsWith("txt.input.")) {
-                    		String fileid = i.getId().substring(14);
-                    		String tempfiles1=((TextField)i).getText();
-                    		jobdesc+=" "+fileid+":"+tempfiles1;
-                            if(tempfiles1.startsWith("\"")) {
-                            	tempfiles1=tempfiles1.substring(1);
-                            }
-                            if(tempfiles1.endsWith("\"")) {
-                            	tempfiles1=tempfiles1.substring(0,tempfiles1.length()-1);
-                            }
-                            String[] tempfiles1s = tempfiles1.split("\",\"");
+    					Writer out = new PrintWriter(savedOutputFolder+"/"+workid+"/"+"settings.json");
+    					JsonFactory jsonFactory = new JsonFactory();
+    					JsonGenerator jsonGenerator = jsonFactory.createJsonGenerator(out);
 
-                            //modify cmd
-                    		String[] cmdsplit;
-                            if(runcmd.equals("")) {
-                            	cmdsplit = cmd.split("[#]",-1);
-                            }else {
-                            	cmdsplit = runcmd.split("[#]",-1);
-                            }
-                            runcmd = "";
-                    		for(int j=0;j<cmdsplit.length;j++) {
-                    			String tempstr = cmdsplit[j];
-                    			if(tempstr.equals(fileid)) {
-                    				if(!tempfiles1s[0].equals("")) {
-                    					if(i.getId().substring(10,11).equals("m")) {
-                    						runcmd=runcmd+"'"+fileid+"'";
-                    					}else {
-                    						File tempFile = new File(tempfiles1s[0]);
-                    						runcmd=runcmd+"'"+fileid+"/"+tempFile.getName()+"'";
-                    					}
-                    				}else {
-                    					runcmd=runcmd+"''";
-                    				}
-                					j++;
-                					runcmd=runcmd+cmdsplit[j];
-                    			}else {
-                    				if(j==0) {
-                    					runcmd=tempstr;
-                    				}else {
-                    					runcmd=runcmd+"#"+tempstr;
-                    				}
-                    			}
-                    		}
-                    		//System.out.println(runcmd);
-                    		//send files
-                            for (String fileName: tempfiles1s) {
-                            	if(!fileName.equals("")) {
-                            		if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
-                            			System.out.println("sending...  "+fileName);
-                            			try {
-                            				c.mkdir(workdir+"/"+fileid);
-                            				new File(resultdir+"/"+fileid).mkdirs();
-                            			}catch(Exception e2) {
-                            				//e2.printStackTrace();
-                            			}
-                            			c.put(fileName, workdir+"/"+fileid);
-                            		}else {
-                                		System.out.println("creating hard link...  "+fileName);
-                            			try {
-                            				new File(resultdir+"/"+fileid).mkdirs();
-                            			}catch(Exception e2) {
-                            			}
-                            		}
-                                    mkSymLinkOrCopy(fileName, resultdir+"/"+fileid);
-                            	}
-                            }
-                    	}
-                    	//option
-                    	if(i.getId()!=null && i.getId().startsWith("txt.opt.")) {
-                    		String optid = i.getId().substring(8);
-                    		String tempoptString=((TextField)i).getText();
-                    		jobdesc+=" "+optid+":"+tempoptString;
-                    		//System.out.println("test cuD: "+currentOptDesc);
-                    		if(currentOptDesc.equals("cpu threads")) {
-                    			numCPU = tempoptString;
-                    			//System.out.println("cpu: "+numCPU);
-                    		}else if(currentOptDesc.equals("memory limit (GB)")) {
-                    			numMEM = tempoptString;
-                    		}
-                            //modify cmd
-                    		String[] cmdsplit;
-                            if(runcmd.equals("")) {
-                            	cmdsplit = cmd.split("[#]",-1);
-                            }else {
-                            	cmdsplit = runcmd.split("[#]",-1);
-                            }
-                            runcmd = "";
-                    		for(int j=0;j<cmdsplit.length;j++) {
-                    			String tempstr = cmdsplit[j];
-                    			if(tempstr.equals(optid)) {
-                    				runcmd=runcmd+"'"+tempoptString+"'";
-                    				j++;
-                    				runcmd=runcmd+cmdsplit[j];
-                    			}else {
-                    				if(j==0) {
-                    					runcmd=tempstr;
-                    				}else {
-                    					runcmd=runcmd+"#"+tempstr;
-                    				}
-                    			}
-                    		}
-                    		//System.out.println(runcmd);
-                    	}
-                    }
-                    System.out.println(selectedScript+" "+runcmd);
-                    //System.out.println("done");
+    					PPSetting ppSetting = new PPSetting();
+    					jsonGenerator.writeStartObject();
+    					jsonGenerator.writeStringField("hostname",ppSetting.get("hostname"));
+    					jsonGenerator.writeStringField("port",ppSetting.get("port"));
+    					jsonGenerator.writeStringField("user",ppSetting.get("user"));
+    					jsonGenerator.writeStringField("password",ppSetting.get("password"));
+    					jsonGenerator.writeStringField("privatekey",ppSetting.get("privatekey"));
+    					jsonGenerator.writeStringField("workfolder",ppSetting.get("workfolder"));
+    					jsonGenerator.writeStringField("preset",ppSetting.get("preset"));
+    					jsonGenerator.writeStringField("outputfolder",ppSetting.get("outputfolder"));
+    					jsonGenerator.writeStringField("scriptfolder",ppSetting.get("scriptfolder"));
+    					jsonGenerator.writeStringField("imagefolder",ppSetting.get("imagefolder"));
+    					jsonGenerator.writeStringField("checkdelete",ppSetting.get("checkdelete"));
+    					jsonGenerator.writeEndObject();
+    					jsonGenerator.flush();
 
-                    String cmdString = "";
-                    try{
-                    	File file;
 
-                		if(!selectedPreset.equals("WSL")) {
-                			file = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh");
-                		}else{
-                			file = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat");
-                		}
-                    	FileWriter filewriter = new FileWriter(file);
+    					JSch jsch = new JSch();
+    					ChannelSftp c = null;
+    					Session sc = null;
+    					Channel channel = null;
 
-                    	if(selectedPreset.equals("direct")) {
-                        	filewriter.write("#!/bin/bash\n");
-                        	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-                        	filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
-                        	filewriter.write("echo $! > save_pid.txt\n");
-                        	cmdString = "cd "+workdir+"; bash wrapper.sh";
-                    	}else if(selectedPreset.equals("shirokane") || selectedPreset.equals("ddbj")) {
-                        	filewriter.write("#!/bin/bash\n");
-                        	filewriter.write("#$ -S /bin/bash\n");
-                        	filewriter.write("#$ -cwd\n");
-                        	filewriter.write("#$ -pe def_slot "+numCPU+"\n");
-                        	filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G,s_vmem="+Double.valueOf(numMEM)/Double.valueOf(numCPU)+"G\n");
-                        	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-                        	filewriter.write("source ~/.bashrc\n");
-                        	filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
-                        	cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
-                    	}else if(selectedPreset.equals("direct (SGE)")) {
-                        	filewriter.write("#!/bin/bash\n");
-                        	filewriter.write("#$ -S /bin/bash\n");
-                        	filewriter.write("#$ -cwd\n");
-                        	filewriter.write("#$ -pe def_slot "+numCPU+"\n");
-                        	filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G\n");
-                        	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-                        	filewriter.write("source ~/.bashrc\n");
-                        	filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
-                        	cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
-                    	}else if(selectedPreset.equals("WSL")){
-                    		String curDir = new File(".").getAbsoluteFile().getParent();
-                    		String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
-                    		wslcurDir = wslcurDir.replaceAll("\\\\", "/");
-                    		filewriter.write("powershell.exe start-process bash -Wait -ArgumentList '-c \\\"cd "+wslcurDir+"; echo "+password.getText()+"|sudo -S bash WSL-install.sh\\\"'\r\n");
-                    		filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
-                    		filewriter.write("powershell.exe start-sleep -s 5\r\n");
-                    		filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
-                    		filewriter.write("powershell.exe start-sleep -s 5\r\n");
-                    		filewriter.write("powershell.exe start-process bash -ArgumentList '-c \\\"echo Do not close this window.; bash wrapper2.sh\\\"'\r\n");
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    						if((new File(file_id_rsa)).exists()) {
+    							jsch.addIdentity(file_id_rsa);
+    						}
+    						System.out.println("identity added ");
+    						sc = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
+    						System.out.println("session created.");
 
-                        	File file2 = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper2.sh");
-                        	FileWriter filewriter2 = new FileWriter(file2);
-                        	filewriter2.write("#!/bin/bash\n");
-                        	filewriter2.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-                        	filewriter2.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
-                        	filewriter2.write("echo $! > save_pid.txt\n");
-                        	filewriter2.write("wait\n"); // for win10 1803, 1809
-                        	filewriter2.close();
+    						sc.setConfig("StrictHostKeyChecking", "no");
+    						sc.setPassword(ppSetting.get("password"));
 
-                        	cmdString = "cmd.exe /c wrapper.bat";
-                    	}else if(selectedPreset.equals("Mac")){
-                        	filewriter.write("#!/bin/bash\n");
-                        	filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-                        	filewriter.write("export PATH=/usr/local/bin:${PATH}\n");
-                        	filewriter.write("export PATH=/usr/local/opt/coreutils/libexec/gnubin:${PATH}\n");
-                        	filewriter.write("source ~/.bash_profile\n");
-                        	filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
-                        	filewriter.write("echo $! > save_pid.txt\n");
-                        	cmdString = "bash wrapper.sh";
-                    	}
+    						sc.connect();
+    						System.out.println("session connected.....");
 
-                    	filewriter.close();
+    						channel = sc.openChannel("sftp");
+    						channel.setInputStream(System.in);
+    						channel.setOutputStream(System.out);
+    						channel.connect();
+    						System.out.println("shell channel connected....");
 
-                    	if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
-                    		c.put(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh", workdir);
-                    	}
-                    }catch(IOException e){
-                    	System.out.println(e);
-                    	return false;
-                    }
+    						c = (ChannelSftp) channel;
+    					}
+    					//mkdir work
+    					String workdir = ppSetting.get("workfolder")+"/"+workid;
+    					String resultdir = ppSetting.get("outputfolder")+"/"+workid+"/results";
 
-                    System.out.println(cmdString);
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    						String tempworkpath = "";
+    						for(String tempworkpathnode : workdir.split("/")) {
+    							if(tempworkpath.equals("")) {
+    								if(workdir.startsWith("/")) {
+    									tempworkpath="/"+tempworkpathnode;
+    								}else {
+    									tempworkpath=tempworkpathnode;
+    								}
+    							}else {
+    								tempworkpath = tempworkpath+"/"+tempworkpathnode;
+    							}
+    							try {
+    								//System.out.println("mkdir...  "+tempworkpath);
+    								c.mkdir(tempworkpath);
+    							}catch(Exception e2) {
+    								//e2.printStackTrace();
+    							}
+    						}
+    					}
+    					//transfer the script file
+    					List<String> scriptcontList = new ArrayList<String>();
+    					searchScript(ppSetting.get("scriptfolder"), selectedScript, scriptcontList);
 
-                    if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
-                    	ChannelExec channelexec = (ChannelExec) session.openChannel("exec");
-                    	//channelexec.setCommand("cd "+workdir+"; bash "+selectedScript+" "+runcmd);
-                    	channelexec.setCommand(cmdString);
-                    	//channelexec.setCommand("ls -l |wc -l");
-                    	//channelexec.setPty(false);
-                    	channelexec.connect();
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    						System.out.println("sending...  "+selectedScript);
+    						c.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
+    						System.out.println("sending...  "+"common.sh");
+    						c.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
+    						for(String scripti: scriptcontList) {
+    							System.out.println("sending...  "+scripti);
+    							c.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
+    						}
+    					}
+    					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+selectedScript, resultdir);
+    					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/common.sh", resultdir);
+    					for(String scripti: scriptcontList) {
+    						mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+scripti, resultdir);
+    					}
 
-                    	BufferedInputStream bin = null;
-                    	//コマンド実行
-                    	try {
-                    		bin = new BufferedInputStream(channelexec.getInputStream());
-                    		BufferedReader bufferedReader = new BufferedReader(
-                    				new InputStreamReader(bin, StandardCharsets.UTF_8));
+    					//analysisGrid.getScene().getRoot().applyCss();
+    					//System.out.println("aaaa: "+((Label) analysisGrid.lookup("#txt.opt.opt_1")).getText());
+    					String runcmd = "";
+    					String currentOptDesc = "";
+    					String numCPU = "1";
+    					String numMEM = "8";
+    					for(Node i : analysisGrid.getChildren()) {
+    						//System.out.println("childId: "+i.getId());
+    						if(i.getId()!=null && i.getId().startsWith("txt.optdesc.")) {
+    							currentOptDesc = ((Label)i).getText();
+    							//System.out.println("cuD: "+currentOptDesc);
+    						}
+    						if(i.getId()!=null && i.getId().startsWith("txt.input.")) {
+    							String fileid = i.getId().substring(14);
+    							String tempfiles1=((TextField)i).getText();
+    							jobdesc+=" "+fileid+":"+tempfiles1;
+    							if(tempfiles1.startsWith("\"")) {
+    								tempfiles1=tempfiles1.substring(1);
+    							}
+    							if(tempfiles1.endsWith("\"")) {
+    								tempfiles1=tempfiles1.substring(0,tempfiles1.length()-1);
+    							}
+    							String[] tempfiles1s = tempfiles1.split("\",\"");
 
-                    		String data;
-                    		while ((data = bufferedReader.readLine()) != null) {
-                    			System.out.println(data);
-                    			String data2 = new String(data);
-                    			Platform.runLater( () -> listRecords.add(data2) );
-                    			//listRecords.add(data);
-                    		}
+    							//modify cmd
+    							String[] cmdsplit;
+    							if(runcmd.equals("")) {
+    								cmdsplit = cmd.split("[#]",-1);
+    							}else {
+    								cmdsplit = runcmd.split("[#]",-1);
+    							}
+    							runcmd = "";
+    							for(int j=0;j<cmdsplit.length;j++) {
+    								String tempstr = cmdsplit[j];
+    								if(tempstr.equals(fileid)) {
+    									if(!tempfiles1s[0].equals("")) {
+    										if(i.getId().substring(10,11).equals("m")) {
+    											runcmd=runcmd+"'"+fileid+"'";
+    										}else {
+    											File tempFile = new File(tempfiles1s[0]);
+    											runcmd=runcmd+"'"+fileid+"/"+tempFile.getName()+"'";
+    										}
+    									}else {
+    										runcmd=runcmd+"''";
+    									}
+    									j++;
+    									runcmd=runcmd+cmdsplit[j];
+    								}else {
+    									if(j==0) {
+    										runcmd=tempstr;
+    									}else {
+    										runcmd=runcmd+"#"+tempstr;
+    									}
+    								}
+    							}
+    							//System.out.println(runcmd);
+    							//send files
+    							for (String fileName: tempfiles1s) {
+    								if(!fileName.equals("")) {
+    									if(getStatusByWorkId(workid).equals("cancelled")) {
+    										throw new Exception("Cancelled");
+    									}
+    									if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    										System.out.println("sending...  "+fileName);
+    										try {
+    											c.mkdir(workdir+"/"+fileid);
+    											new File(resultdir+"/"+fileid).mkdirs();
+    										}catch(Exception e2) {
+    											//e2.printStackTrace();
+    										}
+    										c.put(fileName, workdir+"/"+fileid);
+    									}else {
+    										System.out.println("creating hard link...  "+fileName);
+    										try {
+    											new File(resultdir+"/"+fileid).mkdirs();
+    										}catch(Exception e2) {
+    										}
+    									}
+    									mkSymLinkOrCopy(fileName, resultdir+"/"+fileid);
+    								}
+    							}
+    						}
+    						//option
+    						if(i.getId()!=null && i.getId().startsWith("txt.opt.")) {
+    							String optid = i.getId().substring(8);
+    							String tempoptString=((TextField)i).getText();
+    							jobdesc+=" "+optid+":"+tempoptString;
+    							//System.out.println("test cuD: "+currentOptDesc);
+    							if(currentOptDesc.equals("cpu threads")) {
+    								numCPU = tempoptString;
+    								//System.out.println("cpu: "+numCPU);
+    							}else if(currentOptDesc.equals("memory limit (GB)")) {
+    								numMEM = tempoptString;
+    							}
+    							//modify cmd
+    							String[] cmdsplit;
+    							if(runcmd.equals("")) {
+    								cmdsplit = cmd.split("[#]",-1);
+    							}else {
+    								cmdsplit = runcmd.split("[#]",-1);
+    							}
+    							runcmd = "";
+    							for(int j=0;j<cmdsplit.length;j++) {
+    								String tempstr = cmdsplit[j];
+    								if(tempstr.equals(optid)) {
+    									runcmd=runcmd+"'"+tempoptString+"'";
+    									j++;
+    									runcmd=runcmd+cmdsplit[j];
+    								}else {
+    									if(j==0) {
+    										runcmd=tempstr;
+    									}else {
+    										runcmd=runcmd+"#"+tempstr;
+    									}
+    								}
+    							}
+    							//System.out.println(runcmd);
+    						}
+    					}
+    					System.out.println(selectedScript+" "+runcmd);
+    					//System.out.println("done");
 
-                    		// 最後にファイルを閉じてリソースを開放する
-                    		bufferedReader.close();
-                    	} catch (Exception e) {
-                    		System.err.println(e);
-                    	} finally {
-                    		if (bin != null) {
-                    			try {
-                    				bin.close();
-                    			}
-                    			catch (IOException e) {
-                    			}
-                    		}
-                    	}
+    					String cmdString = "";
+    					try{
+    						File file;
 
-                    	//download results
-                    	//channelSftp = (ChannelSftp) session.openChannel("sftp");
-                    	//channelSftp = c;
-                    	//recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results",c);
-                    	//        lsFolderRemove(workdir);
-                    	//channelSftp.exit();
-                    }else {
-                    	Process process = Runtime.getRuntime().exec(cmdString, null, new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"));
-                    	process.waitFor();
-                	}
+    						if(!selectedPreset.equals("WSL")) {
+    							file = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh");
+    						}else{
+    							file = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat");
+    						}
+    						FileWriter filewriter = new FileWriter(file);
 
-                    System.out.println(jobdesc);
-                	JobNode runninngJobNode = new JobNode(String.valueOf(workid),"running",jobdesc);
-                	tempJobNode = runninngJobNode;
-             		Platform.runLater( () -> {
-             			jobNodes.set( jobNodes.indexOf(newJobNode),runninngJobNode );
-             			saveJobList();
-             		});
+    						if(selectedPreset.equals("direct")) {
+    							filewriter.write("#!/bin/bash\n");
+    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+    							filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
+    							filewriter.write("echo $! > save_pid.txt\n");
+    							cmdString = "cd "+workdir+"; bash wrapper.sh";
+    						}else if(selectedPreset.equals("shirokane") || selectedPreset.equals("ddbj")) {
+    							filewriter.write("#!/bin/bash\n");
+    							filewriter.write("#$ -S /bin/bash\n");
+    							filewriter.write("#$ -cwd\n");
+    							filewriter.write("#$ -pe def_slot "+numCPU+"\n");
+    							filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G,s_vmem="+Double.valueOf(numMEM)/Double.valueOf(numCPU)+"G\n");
+    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+    							filewriter.write("source ~/.bashrc\n");
+    							filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
+    							cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
+    						}else if(selectedPreset.equals("direct (SGE)")) {
+    							filewriter.write("#!/bin/bash\n");
+    							filewriter.write("#$ -S /bin/bash\n");
+    							filewriter.write("#$ -cwd\n");
+    							filewriter.write("#$ -pe def_slot "+numCPU+"\n");
+    							filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G\n");
+    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+    							filewriter.write("source ~/.bashrc\n");
+    							filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
+    							cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
+    						}else if(selectedPreset.equals("WSL")){
+    							String curDir = new File(".").getAbsoluteFile().getParent();
+    							String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
+    							wslcurDir = wslcurDir.replaceAll("\\\\", "/");
+    							filewriter.write("powershell.exe start-process bash -Wait -ArgumentList '-c \\\"cd "+wslcurDir+"; echo "+password.getText()+"|sudo -S bash WSL-install.sh\\\"'\r\n");
+    							filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
+    							filewriter.write("powershell.exe start-sleep -s 5\r\n");
+    							filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
+    							filewriter.write("powershell.exe start-sleep -s 5\r\n");
+    							filewriter.write("powershell.exe start-process bash -ArgumentList '-c \\\"echo Do not close this window.; bash wrapper2.sh\\\"'\r\n");
 
-                } catch (Exception e) {
-                    System.err.println(e);
-                    int finalworkid = workid;
-                    JobNode finalJobNode = tempJobNode;
-                	JobNode runninngJobNode = new JobNode(String.valueOf(finalworkid),"aborted",e.toString());
-             		Platform.runLater( () -> {
-             			jobNodes.set( jobNodes.indexOf(finalJobNode),runninngJobNode );
-             			saveJobList();
-             		});
-                } finally {
-                    if (channel != null) {
-                        try {
-                            channel.disconnect();
-                        }
-                        catch (Exception e) {
-                        }
-                    }
-                    if (session != null) {
-                        try {
-                            session.disconnect();
-                        }
-                        catch (Exception e) {
-                        }
-                    }
-                }
+    							File file2 = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper2.sh");
+    							FileWriter filewriter2 = new FileWriter(file2);
+    							filewriter2.write("#!/bin/bash\n");
+    							filewriter2.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+    							filewriter2.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
+    							filewriter2.write("echo $! > save_pid.txt\n");
+    							filewriter2.write("wait\n"); // for win10 1803, 1809
+    							filewriter2.close();
 
-                isSending = false;
-                return true;
-            }
-        };
+    							cmdString = "cmd.exe /c wrapper.bat";
+    						}else if(selectedPreset.equals("Mac")){
+    							filewriter.write("#!/bin/bash\n");
+    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
+    							filewriter.write("export PATH=/usr/local/bin:${PATH}\n");
+    							filewriter.write("export PATH=/usr/local/opt/coreutils/libexec/gnubin:${PATH}\n");
+    							filewriter.write("source ~/.bash_profile\n");
+    							filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
+    							filewriter.write("echo $! > save_pid.txt\n");
+    							cmdString = "bash wrapper.sh";
+    						}
 
-        // タスクを実行1
-        Thread t = new Thread( task );
-        t.setDaemon( true );
-        t.start();
+    						filewriter.close();
+
+    						if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    							c.put(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh", workdir);
+    						}
+    					}catch(IOException e){
+    						//System.out.println(e);
+    						e.printStackTrace();
+    						return false;
+    					}
+
+    					System.out.println(cmdString);
+
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    						ChannelExec channelexec = (ChannelExec) sc.openChannel("exec");
+    						//channelexec.setCommand("cd "+workdir+"; bash "+selectedScript+" "+runcmd);
+    						channelexec.setCommand(cmdString);
+    						//channelexec.setCommand("ls -l |wc -l");
+    						//channelexec.setPty(false);
+    						channelexec.connect();
+
+    						BufferedInputStream bin = null;
+    						//コマンド実行
+    						try {
+    							bin = new BufferedInputStream(channelexec.getInputStream());
+    							BufferedReader bufferedReader = new BufferedReader(
+    									new InputStreamReader(bin, StandardCharsets.UTF_8));
+
+    							String data;
+    							while ((data = bufferedReader.readLine()) != null) {
+    								System.out.println(data);
+    								String data2 = new String(data);
+    								Platform.runLater( () -> listRecords.add(data2) );
+    								//listRecords.add(data);
+    							}
+
+    							// 最後にファイルを閉じてリソースを開放する
+    							bufferedReader.close();
+    						} catch (Exception e) {
+    							System.err.println(e);
+    						} finally {
+    							if (bin != null) {
+    								try {
+    									bin.close();
+    								}
+    								catch (IOException e) {
+    								}
+    							}
+    						}
+
+    						//download results
+    						//channelSftp = (ChannelSftp) sc.openChannel("sftp");
+    						//channelSftp = c;
+    						//recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results",c);
+    						//        lsFolderRemove(workdir);
+    						//channelSftp.exit();
+    					}else {
+    						Process process = Runtime.getRuntime().exec(cmdString, null, new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"));
+    						process.waitFor();
+    					}
+
+    					System.out.println(jobdesc);
+    					JobNode runninngJobNode = new JobNode(String.valueOf(workid),"running",jobdesc);
+    					tempJobNode = runninngJobNode;
+    					Platform.runLater( () -> {
+    						jobNodes.set( jobNodes.indexOf(newJobNode),runninngJobNode );
+    						saveJobList();
+    					});
+
+    				} catch (Exception e) {
+    					//System.err.println(e);
+    					e.printStackTrace();
+    					int finalworkid = workid;
+    					JobNode finalJobNode = tempJobNode;
+    					JobNode runninngJobNode = new JobNode(String.valueOf(finalworkid),"aborted",e.toString());
+    					Platform.runLater( () -> {
+    						jobNodes.set( jobNodes.indexOf(finalJobNode),runninngJobNode );
+    						saveJobList();
+    					});
+    				} finally {
+    					//                    if (channel != null) {
+    					//                        try {
+    					//                            channel.disconnect();
+    					//                        }
+    					//                        catch (Exception e) {
+    					//                        }
+    					//                    }
+    					//                    if (session != null) {
+    					//                        try {
+    					//                            session.disconnect();
+    					//                        }
+    					//                        catch (Exception e) {
+    					//                        }
+    					//                    }
+    				}
+
+    				isSending = false;
+    				return true;
+    			}
+    		};
+
+    		// タスクを実行1
+    		Thread t = new Thread( task );
+    		t.setDaemon( true );
+    		t.start();
+    	}
+
     }
 
     @FXML
@@ -713,8 +760,32 @@ public class JobWindowController {
             ppSetting = new PPSetting();
             //node = mapper.readTree(new File("settings.json"));
         } catch (Exception e) {
-            e.printStackTrace();
-            return;
+            //e.printStackTrace();
+        	try {
+        		//settings.jsonが無い場合に作成する。
+        		Writer out = new PrintWriter("settings.json");
+        		JsonFactory jsonFactory = new JsonFactory();
+        		JsonGenerator jsonGenerator = jsonFactory.createJsonGenerator(out);
+        		jsonGenerator.writeStartObject();jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("hostname","m208.s");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("port","22");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("user","user2");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("password","user2");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("privatekey","");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("workfolder","work");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("preset","direct");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("imagefolder","~/img");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("checkdelete", "true");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeEndObject();
+        		jsonGenerator.flush();
+
+        		ppSetting = new PPSetting();
+        	}catch(Exception e2) {
+        		e2.printStackTrace();
+                return;
+        	}
         }
         buttonRun.setDisable(true);
         hostname.setText(ppSetting.get("hostname"));
@@ -742,10 +813,16 @@ public class JobWindowController {
         }else {
         	imagefolder.setText(ppSetting.get("imagefolder"));
         }
+        if(ppSetting.get("checkdelete").equals("true")) {
+        	checkdelete.setSelected(true);
+        }else {
+        	checkdelete.setSelected(false);
+        }
+        String tempppSettingPreset = ppSetting.get("preset");
         preset.getToggles().forEach(
         		s -> {
         			//System.out.println(((RadioButton)s).getText());
-        			if(((RadioButton)s).getText().equals(ppSetting.get("preset"))){
+        			if(((RadioButton)s).getText().equals(tempppSettingPreset)){
         				s.setSelected(true);
         			};
         		}
@@ -777,6 +854,7 @@ public class JobWindowController {
 			imagefolder.setText("");
 			workfolder.setDisable(true);
 			workfolder.setText("");
+			checkdelete.setDisable(true);
 			break;
 		case "Mac":
 			hostname.setDisable(true);
@@ -793,6 +871,7 @@ public class JobWindowController {
 			imagefolder.setText("");
 			workfolder.setDisable(true);
 			workfolder.setText("");
+			checkdelete.setDisable(true);
 			break;
 		default:
 			System.out.println("no preset value");
@@ -848,10 +927,10 @@ public class JobWindowController {
            	    @Override
            	    public void changed(ObservableValue<?> observable, Object oldVal, Object newVal) {
         	        // 実行する処理
-           	    	JobNode tempNode = (JobNode)newVal;
-           	    	System.out.println(((JobNode)newVal).id);
-           	    	listRecords.clear();
            	    	try {
+               	    	JobNode tempNode = (JobNode)newVal;
+               	    	System.out.println(((JobNode)newVal).id);
+               	    	listRecords.clear();
 						List<String> lines = Files.readAllLines(Paths.get(new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt"), StandardCharsets.UTF_8);
 						List<String> templines = new ArrayList<String>();
 						for(String string : lines) {
@@ -866,7 +945,7 @@ public class JobWindowController {
 	                 		Platform.runLater( () -> listRecords.add(string) );
 	                    	Platform.runLater( () -> joblog.scrollTo(listRecords.size()-1)  );
 	        	    	}
-	        	    } catch (IOException e) {
+	        	    } catch (Exception e) {
 	        	    	//e.printStackTrace();
            		   	}
            		}
@@ -1222,30 +1301,6 @@ public class JobWindowController {
 
 
         					try {
-        						//        						JSch jsch = new JSch();
-        						//
-        						//        						if((new File(savedOutputFolder+"/"+tempJobNode.id+"/"+"id_rsa")).exists()) {
-        						//        							jsch.addIdentity(savedOutputFolder+"/"+tempJobNode.id+"/"+"id_rsa");
-        						//        						}
-        						//        						//System.out.println("identity added ");
-        						//        						session = jsch.getSession(node.get("user").asText(), node.get("hostname").asText(), Integer.valueOf(node.get("port").asText()));
-        						//        						//System.out.println("session created.");
-        						//
-        						//        						session.setConfig("StrictHostKeyChecking", "no");
-        						//        						session.setPassword(node.get("password").asText());
-        						//
-        						//        						session.connect();
-        						//        						//System.out.println("session connected.....");
-        						//
-        						//        						channel = session.openChannel("sftp");
-        						//        						channel.setInputStream(System.in);
-        						//        						channel.setOutputStream(System.out);
-        						//        						channel.connect();
-        						//        						System.out.println("sftp channel connected....");
-        						//
-        						//        						ChannelSftp channelSftp = (ChannelSftp) channel;
-
-        						//download results
         						String workid = tempJobNode.id;
         						String workdir = node.get("workfolder").asText()+"/"+workid;
         						File saveFolder = new File(node.get("outputfolder").asText()+"/"+workid);
@@ -1313,7 +1368,9 @@ public class JobWindowController {
         								System.out.println("job: "+tempJobNode.id+" was finished.");
         								if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
         									recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results", channelSftp);
-        									lsFolderRemove(workdir, channelSftp);
+        									if(node.get("checkdelete").asText().equals("true")) {
+            									lsFolderRemove(workdir, channelSftp);
+        									}
         								}
 
         								String exitSatusString = "aborted";
@@ -1354,6 +1411,7 @@ public class JobWindowController {
         		//System.out.println(((RadioButton) newToggle).getText());
         		String mode = ((RadioButton) newToggle).getText();
 
+        		//切り替える前に現在の設定を覚えさせる
         		Map<String, String> tempSettingtMap = new LinkedHashMap<String,  String>();
                 tempSettingtMap.put("hostname",hostname.getText());
                 tempSettingtMap.put("port",port.getText());
@@ -1362,9 +1420,15 @@ public class JobWindowController {
                 tempSettingtMap.put("privatekey",privatekey.getText());
                 tempSettingtMap.put("workfolder",workfolder.getText());
                 tempSettingtMap.put("imagefolder",imagefolder.getText());
+                if(checkdelete.isSelected()==true) {
+                	tempSettingtMap.put("checkdelete", "true");
+                }else {
+                	tempSettingtMap.put("checkdelete", "false");
+                }
                 tempSettingtMap.put("changed","T");
                 settings.put(((RadioButton) oldToggle).getText(), tempSettingtMap);
 
+                //切り替え準備
         		hostname.setDisable(false);
         		port.setDisable(false);
 				password.setDisable(false);
@@ -1373,8 +1437,9 @@ public class JobWindowController {
 				password.setDisable(false);
 				imagefolder.setDisable(false);
 				workfolder.setDisable(false);
+				checkdelete.setDisable(false);
 
-				if(settings.get(mode).get("changed").compareTo("T")==0) {
+				if(settings.get(mode).get("changed").compareTo("T")==0) { //過去にそのpresetを表示させた場合はその値を呼び出す
 					hostname.setText(settings.get(mode).get("hostname"));
 					port.setText(settings.get(mode).get("port"));
 					user.setText(settings.get(mode).get("user"));
@@ -1382,6 +1447,11 @@ public class JobWindowController {
 					privatekey.setText(settings.get(mode).get("privatekey"));
 					workfolder.setText(settings.get(mode).get("workfolder"));
 					imagefolder.setText(settings.get(mode).get("imagefolder"));
+					if(settings.get(mode).get("checkdelete").compareTo("true")==0) {
+						checkdelete.setSelected(true);
+					}else {
+						checkdelete.setSelected(false);
+					}
 					switch(mode) {
 					case "direct":
 						break;
@@ -1406,6 +1476,7 @@ public class JobWindowController {
 						imagefolder.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
+						checkdelete.setDisable(true);
 						break;
 					case "Mac":
 						hostname.setDisable(true);
@@ -1422,6 +1493,7 @@ public class JobWindowController {
 						imagefolder.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
+						checkdelete.setDisable(true);
 						break;
 					default:
 						System.out.println("no preset value");
@@ -1434,12 +1506,14 @@ public class JobWindowController {
 						port.setText("22");
 						workfolder.setText("work");
 						imagefolder.setText("~/img");
+						checkdelete.setSelected(true);
 						break;
 					case "direct (SGE)":
 						hostname.setText("");
 						port.setText("22");
 						workfolder.setText("work");
 						imagefolder.setText("~/img");
+						checkdelete.setSelected(true);
 						break;
 					case "ddbj":
 						hostname.setText("gw.ddbj.nig.ac.jp");
@@ -1448,6 +1522,7 @@ public class JobWindowController {
 						password.setText("");
 						workfolder.setText("work");
 						imagefolder.setText("~/img");
+						checkdelete.setSelected(true);
 						break;
 					case "shirokane":
 						hostname.setText("slogin.hgc.jp");
@@ -1456,6 +1531,7 @@ public class JobWindowController {
 						password.setText("");
 						workfolder.setText("work");
 						imagefolder.setText("~/img");
+						checkdelete.setSelected(true);
 						break;
 					case "WSL":
 						hostname.setDisable(true);
@@ -1468,6 +1544,8 @@ public class JobWindowController {
 						imagefolder.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
+						checkdelete.setDisable(true);
+						checkdelete.setSelected(false);
 						break;
 					case "Mac":
 						hostname.setDisable(true);
@@ -1484,6 +1562,7 @@ public class JobWindowController {
 						imagefolder.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
+						checkdelete.setSelected(false);
 						break;
 					default:
 						System.out.println("no preset value");
@@ -1537,6 +1616,16 @@ public class JobWindowController {
         	}
         }
 
+    }
+
+    String getStatusByWorkId(int workid) {
+    	String reString="";
+    	for(JobNode jNode : jobNodes) {
+    		if(jNode.id.equals(String.valueOf(workid))){
+    			reString=jNode.status;
+    		}
+    	}
+    	return reString;
     }
 
     void mkSymLinkOrCopy(String target, String link) {
@@ -1638,5 +1727,27 @@ public class JobWindowController {
     	} catch (SftpException sftpException) {
     	    System.out.println("Removing " + dir + " failed. It may be already deleted.");
     	}
+    }
+    public static boolean containsUnicode(String str) {
+    	for(int i = 0 ; i < str.length() ; i++) {
+    		char ch = str.charAt(i);
+    		Character.UnicodeBlock unicodeBlock = Character.UnicodeBlock.of(ch);
+
+    		if (Character.UnicodeBlock.HIRAGANA.equals(unicodeBlock))
+    			return true;
+
+    		if (Character.UnicodeBlock.KATAKANA.equals(unicodeBlock))
+    			return true;
+
+    		if (Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS.equals(unicodeBlock))
+    			return true;
+
+    		if (Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS.equals(unicodeBlock))
+    			return true;
+
+    		if (Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION.equals(unicodeBlock))
+    			return true;
+    	}
+    	return false;
     }
 }

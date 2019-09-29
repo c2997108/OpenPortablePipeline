@@ -245,7 +245,10 @@ public class JobCell extends ListCell<JobNode> {
         		});
         	}catch (Exception e) {
 			}
-
+        	if(!(jNode.status.equals("finished")||jNode.status.equals("aborted")||jNode.status.equals("cancelled"))) {
+        		deleteButton.setDisable(true);
+        	}
+        	
         	HBox hBox = new HBox(20d);
         	//hBox.setPrefWidth(500);
         	//HBox.setHgrow(label3, Priority.ALWAYS);

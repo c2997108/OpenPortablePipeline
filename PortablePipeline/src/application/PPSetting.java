@@ -6,6 +6,7 @@ import java.io.IOException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 
 public class PPSetting {
@@ -27,6 +28,17 @@ public class PPSetting {
 			return "";
 		}else {
 			return node.get(param).asText();
+		}
+	}
+
+	public void setParam(String key, String value) {
+		ObjectNode oNode = node.deepCopy();
+		oNode.put(key, value);
+		try {
+			System.out.println(new ObjectMapper().writeValueAsString(oNode));
+			node=new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(oNode));
+		}catch(Exception e) {
+			e.printStackTrace();
 		}
 	}
 

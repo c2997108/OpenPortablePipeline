@@ -4,7 +4,7 @@ explanation='
 Plot histogram of gene expression, tree and MDS plot of sample distances
 '
 inputdef='
-input_1::count table:*
+input_1::count table:*.txt
 input_2:option:sample information file [optional]:*.txt
 '
 optiondef='
