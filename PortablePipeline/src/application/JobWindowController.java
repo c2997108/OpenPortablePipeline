@@ -686,6 +686,9 @@ public class JobWindowController {
     						saveJobList();
     					});
 
+
+    					sc.disconnect();
+
     				} catch (Exception e) {
     					//System.err.println(e);
     					e.printStackTrace();
@@ -1392,6 +1395,8 @@ public class JobWindowController {
 
         						if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
         							channelSftp.exit();
+        							channelSftp.getSession().disconnect();
+        							//System.out.println("Close SFTP");
         						}
         					} catch (Exception e) {
         						// TODO 自動生成された catch ブロック
