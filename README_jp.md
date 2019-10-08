@@ -120,7 +120,7 @@ sudo usermod -aG docker $USER
 ## WSLサーバのセットアップ方法
 1．Windows Subsystem for Linux (WSL)をインストールする。
 
-Windows10のバージョンが、1803 (2018年春), 1809 (2018年秋), 1903 (2019年春)のいずれかであることを確認。 WSLを有効化するためPowerShellを管理者権限で開く。 (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))
+Windows10のバージョンが、1809 (2018年秋), 1903 (2019年春)のいずれかであることを確認。 WSLを有効化するためPowerShellを管理者権限で開く。 (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))
 
 次のコマンドを貼り付けて実行し、WSLの機能を有効にする。
 ```
