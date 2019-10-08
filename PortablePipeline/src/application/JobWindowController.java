@@ -687,7 +687,9 @@ public class JobWindowController {
     					});
 
 
-    					sc.disconnect();
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    						sc.disconnect();
+    					}
 
     				} catch (Exception e) {
     					//System.err.println(e);
