@@ -1507,18 +1507,48 @@ public class JobWindowController {
 				}else {
 					switch(mode) {
 					case "direct":
-						hostname.setText("");
-						port.setText("22");
-						workfolder.setText("work");
-						imagefolder.setText("~/img");
-						checkdelete.setSelected(true);
+						if(settings.get("direct (SGE)").get("changed").compareTo("T")==0) {
+							hostname.setText(settings.get("direct (SGE)").get("hostname"));
+							port.setText(settings.get("direct (SGE)").get("port"));
+							user.setText(settings.get("direct (SGE)").get("user"));
+							password.setText(settings.get("direct (SGE)").get("password"));
+							privatekey.setText(settings.get("direct (SGE)").get("privatekey"));
+							workfolder.setText(settings.get("direct (SGE)").get("workfolder"));
+							imagefolder.setText(settings.get("direct (SGE)").get("imagefolder"));
+							if(settings.get("direct (SGE)").get("checkdelete").compareTo("true")==0) {
+								checkdelete.setSelected(true);
+							}else {
+								checkdelete.setSelected(false);
+							}
+						}else {
+							hostname.setText("");
+							port.setText("22");
+							workfolder.setText("work");
+							imagefolder.setText("~/img");
+							checkdelete.setSelected(true);
+						}
 						break;
 					case "direct (SGE)":
-						hostname.setText("");
-						port.setText("22");
-						workfolder.setText("work");
-						imagefolder.setText("~/img");
-						checkdelete.setSelected(true);
+						if(settings.get("direct").get("changed").compareTo("T")==0) {
+							hostname.setText(settings.get("direct").get("hostname"));
+							port.setText(settings.get("direct").get("port"));
+							user.setText(settings.get("direct").get("user"));
+							password.setText(settings.get("direct").get("password"));
+							privatekey.setText(settings.get("direct").get("privatekey"));
+							workfolder.setText(settings.get("direct").get("workfolder"));
+							imagefolder.setText(settings.get("direct").get("imagefolder"));
+							if(settings.get("direct").get("checkdelete").compareTo("true")==0) {
+								checkdelete.setSelected(true);
+							}else {
+								checkdelete.setSelected(false);
+							}
+						}else {
+							hostname.setText("");
+							port.setText("22");
+							workfolder.setText("work");
+							imagefolder.setText("~/img");
+							checkdelete.setSelected(true);
+						}
 						break;
 					case "ddbj":
 						hostname.setText("gw.ddbj.nig.ac.jp");
@@ -1686,20 +1716,24 @@ public class JobWindowController {
         		System.out.println("download information... "+sourcePath + "/" + item.getFilename());
             	//System.out.println("sftp size:  "+item.getAttrs().getSize());
             	//System.out.println("local size: "+new File(destinationPath + "/" + item.getFilename()).length());
+            	//System.out.println("is Symbolic Link: "+Files.isSymbolicLink(new File(destinationPath + "/" + item.getFilename()).toPath()));
                 if (!(new File(destinationPath + "/" + item.getFilename())).exists()
-                        || (item.getAttrs().getMTime() > Long.valueOf(new File(destinationPath + "/" + item.getFilename()).lastModified() / (long) 1000).intValue())
-                        || (item.getAttrs().getSize() > new File(destinationPath + "/" + item.getFilename()).length()) ) { // Download only if changed later.
+                        || (item.getAttrs().getMTime() > Long.valueOf(new File(destinationPath + "/" + item.getFilename()).lastModified() / (long) 1000).intValue())  // Download only if changed later.
+                        || (item.getAttrs().getSize() > new File(destinationPath + "/" + item.getFilename()).length()) //ファイルサイズがリモートより小さいならダウンロード(途中でダウンロードが失敗した場合を想定)
+                  ) {
+                	if(!(Files.isSymbolicLink(new File(destinationPath + "/" + item.getFilename()).toPath()))) { //ダウンロード先がシンボリックリンクならばダウンロードしない
 
-                	System.out.println("downloading... "+sourcePath + "/" + item.getFilename());
-                	//System.out.println( channelSftp.realpath(sourcePath + "/" + item.getFilename()));
-                	if(!channelSftp.stat(channelSftp.realpath(sourcePath + "/" + item.getFilename())).isDir()) { //for symbolic link
-                        channelSftp.get(channelSftp.realpath(sourcePath + "/" + item.getFilename()),
-                            destinationPath + "/" + item.getFilename()); // Download file from source (source filename, destination filename).
-                	}else {
-                		new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.
-                        recursiveFolderDownload(sourcePath + "/" + item.getFilename(),
-                                destinationPath + "/" + item.getFilename(), channelSftp); // Enter found folder on server to read its contents and create locally.
-                    }
+                		System.out.println("downloading... "+sourcePath + "/" + item.getFilename());
+                		//System.out.println( channelSftp.realpath(sourcePath + "/" + item.getFilename()));
+                		if(!channelSftp.stat(channelSftp.realpath(sourcePath + "/" + item.getFilename())).isDir()) { //for symbolic link
+                			channelSftp.get(channelSftp.realpath(sourcePath + "/" + item.getFilename()),
+                					destinationPath + "/" + item.getFilename()); // Download file from source (source filename, destination filename).
+                		}else {
+                			new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.
+                			recursiveFolderDownload(sourcePath + "/" + item.getFilename(),
+                					destinationPath + "/" + item.getFilename(), channelSftp); // Enter found folder on server to read its contents and create locally.
+                		}
+                	}
                 }
             } else if (!(".".equals(item.getFilename()) || "..".equals(item.getFilename()))) {
                 new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.
