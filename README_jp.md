@@ -82,6 +82,10 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 
 ### スパコン用
 - javaの引数には-Xmx1Gなどを必ず指定すること。指定が無いとマシンの半分くらいのメモリ？を確保しようとしてこける。
+- ```if [ -v AAA ]; then echo a; fi```
+  などとやるにはbashのバージョンが古くてエラーになるので、
+  ```if [ "${AAA:-}" != "" ]; then echo a; fi```
+  とすること。
 
 ### Mac用
 - dockerを/usr/local/binにインストールし、Homebrewでcoreutils, gnu-sedを/usr/local/xxx/gnubinにインストールする必要あり。
