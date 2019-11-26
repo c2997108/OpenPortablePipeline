@@ -13,8 +13,8 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 
 ## 操作方法
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。  
- Win https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.9c/PortablePipeline-win-v0.9c.zip  
- Mac https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.9c/PortablePipeline-mac-v0.9c.tar.gz 
+ Win https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.9d/PortablePipeline-win-v0.9d.zip  
+ Mac https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.9d/PortablePipeline-mac-v0.9d.tar.gz 
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。
 Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSの「System Preferences」→「Security & Privacy」→「General」タブ→「Open Anyway」をクリックして、実行を許可する必要がある。
