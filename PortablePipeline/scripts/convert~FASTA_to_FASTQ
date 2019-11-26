@@ -1,0 +1,36 @@
+#!/bin/bash
+
+explanation='
+convert from FASTA to FASTQ adding Q40
+'
+inputdef='
+input_1::FASTA:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+'
+runcmd="$0 -c #opt_c# -m #opt_m# #input_1#"
+
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+#decompress input files
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+ DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`;
+ input_1=`echo "$input_1"|sed 's/[.]gz$//'`;
+fi
+
+DO_BASE awk 'BEGIN{ORS=""} $0~"^>"{if(NR>1){print "\n+\n"; for(i=1;i<=len;i++){print "I"}; print "\n"; len=0}; print "@"substr($0,2)"\n"} $0!~"^>"{print $0; len+=length($0)} END{print "\n+\n"; for(i=1;i<=len;i++){print "I"}; print "\n"}' $input_1 > `basename $input_1|sed 's/[.]\(fa\|fasta\|fsa\|fna\)$/.fastq/'`
+
+
+post_processing
+
+#<option detail>
+#</option detail>
+

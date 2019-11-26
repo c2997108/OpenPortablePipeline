@@ -1147,12 +1147,14 @@ public class JobWindowController {
        		    	int num_item = 0;
        		    	for(InputItem item : listInputItems) {
        		    		num_item++;
+       		    		String myinputlabel = item.desc;
            		    	Button b = new Button();
            		    	b.setText(item.id);
            		    	b.setId(item.id);
            		    	String tempprefix;
    						if(item.num.contains("directory")) {
    							tempprefix="txt.input.m.";
+   							myinputlabel+=" (multiple files)";
    						}else {
    							tempprefix="txt.input.s.";
    						}
@@ -1160,6 +1162,7 @@ public class JobWindowController {
    							tempprefix+="o.";
    						}else {
    							tempprefix+="r.";
+   							myinputlabel="* "+myinputlabel;
    						}
 		    	    	String finaltempprefix = tempprefix;
            		    	b.setOnAction(
@@ -1208,9 +1211,9 @@ public class JobWindowController {
            		    	//cellPane.setStyle("border-bottom-color: blue;");
            		    	//cellPane.getChildren().add(b);
            		    	analysisGrid.add(b, 1, num_item-1);
-           		    	Label tempLabel = new Label(item.desc);
+           		    	Label tempLabel = new Label(myinputlabel);
            		    	Tooltip tooltip = new Tooltip();
-           		    	tooltip.setText(item.desc);
+           		    	tooltip.setText(myinputlabel);
        		    		tempLabel.setTooltip(tooltip);
            		    	analysisGrid.add(tempLabel, 2, num_item-1);
            		    	TextField t = new TextField();

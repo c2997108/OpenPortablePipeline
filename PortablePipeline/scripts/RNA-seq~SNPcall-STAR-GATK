@@ -67,7 +67,7 @@ fi
 
 mkdir -p $ref.dir
 if [ "$input_3" = "" ];then
- DO_STAR STAR --runMode genomeGenerate --genomeDir $ref.dir --genomeFastaFiles $ref  --runThreadN $N_CPU
+ DO_STAR STAR --runMode genomeGenerate --genomeDir $ref.dir --genomeFastaFiles $ref  --runThreadN $N_CPU --limitGenomeGenerateRAM $N_MEM_B
 fi
 
 
@@ -106,6 +106,7 @@ set -o pipefail
  r1="$1"
  ref="$2"
  N_CPU=$3
+ N_MEM_B=$4
  if [ `echo $r1|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
   r2=`echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$/_2.f\1q\2/'`;
   outbase=$(basename `echo $r1|sed 's/_1[.]f\(ast\|\)q\(\|.gz\)$//'`)
@@ -123,7 +124,7 @@ set -o pipefail
  fi
  STAR --genomeDir $ref.dir $optCmd --readFilesIn $r1 $r2 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/1pass/
  mkdir -p $r1.dir/2pass-ref
- STAR --runMode genomeGenerate --genomeDir $r1.dir/2pass-ref --genomeFastaFiles $ref --sjdbFileChrStartEnd $r1.dir/1pass/SJ.out.tab --sjdbOverhang 75 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/2pass-ref/
+ STAR --runMode genomeGenerate --genomeDir $r1.dir/2pass-ref --genomeFastaFiles $ref --sjdbFileChrStartEnd $r1.dir/1pass/SJ.out.tab --sjdbOverhang 75 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/2pass-ref/ --limitGenomeGenerateRAM $N_MEM_B
  mkdir -p $r1.dir/2pass
  STAR --genomeDir $r1.dir/2pass-ref $optCmd --readFilesIn $r1 $r2 --runThreadN $N_CPU --outFileNamePrefix $r1.dir/2pass/
  rm -rf $r1.dir/1pass $r1.dir/2pass-ref
@@ -171,6 +172,7 @@ set -o pipefail
   outbase=$(basename `echo $r1|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
  fi
 
+ unset JAVA_TOOL_OPTIONS
  picard -Xmx${N_MEM_M}M AddOrReplaceReadGroups I=$r1.dir/2pass/Aligned.out.sam O=$r1.dir/2pass/rg_added_sorted.bam SO=coordinate RGID=$outbase RGLB=library RGPL=Illumina RGPU=Illumina RGSM=$outbase
  picard -Xmx${N_MEM_M}M MarkDuplicates I=$r1.dir/2pass/rg_added_sorted.bam O=$r1.dir/2pass/dedupped.bam  CREATE_INDEX=true VALIDATION_STRINGENCY=SILENT M=$r1.dir/2pass/output.metrics
 EOF
@@ -192,6 +194,7 @@ set -o pipefail
   outbase=$(basename `echo $r1|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
  fi
 
+ unset JAVA_TOOL_OPTIONS
  gatk3 -Xmx${N_MEM_M}M -T SplitNCigarReads -R $ref -I $r1.dir/2pass/dedupped.bam -o output.STAR/$outbase.bam -rf ReassignOneMappingQuality -RMQF 255 -RMQT 60 -U ALLOW_N_CIGAR_READS
  rm -rf $r1.dir
 EOF
@@ -206,7 +209,7 @@ mkdir -p output.STAR
   outbase=$(basename `echo $i|sed 's/_R1//; s/[.]f\(ast\|\)q\(\|.gz\)$//'`)
  fi
  if [ "$input_3" = "" ];then
-  echo "($ENV_STAR bash ./run-STAR.sh $i $ref $N_CPU && $ENV_PICARD bash ./run-picard.sh $i $N_CPU $N_MEM_M && $ENV_GATK3 bash ./run-GATK.sh $i $ref $N_CPU $N_MEM_M) > log.`basename $i` 2>&1"
+  echo "($ENV_STAR bash ./run-STAR.sh $i $ref $N_CPU $N_MEM_B && $ENV_PICARD bash ./run-picard.sh $i $N_CPU $N_MEM_M && $ENV_GATK3 bash ./run-GATK.sh $i $ref $N_CPU $N_MEM_M) > log.`basename $i` 2>&1"
  else
   echo "($ENV_STAR bash ./run-STAR-only1pass.sh $i $input_3 $N_CPU && $ENV_PICARD bash ./run-picard.sh $i $N_CPU $N_MEM_M && $ENV_GATK3 bash ./run-GATK.sh $i $ref $N_CPU $N_MEM_M) > log.`basename $i` 2>&1"
  fi
@@ -221,6 +224,7 @@ I=""
 for i in output.STAR/*.bam; do
  I=$I" -I $i";
 done
+unset JAVA_TOOL_OPTIONS
 DO_GATK3 gatk3 -Xmx${N_MEM_M}M -T HaplotypeCaller -R $ref $I -dontUseSoftClippedBases -stand_call_conf 20.0 -o output.vcf -nct 8
 
 bash "$scriptdir"/graph~VCFtoTree -q 10 output.vcf

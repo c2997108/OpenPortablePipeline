@@ -1,0 +1,200 @@
+#!/bin/bash
+
+explanation='
+Platanus is a novel de novo sequence assembler that can reconstruct genomic sequences of
+highly heterozygous diploids from massively parallel shotgun sequencing data.
+'
+inputdef='
+input_1:directory:paired-end FASTQ:*.fastq,*.fq
+input_2:directory option:mate-pair FASTQ:*.fastq,*.fq
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_t:Platanus_trim option:
+opt_i:Platanus_internal_trim option:
+opt_a:Platanus assemble option:
+opt_s:Platanus scaffold option:
+opt_l:Platanus gap_close option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -t #opt_t# -i #opt_i# -a #opt_a# -s #opt_s# -l #opt_l# #input_1# #input_2#"
+
+export IM_PLATANUS="cmonjeau/platanus:1.2.4"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+if [ "$r1" = "" ]; then echo Place paired-end fastq files in this folder; post_processing; fi
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 > /dev/null
+
+for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ echo $ENV_PLATANUS Platanus_trim $opt_t $i $j
+done|DOPARALLELONE
+
+WAITPARALLEL
+
+n_read=0
+ipop=""
+fastqtrim=""
+for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ fastqtrim="$fastqtrim $i.trimmed $j.trimmed"
+ n_read=`expr $n_read + 1`
+ ipop="$ipop -IP$n_read $i.trimmed $j.trimmed"
+done
+
+
+if [ "$input_2" != "" ] ;then
+r1m="`find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+
+r2m=$(for i in $r1m; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+if [ "$r1m" != "" ]; then
+echo "#Check paired-end"
+ls $r2m > /dev/null
+
+for i in $r1m; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i`
+ j2=`basename $j`
+ n_read=`expr $n_read + 1`
+ ipop="$ipop -OP$n_read $i.trimmed $j.trimmed"
+ echo $ENV_PLATANUS Platanus_internal_trim $opt_i $i $j
+done|DOPARALLELONE
+
+WAITPARALLEL
+
+for i in $r1m; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ n_read=`expr $n_read + 1`
+ ipop="$ipop -OP$n_read $i.trimmed $j.trimmed"
+done
+
+fi
+fi
+
+DO_PLATANUS Platanus assemble -o platanus $opt_a -f $fastqtrim -t $N_CPU -m $N_MEM_G
+DO_PLATANUS Platanus scaffold -o platanus $opt_s -c platanus_contig.fa -b platanus_contigBubble.fa -t $N_CPU $ipop
+DO_PLATANUS Platanus gap_close -o platanus $opt_l -c platanus_scaffold.fa -t $N_CPU $ipop
+
+post_processing
+
+#<option detail>
+#<opt_t>
+options:
+  -i str    List of input files (default NULL)
+  ------
+  -q int    Quality cutoff value (default 15)
+  -l int    Output length cutoff value  (default 25)
+  -f        Not remove read even if the pair is too short
+  -t int    Max number of threads (default 1)
+  -1 str    adaptor 1 (default AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT)
+  -2 str    adaptor 2 (default CAAGCAGAAGACGGCATACGAGATCGGTCTCGGCATTCCTGCTGAACCGCTCTTCCGATCT)
+#</opt_t>
+#<opt_i>
+options:
+  -i str    List of input files (default NULL)
+  ------
+  -q int    Quality cutoff value (default 15)
+  -l int    Output length cutoff value  (default 25)
+  -f        Not remove read even if the pair is too short
+  -t int    Max number of threads (default 1)
+  -1 str    adaptor 1 (default AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT)
+  -2 str    adaptor 2 (default CAAGCAGAAGACGGCATACGAGATCGGTCTCGGCATTCCTGCTGAACCGCTCTTCCGATCT)
+#</opt_i>
+#<opt_a>
+Options:
+    -o STR               : prefix of output files (default out, length <= 200)
+    -f FILE1 [FILE2 ...] : reads file (fasta or fastq, number <= 100)
+    -k INT               : initial k-mer size (default 32)
+    -s INT               : step size of k-mer extension (>= 1, default 10)
+    -n INT               : initial k-mer coverage cutoff (default 0, 0 means auto)
+    -c INT               : minimun k-mer coverage (default 2)
+    -a FLOAT             : k-mer extension safety level (default 10.0)
+    -u FLOAT             : maximum difference for bubble crush (identity, default 0.1)
+    -d FLOAT             : maximum difference for branch cutting (coverage ratio, default 0.5)
+    -e FLOAT             : k-mer coverage depth (k = initial k-mer size specified by -k) of homozygous region (default auto)
+    -t INT               : number of threads (<= 100, default 1)
+    -m INT               : memory limit for making kmer distribution (GB, >=1, default 16)
+    -tmp DIR             : directory for temporary files (default .)
+#</opt_a>
+#<opt_s>
+Options:
+    -o STR                             : prefix of output file (default out, length <= 200)
+    -c FILE1 [FILE2 ...]               : contig_file (fasta format)
+    -b FILE1 [FILE2 ...]               : bubble_seq_file (fasta format)
+    -ip{INT} PAIR1 [PAIR2 ...]         : lib_id inward_pair_file (reads in 1 file, fasta or fastq)
+    -IP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id inward_pair_files (reads in 2 files, fasta or fastq)
+    -op{INT} PAIR1 [PAIR2 ...]         : lib_id outward_pair_file (reads in 1 file, fasta or fastq)
+    -OP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id outward_pair_files (reads in 2 files, fasta or fastq)
+    -n{INT} INT                        : lib_id minimum_insert_size
+    -a{INT} INT                        : lib_id average_insert_size
+    -d{INT} INT                        : lib_id SD_insert_size
+    -e FLOAT                           : coverage depth of homozygous region (default auto)
+    -s INT                             : mapping seed length (default 32)
+    -v INT                             : minimum overlap length (default 32)
+    -l INT                             : minimum number of link (default 3)
+    -u FLOAT                           : maximum difference for bubble crush (identity, default 0.1)
+    -t INT                             : number of threads (<= 1, default 1)
+    -tmp DIR                           : directory for temporary files (default .)
+#</opt_s>
+#<opt_l>
+Options:
+    -o STR                             : prefix of output file (default out, length <= 200)
+    -c FILE1 [FILE2 ...]               : scaffold_file (fasta format)
+    -f FILE1 [FILE2 ...]               : single end files (fasta or fastq, number <= 100)
+    -ip{INT} PAIR1 [PAIR2 ...]         : lib_id inward_pair_file (reads in 1 file, fasta or fastq)
+    -IP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id inward_pair_files (reads in 2 files, fasta or fastq)
+    -op{INT} PAIR1 [PAIR2 ...]         : lib_id outward_pair_file (reads in 1 file, fasta or fastq)
+    -OP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id outward_pair_files (reads in 2 files, fasta or fastq)
+    -s INT                             : mapping seed length (default 32)
+    -k INT                             : mapping seed length in overlpap-layout-consensus (default 32)
+    -d INT                             : maximum the number of read in gaps exec closing gap (default 5000)
+    -vo INT                            : minimum overlap length among each read in OLC gap closing (default 32)
+    -vd INT                            : minimum overlap length between contig and edge seq in De Bruijn gap closing (default 32)
+    -eo INT                            : maximum edit distance of overlap in OLC gap closing (identity, default 1)
+    -ed FLOAT                          : maximum error rate among gap edge seq in De Bruijn gap closing (identity, default 0.05)
+    -ro FLOAT                          : minimum consensus rate in OLC gap closing (identity, default 0.66)
+    -rs FLOAT                          : minimum consensus rate in Single Read gap closing (identity, default 0.9)
+    -a                                 : do gap close only one time using all libraries
+    -t INT                             : number of threads (default 1)
+    -tmp DIR                           : directory for temporary files (default .)
+#</opt_l>
+#</option detail>
+

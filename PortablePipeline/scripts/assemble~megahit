@@ -1,0 +1,142 @@
+#!/bin/bash
+
+explanation='
+Megahit: an ultra-fast single-node solution for large and complex metagenomics assembly via succinct de bruijn graph
+'
+inputdef='
+input_1:directory option:paired-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:single-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_o:megahit option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -o #opt_o# #input_1# #input_2#"
+
+export IM_MEGAHIT="quay.io/biocontainers/megahit:1.2.9--h8b12597_0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+pairinput=""
+if [ "$input_1" != "" ]; then
+ r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$' || true`"
+ #if [ "$r1" = "" ]; then echo Place paired-end fastq files in this folder; post_processing; fi
+
+ r2=$(for i in $r1; do
+  if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+   echo $i|sed 's/_1[.]f\(ast\|\)q\([.]gz\|\)/_2.f\1q\2/';
+  else
+   echo $i|sed 's/\(.*\)_R1/\1_R2/'
+  fi
+ done)
+
+ echo "#Check paired-end"
+ ls $r2 > /dev/null
+
+ r1input=""
+ for i in $r1; do
+  r1input="$r1input,$i"
+ done
+ r1input=`echo $r1input|cut -f 2- -d,`
+ r2input=""
+ for i in $r2; do
+  r2input="$r2input,$i"
+ done
+ r2input=`echo $r2input|cut -f 2- -d,`
+
+ if [ "$r1input" != "" ]; then pairinput="-1 $r1input -2 $r2input"; fi
+fi
+
+singleinput=""
+if [ "$input_2" != "" ]; then
+ r1s="`find $input_2/ |egrep '[.]f(ast|)q([.]gz|)$' || true`"
+ r1sinput=""
+ for i in $r1s; do
+  r1sinput="$r1sinput,$i"
+ done
+ r1sinput=`echo $r1sinput|cut -f 2- -d,`
+
+ if [ "$r1sinput" != "" ]; then singleinput="-r $r1sinput"; fi
+fi
+
+TEMP_MEM=`cat /proc/meminfo 2> /dev/null |grep ^MemTotal:|awk -v mem=$N_MEM_K '{print mem/$2}' || true` #total MEM (kB)
+PARAM_MEM=""
+if [ "$TEMP_MEM" != "" ]; then PARAM_MEM="-m $TEMP_MEM"; fi
+
+DO_MEGAHIT rm -rf megahit_out
+DO_MEGAHIT megahit -t $N_CPU $PARAM_MEM $pairinput $singleinput $opt_o
+
+post_processing
+
+#<option detail>
+#<opt_o>
+  megahit [options] {-1 <pe1> -2 <pe2> | --12 <pe12> | -r <se>} [-o <out_dir>]
+
+  Input options that can be specified for multiple times (supporting plain text and gz/bz2 extensions)
+    -1                       <pe1>          comma-separated list of fasta/q paired-end #1 files, paired with files in <pe2>
+    -2                       <pe2>          comma-separated list of fasta/q paired-end #2 files, paired with files in <pe1>
+    --12                     <pe12>         comma-separated list of interleaved fasta/q paired-end files
+    -r/--read                <se>           comma-separated list of fasta/q single-end files
+
+  Input options that can be specified for at most ONE time (not recommended):
+    --input-cmd              <cmd>          command that outputs fasta/q reads to stdout; taken by MEGAHIT as SE reads
+
+Optional Arguments:
+  Basic assembly options:
+    --min-count              <int>          minimum multiplicity for filtering (k_min+1)-mers [2]
+    --k-list                 <int,int,..>   comma-separated list of kmer size
+                                            all must be odd, in the range 15-255, increment <= 28);
+                                            [21,29,39,59,79,99,119,141]
+
+  Another way to set --k-list (overrides --k-list if one of them set):
+    --k-min                  <int>          minimum kmer size (<= 255), must be odd number [21]
+    --k-max                  <int>          maximum kmer size (<= 255), must be odd number [141]
+    --k-step                 <int>          increment of kmer size of each iteration (<= 28), must be even number [12]
+
+  Advanced assembly options:
+    --no-mercy                              do not add mercy kmers
+    --bubble-level           <int>          intensity of bubble merging (0-2), 0 to disable [2]
+    --merge-level            <l,s>          merge complex bubbles of length <= l*kmer_size and similarity >= s [20,0.95]
+    --prune-level            <int>          strength of low depth pruning (0-3) [2]
+    --prune-depth            <int>          remove unitigs with avg kmer depth less than this value [2]
+    --low-local-ratio        <float>        ratio threshold to define low local coverage contigs [0.2]
+    --max-tip-len            <int>          remove tips less than this value [2*k]
+    --no-local                              disable local assembly
+    --kmin-1pass                            use 1pass mode to build SdBG of k_min
+
+  Presets parameters:
+    --presets                <str>          override a group of parameters; possible values:
+                                            meta-sensitive: '--min-count 1 --k-list 21,29,39,49,...,129,141'
+                                            meta-large: '--k-min 27 --k-max 127 --k-step 10'
+                                            (large & complex metagenomes, like soil)
+
+  Hardware options:
+    -m/--memory              <float>        max memory in byte to be used in SdBG construction
+                                            (if set between 0-1, fraction of the machine's total memory) [0.9]
+    --mem-flag               <int>          SdBG builder memory mode
+                                            0: minimum; 1: moderate; others: use all memory specified by '-m/--memory' [1]
+    --use-gpu                               use GPU
+    --gpu-mem                <float>        GPU memory in byte to be used. Default: auto detect to use up all free GPU memory.
+    -t/--num-cpu-threads     <int>          number of CPU threads, at least 2 if GPU enabled. [# of logical processors]
+
+  Output options:
+    -o/--out-dir             <string>       output directory [./megahit_out]
+    --out-prefix             <string>       output prefix (the contig file will be OUT_DIR/OUT_PREFIX.contigs.fa)
+    --min-contig-len         <int>          minimum length of contigs to output [200]
+    --keep-tmp-files                        keep all temporary files
+    --tmp-dir                <string>       set temp directory
+
+Other Arguments:
+    --continue                              continue a MEGAHIT run from its last available check point.
+                                            please set the output directory correctly when using this option.
+    -h/--help                               print the usage message
+    -v/--version                            print version
+    --verbose                               verbose mode
+
+#</opt_o>
+#</option detail>
+

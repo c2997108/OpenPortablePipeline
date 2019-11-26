@@ -5,8 +5,8 @@ Create a graph of coverage and contig length to check the contamination of the a
 '
 inputdef='
 input_1::FASTA:*.fa,*.fasta
-input_2::Forward FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
-input_3::Reverse FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:paired-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:single-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -26,29 +26,45 @@ set -o pipefail
 
 
 ref=$input_1
-r1=$input_2
-r2=$input_3
-
-if [ ! -e $ref.bwt ]; then
- DO_BWA bwa index $ref
-fi
+DO_BWA bwa index $ref
 DO_SAMTOOLS samtools faidx $ref
 
-outname=`basename $r1`
-DO_BWA bwa mem -t $N_CPU -M -R "@RG\tID:${outname}\tSM:${outname}\tPL:Illumina\tLB:${outname}" $ref $r1 $r2 > $outname.sam
-cat $outname.sam|grep -v "^@"|DO_AWK awk -F'\t' '{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=0.8){print map"\t"$0}}}}' > $outname.sam2
+inputdir=""
+if [ -e "$input_1" ]; then inputdir="$inputdir $input_1/"; fi
+if [ -e "$input_2" ]; then inputdir="$inputdir $input_2/"; fi
+
+for i in `find $inputdir |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_R1/_R2/'`;
+ else
+  j=none
+ fi
+ i2=`basename $i`
+ if [ -e "$j" ]; then
+  samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
+  echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$j\' > \'$i2.sam\'"
+ else
+  samplename=`basename $i|sed 's/[.]f\(ast\|\)q$//'`;
+  echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' > \'$i2.sam\'"
+ fi
+done | DOPARALLEL
+
+WAITPARALLEL
+
+
+
+outname=`basename $ref`
+cat *.sam|grep -v "^@"|DO_AWK awk -F'\t' '{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=0.8){print map"\t"$0}}}}' > $outname.sam2
 DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai $outname.sam2 > $outname.sam2.cov
 echo 'library(Cairo); a=read.table("'$outname.sam2.cov'",sep="\t",row.names=1); CairoPNG(file="'$outname.sam2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | DO_R R --vanilla < /dev/stdin
-cat $outname.sam| DO_SAMTOOLS samtools view -Sb -@ $N_CPU - | DO_SAMTOOLS samtools sort -T $outname -@ $N_CPU -o $outname.bam
-(DO_SAMTOOLS samtools view -SH $outname.sam; cut -f 2- $outname.sam2)|DO_SAMTOOLS samtools view -Sb -@ $N_CPU - | DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam
+(DO_SAMTOOLS samtools view -SH `ls -S *.sam|head -n 1`; cut -f 2- $outname.sam2)|DO_SAMTOOLS samtools view -Sb -@ $N_CPU - | DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam
 
-rm -f $outname.sam $outname.sam2
-DO_SAMTOOLS samtools index $outname.bam
+rm -f *.sam $outname.sam2
 DO_SAMTOOLS samtools index $outname.clean.bam
 
 
 post_processing
 #<option detail>
-#<opt_c>
-#</opt_c>
 #</option detail>

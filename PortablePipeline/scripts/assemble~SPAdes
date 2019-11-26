@@ -1,0 +1,140 @@
+#!/bin/bash
+
+explanation='
+SPAdes – St. Petersburg genome assembler – is an assembly toolkit containing various assembly pipelines. This manual will help you to install and run SPAdes.
+'
+inputdef='
+input_1:directory option:paired-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:single-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_o:megahit option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -o #opt_o# #input_1# #input_2#"
+
+export IM_SPADES="quay.io/biocontainers/spades:3.13.1--h2d02072_2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+pairinput=""
+if [ "$input_1" != "" ]; then
+ r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$' || true`"
+ #if [ "$r1" = "" ]; then echo Place paired-end fastq files in this folder; post_processing; fi
+
+ r2=$(for i in $r1; do
+  if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+   echo $i|sed 's/_1[.]f\(ast\|\)q\([.]gz\|\)/_2.f\1q\2/';
+  else
+   echo $i|sed 's/\(.*\)_R1/\1_R2/'
+  fi
+ done)
+
+ echo "#Check paired-end"
+ ls $r2 > /dev/null
+
+ n=0
+ r1input=""
+ for i in $r1; do
+  n=`expr $n + 1`
+  r1input="$r1input --pe${n}-1 $i"
+ done
+ n=0
+ r2input=""
+ for i in $r2; do
+  n=`expr $n + 1`
+  r2input="$r2input --pe${n}-2 $i"
+ done
+
+ if [ "$r1input" != "" ]; then pairinput="$r1input $r2input"; fi
+fi
+
+singleinput=""
+if [ "$input_2" != "" ]; then
+ r1s="`find $input_2/ |egrep '[.]f(ast|)q([.]gz|)$' || true`"
+ n=0
+ r1sinput=""
+ for i in $r1s; do
+  n=`expr $n + 1`
+  r1sinput="$r1sinput --s${n} $i"
+ done
+
+ if [ "$r1sinput" != "" ]; then singleinput="-r $r1sinput"; fi
+fi
+
+DO_SPADES spades.py -o output_dir -t $N_CPU -m $N_MEM_G $opt_o $pairinput $singleinput
+
+post_processing
+
+#<option detail>
+#<opt_o>
+Basic options:
+-o      <output_dir>    directory to store all the resulting files (required)
+--sc                    this flag is required for MDA (single-cell) data
+--meta                  this flag is required for metagenomic sample data
+--rna                   this flag is required for RNA-Seq data
+--plasmid               runs plasmidSPAdes pipeline for plasmid detection
+--iontorrent            this flag is required for IonTorrent data
+--test                  runs SPAdes on toy dataset
+-h/--help               prints this usage message
+-v/--version            prints version
+
+Input data:
+--12    <filename>      file with interlaced forward and reverse paired-end reads
+-1      <filename>      file with forward paired-end reads
+-2      <filename>      file with reverse paired-end reads
+-s      <filename>      file with unpaired reads
+--pe<#>-12      <filename>      file with interlaced reads for paired-end library number <#> (<#> = 1,2,..,9)
+--pe<#>-1       <filename>      file with forward reads for paired-end library number <#> (<#> = 1,2,..,9)
+--pe<#>-2       <filename>      file with reverse reads for paired-end library number <#> (<#> = 1,2,..,9)
+--pe<#>-s       <filename>      file with unpaired reads for paired-end library number <#> (<#> = 1,2,..,9)
+--pe<#>-<or>    orientation of reads for paired-end library number <#> (<#> = 1,2,..,9; <or> = fr, rf, ff)
+--s<#>          <filename>      file with unpaired reads for single reads library number <#> (<#> = 1,2,..,9)
+--mp<#>-12      <filename>      file with interlaced reads for mate-pair library number <#> (<#> = 1,2,..,9)
+--mp<#>-1       <filename>      file with forward reads for mate-pair library number <#> (<#> = 1,2,..,9)
+--mp<#>-2       <filename>      file with reverse reads for mate-pair library number <#> (<#> = 1,2,..,9)
+--mp<#>-s       <filename>      file with unpaired reads for mate-pair library number <#> (<#> = 1,2,..,9)
+--mp<#>-<or>    orientation of reads for mate-pair library number <#> (<#> = 1,2,..,9; <or> = fr, rf, ff)
+--hqmp<#>-12    <filename>      file with interlaced reads for high-quality mate-pair library number <#> (<#> = 1,2,..,9)
+--hqmp<#>-1     <filename>      file with forward reads for high-quality mate-pair library number <#> (<#> = 1,2,..,9)
+--hqmp<#>-2     <filename>      file with reverse reads for high-quality mate-pair library number <#> (<#> = 1,2,..,9)
+--hqmp<#>-s     <filename>      file with unpaired reads for high-quality mate-pair library number <#> (<#> = 1,2,..,9)
+--hqmp<#>-<or>  orientation of reads for high-quality mate-pair library number <#> (<#> = 1,2,..,9; <or> = fr, rf, ff)
+--nxmate<#>-1   <filename>      file with forward reads for Lucigen NxMate library number <#> (<#> = 1,2,..,9)
+--nxmate<#>-2   <filename>      file with reverse reads for Lucigen NxMate library number <#> (<#> = 1,2,..,9)
+--sanger        <filename>      file with Sanger reads
+--pacbio        <filename>      file with PacBio reads
+--nanopore      <filename>      file with Nanopore reads
+--tslr  <filename>      file with TSLR-contigs
+--trusted-contigs       <filename>      file with trusted contigs
+--untrusted-contigs     <filename>      file with untrusted contigs
+
+Pipeline options:
+--only-error-correction runs only read error correction (without assembling)
+--only-assembler        runs only assembling (without read error correction)
+--careful               tries to reduce number of mismatches and short indels
+--continue              continue run from the last available check-point
+--restart-from  <cp>    restart run with updated options and from the specified check-point ('ec', 'as', 'k<int>', 'mc')
+--disable-gzip-output   forces error correction not to compress the corrected reads
+--disable-rr            disables repeat resolution stage of assembling
+
+Advanced options:
+--dataset       <filename>      file with dataset description in YAML format
+-t/--threads    <int>           number of threads
+                                [default: 16]
+-m/--memory     <int>           RAM limit for SPAdes in Gb (terminates if exceeded)
+                                [default: 250]
+--tmp-dir       <dirname>       directory for temporary files
+                                [default: <output_dir>/tmp]
+-k              <int,int,...>   comma-separated list of k-mer sizes (must be odd and
+                                less than 128) [default: 'auto']
+--cov-cutoff    <float>         coverage cutoff value (a positive float number, or 'auto', or 'off') [default: 'off']
+--phred-offset  <33 or 64>      PHRED quality offset in the input reads (33 or 64)
+                                [default: auto-detect]
+#</opt_o>
+#</option detail>
+
