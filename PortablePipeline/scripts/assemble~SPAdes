@@ -1,7 +1,7 @@
 #!/bin/bash
 
 explanation='
-SPAdes – St. Petersburg genome assembler – is an assembly toolkit containing various assembly pipelines. This manual will help you to install and run SPAdes.
+SPAdes - St. Petersburg genome assembler - is an assembly toolkit containing various assembly pipelines. This manual will help you to install and run SPAdes.
 '
 inputdef='
 input_1:directory option:paired-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
