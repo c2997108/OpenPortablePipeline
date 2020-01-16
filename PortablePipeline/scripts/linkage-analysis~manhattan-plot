@@ -13,7 +13,7 @@ opt_c:cpu threads:8
 opt_m:memory limit (GB):64
 opt_q:GQ threshold:20
 opt_d:DP threshold:5
-opt_p:p-value threshold to draw:1
+opt_p:-log10(p-value) threshold to draw:1
 opt_a:draw all chromosome [yes|no]:yes
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -p #opt_p# -a #opt_a# #input_1# #input_2# #input_3#"
@@ -78,12 +78,15 @@ ax2=read.table('$filename.axis')
 myfisher=function(row){contab=matrix(as.integer(row),nrow=2,byrow=F); pval=fisher.test(contab)\$p.value; return(pval)}
 a[,7]=apply(a[,3:6],1,'myfisher')
 #for(i in 1:dim(a)[1]){b=fisher.test(matrix(as.numeric(a[i,3:6]), ncol=2)); a[i,7]=b\$p.value}
-#a[,7]=p.adjust(a[,7], method="BH") #Benjamini-Hochberg FDR
+#a[,7]=p.adjust(a[,7], method='BH') #Benjamini-Hochberg FDR
 colnames(a)[1]='CHR'
 colnames(a)[2]='BP'
 colnames(a)[7]='P'
 write.table(a[order(a[,7]),],'$filename.fisher',quote=F,sep='\\t',row.names=F)
+a2=a
+a2[,7]=p.adjust(a2[,7], method='BH')
 b=a[-log10(a[,7])>=$pval,]
+b2=a2[-log10(a2[,7])>=$pval,]
 if('$corax'=='yes'){
  tempax=ax
 }else{
@@ -96,11 +99,29 @@ colnames(tempax)[5]='V4'
 colnames(tempax)[6]='V5'
 colnames(tempax)[7]='V6'
 colnames(tempax)[8]='P'
+#only dominant
+c=b[b[,4]/b[,3]>b[,6]/b[,5],]
+c2=b2[b2[,4]/b2[,3]>b2[,6]/b2[,5],]
+#extend points to chromosome's end
 b=rbind(b,tempax[,2:8])
+c=rbind(c,tempax[,2:8])
+b2=rbind(b2,tempax[,2:8])
+c2=rbind(c2,tempax[,2:8])
+
 library(Cairo)
 CairoPNG('$filename.png', width=2000, height=1000)
 manhattan(b, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
-dev.off()" | DO_R R --vanilla < /dev/stdin
+dev.off()
+CairoPNG('BHnormalized.$filename.png', width=2000, height=1000)
+manhattan(b2, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
+dev.off()
+CairoPNG('dominant.$filename.png', width=2000, height=1000)
+manhattan(c, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
+dev.off()
+CairoPNG('dominant.BHnormalized.$filename.png', width=2000, height=1000)
+manhattan(c2, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
+dev.off()
+" | DO_R R --vanilla < /dev/stdin
 
 (echo -e "p-value\tmatch rate\tCHROM\tPOS\tthe number of sample 1 individuals\tthe number of sample 1 positive individuals\tthe number of sample 2 individuals\tthe number of sample 2 positive individu
 als\t"|tr -d '\n';
@@ -279,59 +300,8 @@ wait
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 post_processing
 
 #<option detail>
-#<opt_b>
-SELDLA ver2.0.7
-      --DP=VALUE             DP_threshold [1]
-      --GQ=VALUE             GQ_threshold [0]
-  -p, --hqsnp=VALUE          high quality SNP rate [0.3]
-  -b, --bal=VALUE            0 / 1 balance [0.1]
-      --NonZeroSampleRate=VALUE
-                             exclude ambiquous SNP (0-1) [0.3]
-      --NonZeroPhaseRate=VALUE
-                             exclude ambiquous Phase (0-1) [0.3]
-      --ldnum=VALUE          the minimum number of same LD [1]
-  -s, --exmatch=VALUE        extension match rate [0.7]
-  -v, --spmatch=VALUE        split match rate [0.7]
-  -l, --clmatch=VALUE        cluster match rate [0.8]
-      --cs=VALUE             cluster size [2]
-      --nl=VALUE             near SNP match rate [0.9]
-  -r=VALUE                   the region to merge near SNP (bp) [10000]
-  -o, --output=VALUE         output prefix [seldla]
-      --vcf=VALUE            input VCF file <required>
-      --fasta=VALUE          input FASTA file <required>
-      --family=VALUE         input family file <required>
-      --noNewVcf             no converted vcf output with new position
-      --precleaned=VALUE     pre-calculated cleaned vcf file (if this option is
-                               used, input vcf is not used.)
-      --mode=VALUE           analysis mode (crossbreed, haploid, duploid) [
-                               crossbreed]
-      --MaxLdClusterOnly     use max size LD cluster only
-      --RateOfNotNASNP=VALUE threshold of the ratio that is not NA with each
-                               other when comparing SNP at the clustering step [
-                               0.2]
-      --RateOfNotNALD=VALUE  threshold of the ratio that is not NA with each
-                               other when comparing LD at the clustering step [
-                               0.4]
-  -h, --help                 show help.
-
-for RAD-seq:    --GQ=20 -r 100 --DP=5 --cs=3 --mode=duploid
-for crossbreed: --GQ=0 -r 10000 --DP=1 --cs=2 --mode=crossbreed
-#</opt_b>
 #</option detail>
 

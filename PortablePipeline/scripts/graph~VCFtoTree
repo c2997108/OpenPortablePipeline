@@ -14,7 +14,7 @@ opt_d:DP threshold:4
 opt_r:maximum SNPs to draw a tree:100000
 
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# #input_1#"
+runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -r #opt_r# #input_1#"
 
 export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_6-kegg_4"
 export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_6-kegg_4"

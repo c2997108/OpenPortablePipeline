@@ -95,7 +95,7 @@ mkdir -p output.prinseq
  fi
  i2=`basename $i`
  j2=`basename $j`
- echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
+ echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p ">" log.prinseq.`basename $i` "2>&1" ";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
 done
 for i in $r1gz; do
  if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
@@ -105,7 +105,7 @@ for i in $r1gz; do
  fi
  i2=`basename $i .gz`
  j2=`basename $j .gz`
- echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+ echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p ">" log.prinseq.`basename $i` "2>&1" ";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
 done)|DOPARALLELONE
 
 WAITPARALLEL
@@ -119,7 +119,7 @@ r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i"'|'$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam';' $ENV_SAMTOOLS samtools index `basename "$i"`.bam';' $ENV_STRINGTIE stringtie $opt_t -p $N_CPU -o output.stringtie/`basename "$i"`.gtf `basename "$i"`.bam
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|'$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ';' $ENV_SAMTOOLS samtools index `basename "$i"`.bam';' $ENV_STRINGTIE stringtie $opt_t -p $N_CPU -o output.stringtie/`basename "$i"`.gtf `basename "$i"`.bam
 done)|DOPARALLEL
 
 WAITPARALLEL

@@ -6,7 +6,7 @@ Create a graph of coverage and contig length to check the contamination of the a
 inputdef='
 input_1::FASTA:*.fa,*.fasta
 input_2:directory option:paired-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
-input_2:directory option:single-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_3:directory option:single-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -29,11 +29,7 @@ ref=$input_1
 DO_BWA bwa index $ref
 DO_SAMTOOLS samtools faidx $ref
 
-inputdir=""
-if [ -e "$input_1" ]; then inputdir="$inputdir $input_1/"; fi
-if [ -e "$input_2" ]; then inputdir="$inputdir $input_2/"; fi
-
-for i in `find $inputdir |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
+(for i in `find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
  if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
  elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
@@ -46,10 +42,16 @@ for i in `find $inputdir |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
   samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
   echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$j\' > \'$i2.sam\'"
  else
-  samplename=`basename $i|sed 's/[.]f\(ast\|\)q$//'`;
+  samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
   echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' > \'$i2.sam\'"
  fi
-done | DOPARALLEL
+done
+for i in `find $input_3/ |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
+ i2=`basename $i`
+ samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
+ echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' > \'$i2.sam\'"
+done
+) | DOPARALLEL
 
 WAITPARALLEL
 

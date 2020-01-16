@@ -1,0 +1,197 @@
+#!/bin/bash
+
+explanation='
+Platanus-allee is an assembler derived from Platanus assembler, however, it was developed with another concept. Platanus-allee tries to construct each haplotype sequence from the beginning and pair them as homologous chromosomes, while Platanus constructs consensus sequence of homologous chromosomes at first and tries to split into each haplotype sequence. Therefore, Platanus-allee marks better performance for highly heterozygous species genome or highly diverged genomic regions. However, for low heterozygous species genome (as a guide < 1.0 %), Platanus assembler would mark better performance than Platanus-allee. This may be caused by the sequence coverage for the target sequence. Platanus-allee targets each haplotype, therefore, simply speaking, it requires a double number of reads.
+'
+inputdef='
+input_1:directory:paired-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:mate-pair FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_3:directory option:long-read file (PacBio, Nanopore) FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_t:Platanus_trim option:
+opt_i:Platanus_internal_trim option:
+opt_a:Platanus_allele assemble option:
+opt_s:Platanus_allele phase option:
+opt_l:Platanus_allele consensus option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -t #opt_t# -i #opt_i# -a #opt_a# -s #opt_s# -l #opt_l# #input_1# #input_2# #input_3#"
+
+export IM_PLATANUS="cmonjeau/platanus:1.2.4"
+export IM_PLATANUSALLELE="c2997108/platanus-allele:2.0.2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$' || true`"
+if [ "$r1" = "" ]; then echo Place paired-end fastq files in this folder; post_processing; fi
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 > /dev/null
+
+n_read=0
+ipop=""
+fastqtrim=""
+for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
+  gzip -dc $i > `basename $i .gz`
+  gzip -dc $j > `basename $j .gz`
+  i=`basename $i .gz`
+  j=`basename $j .gz`
+ fi
+ fastqtrim="$fastqtrim $i $j"
+ n_read=`expr $n_read + 1`
+ ipop="$ipop -IP$n_read $i $j"
+done
+
+if [ "$input_2" != "" ] ;then
+ r1m="`find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$' || true`"
+
+ r2m=$(for i in $r1m; do
+  if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+   echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+  else
+   echo $i|sed 's/_R1/_R2/'
+  fi
+ done)
+
+ if [ "$r1m" != "" ]; then
+  echo "#Check paired-end"
+  ls $r2m > /dev/null
+
+  for i in $r1m; do
+   if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+    j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+   else
+    j=`echo $i|sed 's/_R1/_R2/'`
+   fi
+   if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
+    gzip -dc $i > `basename $i .gz`
+    gzip -dc $j > `basename $j .gz`
+    i=`basename $i .gz`
+    j=`basename $j .gz`
+   fi
+   n_read=`expr $n_read + 1`
+   ipop="$ipop -OP$n_read $i $j"
+  done
+
+ fi
+fi
+
+if [ "$input_3" != "" ] ;then
+ rlong="`find $input_3/ |egrep '[.]f(ast|)q([.]gz|)$' || true`"
+ if [ "$rlong" != "" ]; then ipop="$ipop -p"; fi
+ for i in $rlong; do
+  if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
+   gzip -dc $i > `basename $i .gz`
+   i=`basename $i .gz`
+  fi
+  ipop="$ipop $i"
+ done
+fi
+
+DO_PLATANUSALLELE platanus_allee assemble -o platanus $opt_a -f $fastqtrim -t $N_CPU -m $N_MEM_G
+DO_PLATANUSALLELE platanus_allee phase -o platanus $opt_s -c platanus_contig.fa platanus_junctionKmer.fa -t $N_CPU $ipop
+DO_PLATANUSALLELE platanus_allee consensus -o platanus $opt_l -c platanus_primaryBubble.fa platanus_nonBubbleHomoCandidate.fa -t $N_CPU $ipop
+
+post_processing
+
+#<option detail>
+#<opt_t>
+options:
+  -i str    List of input files (default NULL)
+  ------
+  -q int    Quality cutoff value (default 15)
+  -l int    Output length cutoff value  (default 25)
+  -f        Not remove read even if the pair is too short
+  -t int    Max number of threads (default 1)
+  -1 str    adaptor 1 (default AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT)
+  -2 str    adaptor 2 (default CAAGCAGAAGACGGCATACGAGATCGGTCTCGGCATTCCTGCTGAACCGCTCTTCCGATCT)
+#</opt_t>
+#<opt_i>
+options:
+  -i str    List of input files (default NULL)
+  ------
+  -q int    Quality cutoff value (default 15)
+  -l int    Output length cutoff value  (default 25)
+  -f        Not remove read even if the pair is too short
+  -t int    Max number of threads (default 1)
+  -1 str    adaptor 1 (default AATGATACGGCGACCACCGAGATCTACACTCTTTCCCTACACGACGCTCTTCCGATCT)
+  -2 str    adaptor 2 (default CAAGCAGAAGACGGCATACGAGATCGGTCTCGGCATTCCTGCTGAACCGCTCTTCCGATCT)
+#</opt_i>
+#<opt_a>
+Options:
+    -o STR               : prefix of output files (default out, length <= 200)
+    -f FILE1 [FILE2 ...] : reads file (fasta or fastq, number <= 100)
+    -k INT               : initial k-mer size (default 32)
+    -K FLOAT             : maximum-k-mer factor (maximum-k = FLOAT*read-length, default  0.5)
+    -s INT               : step size of k-mer extension (>= 1, default 20)
+    -n INT               : initial k-mer coverage cutoff (default 0, 0 means auto)
+    -c INT               : minimun k-mer coverage (default 2)
+    -a FLOAT             : k-mer extension safety level (default 10.0)
+    -u FLOAT             : maximum difference for bubble crush (identity, default 0)
+    -d FLOAT             : maximum difference for branch cutting (coverage ratio, default 0.5)
+    -e FLOAT             : k-mer coverage depth (k = initial k-mer size specified by -k) of homozygous region (default auto)
+    -t INT               : number of threads (<= 100, default 1)
+    -m INT               : memory limit for making kmer distribution (GB, >=1, default 16)
+    -tmp DIR             : directory for temporary files (default .)
+#</opt_a>
+#<opt_s>
+Options:
+    -o STR                             : prefix of output file and directory (do not use "/", default out, length <= 200)
+    -c FILE1 [FILE2 ...]               : contig (or scaffold) file (fasta format)
+    -ip{INT} PAIR1 [PAIR2 ...]         : lib_id inward_pair_file (interleaved file, fasta or fastq)
+    -IP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id inward_pair_files (separate forward and reverse files, fasta or fastq)
+    -op{INT} PAIR1 [PAIR2 ...]         : lib_id outward_pair_file (interleaved, fasta or fastq)
+    -OP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id outward_pair_files (separate forward and reverse files, fasta or fastq)
+    -p PAIR1 [PAIR2 ...]               : long-read file (PacBio, Nanopore) (fasta or fastq)
+    -x PAIR1 [PAIR2 ...]               : linked-reads files (paired-ends, 10x Genomics) (interleaved, fasta or fastq)
+    -X FWD1 REV1 [FWD2 REV2 ...]       : linked-reads files (paired-ends, 10x Genomics) (separate forward and reverse files, fasta or fastq)
+    -i INT                             : number of iterations (default 2)
+    -l INT                             : minimum number of links to scaffold (default 3)
+    -k INT                             : minimum number of links to phase variants (default 1)
+    -s INT1 [INT2 ...]                 : mapping seed length for short reads (default 32 64 96)
+    -t INT                             : number of threads (default 1)
+    -tmp DIR                           : directory for temporary files (default .)
+    -mapper FILE                       : path of mapper executable file (default minimap2, only effective with -p option)
+    -minimap2_sensitive                : sensitive mode for minimap2 (default, off; only effective with -p option)
+#</opt_s>
+#<opt_l>
+Options:
+    -o STR                             : prefix of output file (default out, length <= 200)
+    -c FILE1 [FILE2 ...]               : contig_file (fasta format)
+    -ip{INT} PAIR1 [PAIR2 ...]         : lib_id inward_pair_file (interleaved file, fasta or fastq)
+    -IP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id inward_pair_files (separate forward and reverse files, fasta or fastq)
+    -op{INT} PAIR1 [PAIR2 ...]         : lib_id outward_pair_file (interleaved, fasta or fastq)
+    -OP{INT} FWD1 REV1 [FWD2 REV2 ...] : lib_id outward_pair_files (separate forward and reverse files, fasta or fastq)
+    -p PAIR1 [PAIR2 ...]               : long-read file (PacBio, Nanopore) (fasta or fastq)
+    -x PAIR1 [PAIR2 ...]               : linked-reads files (paired-ends, 10x Genomics) (interleaved, fasta or fastq)
+    -X FWD1 REV1 [FWD2 REV2 ...]       : linked-reads files (paired-ends, 10x Genomics) (separate forward and reverse files, fasta or fastq)
+    -e FLOAT                           : coverage depth of homozygous region (default auto)
+    -L INT                             : maximum fragment length of tag (10x Genomics) (default 200000)
+    -s INT1 [INT2 ...]                 : mapping seed length for short reads (default 32 64 96)
+    -l INT                             : minimum number of links to scaffold (default 3)
+    -t INT                             : number of threads (<= 1, default 1)
+    -mapper FILE                       : path of mapper executable file (default, minimap, only effective with -p option)
+    -minimap2_sensitive                : sensitive mode for minimap2 (default, off; only effective with -p option)
+    -tmp DIR                           : directory for temporary files (default .)
+#</opt_l>
+#</option detail>
+
