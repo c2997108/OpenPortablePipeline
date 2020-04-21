@@ -40,6 +40,11 @@ Windowsユーザは、ジャンクションファイルの作成に管理者権�
 クライアントとサーバのファイルのやり取りを示すパワーシェルのスクリーンショットはこんな感じ。
 ![image](https://user-images.githubusercontent.com/5350508/79914912-ffb4fe80-8460-11ea-9390-02ad5b745189.png)
 
+6. Statusがfinishedになれば解析が終わっているので、「open results」をクリックして解析結果ファイル一覧を見てみる。
+![image](https://user-images.githubusercontent.com/5350508/79915563-232c7900-8462-11ea-97f0-fcffd17e2877.png)
+結果ファイル一覧の例は下記のような感じ。下記は単にサーバ上でHello Worldを表示させただけなので、log.txtファイルにその痕跡が残っているだけだけど、マッピングなどを行えばここにbamファイルなどが表示される。
+![image](https://user-images.githubusercontent.com/5350508/79915687-64248d80-8462-11ea-884f-46dc0047c7c6.png)
+
 ## JAVA開発者用メモ
 GitHubに50 MBを超えるファイルを登録しているので、git cloneで全てのファイルをダウンロードするには、git lfsのインストールが必要。git lfsを[このリンク先のページ](https://github.com/git-lfs/git-lfs/wiki/Installation)の手順でインストールしたあと、```git clone https://github.com/c2997108/OpenPortablePipeline.git``` とすればよい。
 
