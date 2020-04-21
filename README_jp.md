@@ -9,8 +9,14 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 - ストレージ：たくさん　解析にもよるが1TBくらいあると安心。
 
 ### サーバ (データ解析を行うコンピュータ)
+下記のいずれかが必要
+#### 自前のサーバ
 - メモリ64GBの環境でテストしている。データによってはそれよりも少なくても動くこともあるし、それより多く必要なこともある。
 - DockerもしくはSingularityインストール済みでSSHサーバ設定済みのLinux (CentOS6, CentOS7, Ubuntu16, Ubuntu18) : [Linuxサーバセットアップ方法](#Linuxサーバのセットアップ方法)、もしくはWindows 10のWindows Subsystem for Linuxを利用したUbuntu : [WSLサーバセットアップ方法](#WSLサーバのセットアップ方法)、もしくはMac OSXでhomebrewのcoreutilsとDocker Desktop for MacをインストールしたMac : [Macサーバセットアップ方法](#Macをサーバとして使用する場合のセットアップ方法)。
+
+#### スパコン (無料アカウントあり）
+- 遺伝研DDBJスパコン https://sc.ddbj.nig.ac.jp/ja
+- 東大ヒトゲノム解析センタースパコン https://supcom.hgc.jp/japanese/
 
 ## 操作方法
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。  
@@ -26,7 +32,7 @@ Windowsユーザは、ジャンクションファイルの作成に管理者権�
 
 5. 「Run」ボタンが押された後、サーバにデータを転送するので、恐らくしばらく時間がかかる。進捗はJavaとは別にコマンドプロンプトかターミナルが開いているはずで、そちらにデータの転送状況が表示される。「Job List」のステータスが「Running」に変わったら、本ソフトウェアをいったん終了しても大丈夫。立ち上げていれば、30秒おきにサーバに進捗を確認しに行く。
 
-## JAVA開発者用
+## JAVA開発者用メモ
 GitHubに50 MBを超えるファイルを登録しているので、git cloneで全てのファイルをダウンロードするには、git lfsのインストールが必要。git lfsを[このリンク先のページ](https://github.com/git-lfs/git-lfs/wiki/Installation)の手順でインストールしたあと、```git clone https://github.com/c2997108/OpenPortablePipeline.git``` とすればよい。
 
 ## スクリプト開発者へ仕様というかメモ
@@ -130,7 +136,7 @@ sudo usermod -aG docker $USER
 ## WSLサーバのセットアップ方法
 1．Windows Subsystem for Linux (WSL)をインストールする。
 
-Windows10のバージョンが、1809 (2018年秋), 1903 (2019年春)のいずれかであることを確認。 WSLを有効化するためPowerShellを管理者権限で開く。 (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))
+Windows10のバージョンが、1903 (2019年春)以降であることを確認。 WSLを有効化するためPowerShellを管理者権限で開く。 (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))
 
 次のコマンドを貼り付けて実行し、WSLの機能を有効にする。
 ```
