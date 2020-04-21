@@ -11,7 +11,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 ### サーバ (データ解析を行うコンピュータ)
 下記のいずれかが必要
 #### 自前のサーバ
-- メモリ64GBの環境でテストしている。データによってはそれよりも少なくても動くこともあるし、それより多く必要なこともある。
+メモリ64GBの環境でテストしている。データによってはそれよりも少なくても動くこともあるし、それより多く必要なこともある。
 - DockerもしくはSingularityインストール済みでSSHサーバ設定済みのLinux (CentOS6, CentOS7, Ubuntu16, Ubuntu18) : [Linuxサーバセットアップ方法](#Linuxサーバのセットアップ方法)、もしくはWindows 10のWindows Subsystem for Linuxを利用したUbuntu : [WSLサーバセットアップ方法](#WSLサーバのセットアップ方法)、もしくはMac OSXでhomebrewのcoreutilsとDocker Desktop for MacをインストールしたMac : [Macサーバセットアップ方法](#Macをサーバとして使用する場合のセットアップ方法)。
 
 #### スパコン (無料アカウントあり）
