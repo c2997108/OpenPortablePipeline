@@ -111,6 +111,7 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
   などとやるにはbashのバージョンが古くてエラーになるので、
   ```if [ "${AAA:-}" != "" ]; then echo a; fi```
   とすること。
+- 確保するメモリ量を20GB以上としないと、実行時に「FATAL:   While making image from oci registry: while building SIF from layers: unable to create new build: while ensuring correct compression algorithm:」となってsingularityのイメージを作れなくて失敗する。
 
 ### Mac用
 - dockerを/usr/local/binにインストールし、Homebrewでcoreutils, gnu-sedを/usr/local/xxx/gnubinにインストールする必要あり。
