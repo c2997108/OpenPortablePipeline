@@ -62,6 +62,7 @@ cat *.sam|grep -v "^@"|DO_AWK awk -F'\t' '{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); spl
 DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai $outname.sam2 > $outname.sam2.cov
 echo 'library(Cairo); a=read.table("'$outname.sam2.cov'",sep="\t",row.names=1); CairoPNG(file="'$outname.sam2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | DO_R R --vanilla < /dev/stdin
 (DO_SAMTOOLS samtools view -SH `ls -S *.sam|head -n 1`; cut -f 2- $outname.sam2)|DO_SAMTOOLS samtools view -Sb -@ $N_CPU - | DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam
+(echo -e 'id\tcoverage\tmapped bases\tlength'; cat $outname.sam2.cov) > $outname.output.txt
 
 rm -f *.sam $outname.sam2
 DO_SAMTOOLS samtools index $outname.clean.bam
