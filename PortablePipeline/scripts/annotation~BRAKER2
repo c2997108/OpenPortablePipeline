@@ -1,0 +1,450 @@
+#!/bin/bash
+
+explanation='
+BRAKER gene prediction pipeline with RNA-seq data
+'
+inputdef='
+input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3::GeneMark-ES/ET/EP LINUX 64 binary (http://exon.gatech.edu/GeneMark/license_download.cgi):gmes_linux_64.tar.gz
+input_4::GeneMark-ES/ET/EP LINUX 64 license (http://exon.gatech.edu/GeneMark/license_download.cgi):gm_key_64.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_p:prinseq option:-trim_tail_right 5 -trim_qual_right 20 -ns_max_p 20 -min_len 30 -trim_qual_window 5
+opt_b:hisat2-build option:
+opt_i:hisat2 option ("--rna-strandness RF" is for TruSeq Stranded mRNA Sample Preparation):--rna-strandness RF
+opt_r:BRAKER option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -r #opt_r# #input_1# #input_2# #input_3# #input_4#"
+
+export IM_BASE="c2997108/ubuntu-18:braker2_hisat2"
+export IM_PRINSEQ="quay.io/biocontainers/prinseq:0.20.4"
+export IM_HISAT2="quay.io/biocontainers/hisat2:2.2.0--py36hf0b53f7_4"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
+export IM_BRAKER="c2997108/ubuntu-18:braker2_hisat2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+
+if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+r2gz=$(for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 $r2gz > /dev/null
+
+#decompress input files
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `basename "$input_3"` != "gmes_linux_64.tar.gz" -o `basename "$input_4"` != "gm_key_64.gz" ]; then echo 'Download GeneMark-ES/ET/EP LINUX 64 binary and license(http://exon.gatech.edu/GeneMark/license_download.cgi)'; post_processing; fi
+
+DO_HISAT2 hisat2-build $opt_b -p $N_CPU "$input_2" hisat2_index
+
+
+mkdir -p output.prinseq
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i`
+ j2=`basename $j`
+ echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p ">" log.prinseq.`basename $i` "2>&1" ";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
+done
+for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i .gz`
+ j2=`basename $j .gz`
+ echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p ">" log.prinseq.`basename $i` "2>&1" ";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+done)|DOPARALLELONE
+
+WAITPARALLEL
+
+rm -f output.prinseq/*_singletons.fastq
+r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+
+echo "" > bamlist;
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|'$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ';' $ENV_SAMTOOLS samtools index `basename "$i"`.bam;
+ echo `basename "$i"`.bam >> bamlist
+done)|DOPARALLEL
+
+WAITPARALLEL
+
+bamlist=`awk '{ORS=","; print $0}' bamlist|sed 's/^,//; s/,$//'`
+awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" > "$input_2".ref.fa
+
+echo 'set -eux
+export PATH=/root/anaconda3/bin:$PATH
+export PATH=/root/ProtHint/bin:$PATH
+export PATH=/root/BRAKER/scripts/:$PATH
+export PATH=/root/Augustus/bin:$PATH
+export GENEMARK_PATH=$PWD/gmes_linux_64
+export MAKEHUB_PATH=/root/MakeHub
+export AUGUSTUS_SCRIPTS_PATH=/root/Augustus/scripts
+export AUGUSTUS_BIN_PATH=/root/Augustus/bin
+export AUGUSTUS_CONFIG_PATH=$PWD/config/
+export HOME=$PWD
+cp -r /root/Augustus/config .
+zcat "'"$input_4"'" > .gm_key
+tar vxf "'"$input_3"'"
+cd gmes_linux_64
+./change_path_in_perl_scripts.pl /root/anaconda3/bin/perl
+cd ..
+rm -rf config/species/run1 || true
+/root/BRAKER/scripts/braker.pl --genome="'"$input_2"'".ref.fa --species=run1 --bam="'"$bamlist"'" '"$opt_r"'
+' > temp_bashrc
+
+DO_BRAKER bash temp_bashrc
+
+
+post_processing
+
+#<option detail>
+#<opt_b>
+Options:
+    -c                      reference sequences given on cmd line (as
+                            <reference_in>)
+    --large-index           force generated index to be 'large', even if ref
+                            has fewer than 4 billion nucleotides
+    -a/--noauto             disable automatic -p/--bmax/--dcv memory-fitting
+    -p                      number of threads
+    --bmax <int>            max bucket sz for blockwise suffix-array builder
+    --bmaxdivn <int>        max bucket sz as divisor of ref len (default: 4)
+    --dcv <int>             diff-cover period for blockwise (default: 1024)
+    --nodc                  disable diff-cover (algorithm becomes quadratic)
+    -r/--noref              don't build .3/.4.ht2 (packed reference) portion
+    -3/--justref            just build .3/.4.ht2 (packed reference) portion
+    -o/--offrate <int>      SA is sampled every 2^offRate BWT chars (default: 5)
+    -t/--ftabchars <int>    # of chars consumed in initial lookup (default: 10)
+    --localoffrate <int>    SA (local) is sampled every 2^offRate BWT chars (default: 3)
+    --localftabchars <int>  # of chars consumed in initial lookup in a local index (default: 6)
+    --snp <path>            SNP file name
+    --haplotype <path>      haplotype file name
+    --ss <path>             Splice site file name
+    --exon <path>           Exon file name
+    --seed <int>            seed for random number generator
+    -q/--quiet              verbose output (for debugging)
+    -h/--help               print detailed description of tool and its options
+    --usage                 print this usage message
+    --version               print version information and quit
+#</opt_b>
+#<opt_i>
+Options (defaults in parentheses):
+
+ Input:
+  -q                 query input files are FASTQ .fq/.fastq (default)
+  --qseq             query input files are in Illumina's qseq format
+  -f                 query input files are (multi-)FASTA .fa/.mfa
+  -r                 query input files are raw one-sequence-per-line
+  -c                 <m1>, <m2>, <r> are sequences themselves, not files
+  -s/--skip <int>    skip the first <int> reads/pairs in the input (none)
+  -u/--upto <int>    stop after first <int> reads/pairs (no limit)
+  -5/--trim5 <int>   trim <int> bases from 5'/left end of reads (0)
+  -3/--trim3 <int>   trim <int> bases from 3'/right end of reads (0)
+  --phred33          qualities are Phred+33 (default)
+  --phred64          qualities are Phred+64
+  --int-quals        qualities encoded as space-delimited integers
+  --sra-acc          SRA accession ID
+
+ Alignment:
+  --n-ceil <func>    func for max # non-A/C/G/Ts permitted in aln (L,0,0.15)
+  --ignore-quals     treat all quality values as 30 on Phred scale (off)
+  --nofw             do not align forward (original) version of read (off)
+  --norc             do not align reverse-complement version of read (off)
+
+ Spliced Alignment:
+  --pen-cansplice <int>              penalty for a canonical splice site (0)
+  --pen-noncansplice <int>           penalty for a non-canonical splice site (12)
+  --pen-canintronlen <func>          penalty for long introns (G,-8,1) with canonical splice sites
+  --pen-noncanintronlen <func>       penalty for long introns (G,-8,1) with noncanonical splice sites
+  --min-intronlen <int>              minimum intron length (20)
+  --max-intronlen <int>              maximum intron length (500000)
+  --known-splicesite-infile <path>   provide a list of known splice sites
+  --novel-splicesite-outfile <path>  report a list of splice sites
+  --novel-splicesite-infile <path>   provide a list of novel splice sites
+  --no-temp-splicesite               disable the use of splice sites found
+  --no-spliced-alignment             disable spliced alignment
+  --rna-strandness <string>          specify strand-specific information (unstranded)
+  --tmo                              reports only those alignments within known transcriptome
+  --dta                              reports alignments tailored for transcript assemblers
+  --dta-cufflinks                    reports alignments tailored specifically for cufflinks
+  --avoid-pseudogene                 tries to avoid aligning reads to pseudogenes (experimental option)
+  --no-templatelen-adjustment        disables template length adjustment for RNA-seq reads
+
+ Scoring:
+  --mp <int>,<int>   max and min penalties for mismatch; lower qual = lower penalty <6,2>
+  --sp <int>,<int>   max and min penalties for soft-clipping; lower qual = lower penalty <2,1>
+  --no-softclip      no soft-clipping
+  --np <int>         penalty for non-A/C/G/Ts in read/ref (1)
+  --rdg <int>,<int>  read gap open, extend penalties (5,3)
+  --rfg <int>,<int>  reference gap open, extend penalties (5,3)
+  --score-min <func> min acceptable alignment score w/r/t read length
+                     (L,0.0,-0.2)
+
+ Reporting:
+  -k <int> (default: 5) report up to <int> alns per read
+
+ Paired-end:
+  -I/--minins <int>  minimum fragment length (0), only valid with --no-spliced-alignment
+  -X/--maxins <int>  maximum fragment length (500), only valid with --no-spliced-alignment
+  --fr/--rf/--ff     -1, -2 mates align fw/rev, rev/fw, fw/fw (--fr)
+  --no-mixed         suppress unpaired alignments for paired reads
+  --no-discordant    suppress discordant alignments for paired reads
+
+ Output:
+  -t/--time          print wall-clock time taken by search phases
+  --un <path>           write unpaired reads that didn't align to <path>
+  --al <path>           write unpaired reads that aligned at least once to <path>
+  --un-conc <path>      write pairs that didn't align concordantly to <path>
+  --al-conc <path>      write pairs that aligned concordantly at least once to <path>
+  (Note: for --un, --al, --un-conc, or --al-conc, add '-gz' to the option name, e.g.
+  --un-gz <path>, to gzip compress output, or add '-bz2' to bzip2 compress output.)
+  --summary-file     print alignment summary to this file.
+  --new-summary      print alignment summary in a new style, which is more machine-friendly.
+  --quiet            print nothing to stderr except serious errors
+  --met-file <path>  send metrics to file at <path> (off)
+  --met-stderr       send metrics to stderr (off)
+  --met <int>        report internal counters & metrics every <int> secs (1)
+  --no-head          supppress header lines, i.e. lines starting with @
+  --no-sq            supppress @SQ header lines
+  --rg-id <text>     set read group id, reflected in @RG line and RG:Z: opt field
+  --rg <text>        add <text> ("lab:value") to @RG line of SAM header.
+                     Note: @RG line only printed when --rg-id is set.
+  --omit-sec-seq     put '*' in SEQ and QUAL fields for secondary alignments.
+
+ Performance:
+  -o/--offrate <int> override offrate of index; must be >= index's offrate
+  -p/--threads <int> number of alignment threads to launch (1)
+  --reorder          force SAM output order to match order of input reads
+  --mm               use memory-mapped I/O for index; many 'hisat2's can share
+
+ Other:
+  --qc-filter        filter out reads that are bad according to QSEQ filter
+  --seed <int>       seed for random number generator (0)
+  --non-deterministic seed rand. gen. arbitrarily instead of using read attributes
+  --remove-chrname   remove 'chr' from reference names in alignment
+  --add-chrname      add 'chr' to reference names in alignment
+  --version          print version information and quit
+  -h/--help          print this usage message
+#</opt_i>
+#<opt_t>
+Assemble RNA-Seq alignments into potential transcripts.
+ Options:
+ --version : print just the version at stdout and exit
+ -G reference annotation to use for guiding the assembly process (GTF/GFF3)
+ --rf assume stranded library fr-firststrand
+ --fr assume stranded library fr-secondstrand
+ -l name prefix for output transcripts (default: STRG)
+ -f minimum isoform fraction (default: 0.1)
+ -m minimum assembled transcript length (default: 200)
+ -o output path/file name for the assembled transcripts GTF (default: stdout)
+ -a minimum anchor length for junctions (default: 10)
+ -j minimum junction coverage (default: 1)
+ -t disable trimming of predicted transcripts based on coverage
+    (default: coverage trimming is enabled)
+ -c minimum reads per bp coverage to consider for transcript assembly
+    (default: 2.5)
+ -v verbose (log bundle processing details)
+ -g gap between read mappings triggering a new bundle (default: 50)
+ -C output a file with reference transcripts that are covered by reads
+ -M fraction of bundle allowed to be covered by multi-hit reads (default: 1.0)
+ -p number of threads (CPUs) to use (default: 1)
+ -A gene abundance estimation output file
+ -B enable output of Ballgown table files which will be created in the
+    same directory as the output GTF (requires -G, -o recommended)
+ -b enable output of Ballgown table files but these files will be
+    created under the directory path given as <dir_path>
+ -e only estimate the abundance of given reference transcripts (requires -G)
+ -x do not assemble any transcripts on the given reference sequence(s)
+ -u no multi-mapping correction (default: correction enabled)
+ -h print this usage message and exit
+#</opt_t>
+#<opt_l>
+cuffquant v2.2.1 (4237)
+-----------------------------
+Usage:   cuffdiff [options] <transcripts.gtf> <sample1_hits.sam> <sample2_hits.sam> [... sampleN_hits.sam]
+   Supply replicate SAMs as comma separated lists for each condition: sample1_rep1.sam,sample1_rep2.sam,...sample1_repM.sam
+General Options:
+  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
+  -M/--mask-file               ignore all alignment within transcripts in this file  [ default:   NULL ]
+  -b/--frag-bias-correct       use bias correction - reference fasta required        [ default:   NULL ]
+  -u/--multi-read-correct      use 'rescue method' for multi-reads                   [ default:  FALSE ]
+  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
+  --library-type               Library prep used for input reads                     [ default:  below ]
+
+Advanced Options:
+  -m/--frag-len-mean           average fragment length (unpaired reads only)         [ default:    200 ]
+  -s/--frag-len-std-dev        fragment length std deviation (unpaired reads only)   [ default:     80 ]
+  -c/--min-alignment-count     minimum number of alignments in a locus for testing   [ default:   10 ]
+  --max-mle-iterations         maximum iterations allowed for MLE calculation        [ default:   5000 ]
+  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
+  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
+  --seed                       value of random number generator seed                 [ default:      0 ]
+  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
+  --max-bundle-frags           maximum fragments allowed in a bundle before skipping [ default: 500000 ]
+  --max-frag-multihits         Maximum number of alignments allowed per fragment     [ default: unlim  ]
+  --no-effective-length-correction   No effective length correction                  [ default:  FALSE ]
+  --no-length-correction       No length correction                                  [ default:  FALSE ]
+
+Debugging use only:
+  --read-skip-fraction         Skip a random subset of reads this size               [ default:    0.0 ]
+  --no-read-pairs              Break all read pairs                                  [ default:  FALSE ]
+  --trim-read-length           Trim reads to be this long (keep 5' end)              [ default:   none ]
+  --no-scv-correction          Disable SCV correction                                [ default:  FALSE ]
+
+Supported library types:
+        ff-firststrand
+        ff-secondstrand
+        ff-unstranded
+        fr-firststrand
+        fr-secondstrand
+        fr-unstranded (default)
+        transfrags
+#</opt_l>
+#<opt_n>
+cuffnorm v2.2.1 (4237)
+-----------------------------
+Usage:   cuffnorm [options] <transcripts.gtf> <sample1_expr.cxb> <sample2_expr.cxb> [... sampleN_expr.cxb]
+   Supply replicate CXB files as comma separated lists for each condition: sample1_rep1.cxb,sample1_rep2.cxb,...sample1_repM.cxb
+General Options:
+  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
+  -L/--labels                  comma-separated list of condition labels
+  --norm-standards-file        Housekeeping/spike genes to normalize libraries       [ default:   NULL ]
+  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
+  --library-type               Library prep used for input reads                     [ default:  below ]
+  --library-norm-method        Method used to normalize library sizes                [ default:  below ]
+  --output-format              Format for output tables                              [ default:  below ]
+
+Advanced Options:
+  --compatible-hits-norm       count hits compatible with reference RNAs only        [ default:   TRUE ]
+  --total-hits-norm            count all hits for normalization                      [ default:  FALSE ]
+  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
+  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
+  --seed                       value of random number generator seed                 [ default:      0 ]
+  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
+
+Supported library types:
+        ff-firststrand
+        ff-secondstrand
+        ff-unstranded
+        fr-firststrand
+        fr-secondstrand
+        fr-unstranded (default)
+        transfrags
+
+Supported library normalization methods:
+        classic-fpkm
+        geometric (default)
+        geometric
+        quartile
+
+Supported output formats:
+        cuffdiff
+        simple-table (default)
+#</opt_n>
+#<opt_d>
+cuffdiff v2.2.1 (4237)
+-----------------------------
+Usage:   cuffdiff [options] <transcripts.gtf> <sample1_hits.sam> <sample2_hits.sam> [... sampleN_hits.sam]
+   Supply replicate SAMs as comma separated lists for each condition: sample1_rep1.sam,sample1_rep2.sam,...sample1_repM.sam
+General Options:
+  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
+  -L/--labels                  comma-separated list of condition labels
+  --FDR                        False discovery rate used in testing                  [ default:   0.05 ]
+  -M/--mask-file               ignore all alignment within transcripts in this file  [ default:   NULL ]
+  -C/--contrast-file           Perform the constrasts specified in this file         [ default:   NULL ]
+  -b/--frag-bias-correct       use bias correction - reference fasta required        [ default:   NULL ]
+  -u/--multi-read-correct      use 'rescue method' for multi-reads                   [ default:  FALSE ]
+  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
+  --no-diff                    Don't generate differential analysis files            [ default:  FALSE ]
+  --no-js-tests                Don't perform isoform switching tests                 [ default:  FALSE ]
+  -T/--time-series             treat samples as a time-series                        [ default:  FALSE ]
+  --library-type               Library prep used for input reads                     [ default:  below ]
+  --dispersion-method          Method used to estimate dispersion models             [ default:  below ]
+  --library-norm-method        Method used to normalize library sizes                [ default:  below ]
+
+Advanced Options:
+  -m/--frag-len-mean           average fragment length (unpaired reads only)         [ default:    200 ]
+  -s/--frag-len-std-dev        fragment length std deviation (unpaired reads only)   [ default:     80 ]
+  -c/--min-alignment-count     minimum number of alignments in a locus for testing   [ default:   10 ]
+  --max-mle-iterations         maximum iterations allowed for MLE calculation        [ default:   5000 ]
+  --compatible-hits-norm       count hits compatible with reference RNAs only        [ default:   TRUE ]
+  --total-hits-norm            count all hits for normalization                      [ default:  FALSE ]
+  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
+  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
+  --seed                       value of random number generator seed                 [ default:      0 ]
+  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
+  --emit-count-tables          print count tables used to fit overdispersion         [    DEPRECATED   ]
+  --max-bundle-frags           maximum fragments allowed in a bundle before skipping [ default: 500000 ]
+  --num-frag-count-draws       Number of fragment generation samples                 [ default:    100 ]
+  --num-frag-assign-draws      Number of fragment assignment samples per generation  [ default:     50 ]
+  --max-frag-multihits         Maximum number of alignments allowed per fragment     [ default: unlim  ]
+  --min-outlier-p              Min replicate p value to admit for testing            [    DEPRECATED   ]
+  --min-reps-for-js-test       Replicates needed for relative isoform shift testing  [ default:      3 ]
+  --no-effective-length-correction   No effective length correction                  [ default:  FALSE ]
+  --no-length-correction       No length correction                                  [ default:  FALSE ]
+  -N/--upper-quartile-norm     Deprecated, use --library-norm-method                 [    DEPRECATED   ]
+  --geometric-norm             Deprecated, use --library-norm-method                 [    DEPRECATED   ]
+  --raw-mapped-norm            Deprecated, use --library-norm-method                 [    DEPRECATED   ]
+  --poisson-dispersion         Deprecated, use --dispersion-method                   [    DEPRECATED   ]
+
+Debugging use only:
+  --read-skip-fraction         Skip a random subset of reads this size               [ default:    0.0 ]
+  --no-read-pairs              Break all read pairs                                  [ default:  FALSE ]
+  --trim-read-length           Trim reads to be this long (keep 5' end)              [ default:   none ]
+  --no-scv-correction          Disable SCV correction                                [ default:  FALSE ]
+
+Supported library types:
+        ff-firststrand
+        ff-secondstrand
+        ff-unstranded
+        fr-firststrand
+        fr-secondstrand
+        fr-unstranded (default)
+        transfrags
+
+Supported dispersion methods:
+        blind
+        per-condition
+        poisson
+        pooled (default)
+
+Supported library normalization methods:
+        classic-fpkm
+        geometric (default)
+        geometric
+        quartile
+#</opt_d>
+#</option detail>
+

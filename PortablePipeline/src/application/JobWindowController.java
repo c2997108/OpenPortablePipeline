@@ -362,7 +362,7 @@ public class JobWindowController {
 
     					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
     						if((new File(file_id_rsa)).exists()) {
-    							jsch.addIdentity(file_id_rsa);
+    							jsch.addIdentity(file_id_rsa, ppSetting.get("password"));
     						}
     						System.out.println("identity added ");
     						sc = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
@@ -841,12 +841,12 @@ public class JobWindowController {
 		case "direct (SGE)":
 			break;
 		case "ddbj":
-			password.setDisable(true);
-			password.setText("");
+			//password.setDisable(true);
+			//password.setText("");
 			break;
 		case "shirokane":
-			password.setDisable(true);
-			password.setText("");
+			//password.setDisable(true);
+			//password.setText("");
 			break;
 		case "WSL":
 			hostname.setDisable(true);
@@ -963,7 +963,7 @@ public class JobWindowController {
         	Platform.runLater( ()->{
         		ScriptNodes.clear();
             	for(ScriptNode sNode : ScriptNodesOrig) {
-            		if(sNode.filename.contains(searchtxt.getText()) || sNode.explanation.contains(searchtxt.getText())){
+            		if(sNode.filename.toUpperCase().contains(searchtxt.getText().toUpperCase()) || sNode.explanation.toUpperCase().contains(searchtxt.getText().toUpperCase())){
             			ScriptNodes.add(sNode);
             		}
             	}
@@ -1468,12 +1468,12 @@ public class JobWindowController {
 					case "direct (SGE)":
 						break;
 					case "ddbj":
-						password.setDisable(true);
-						password.setText("");
+						//password.setDisable(true);
+						//password.setText("");
 						break;
 					case "shirokane":
-						password.setDisable(true);
-						password.setText("");
+						//password.setDisable(true);
+						//password.setText("");
 						break;
 					case "WSL":
 						hostname.setDisable(true);
@@ -1558,8 +1558,8 @@ public class JobWindowController {
 					case "ddbj":
 						hostname.setText("gw.ddbj.nig.ac.jp");
 						port.setText("22");
-						password.setDisable(true);
-						password.setText("");
+						//password.setDisable(true);
+						//password.setText("");
 						workfolder.setText("work");
 						imagefolder.setText("~/img");
 						checkdelete.setSelected(true);
@@ -1567,8 +1567,8 @@ public class JobWindowController {
 					case "shirokane":
 						hostname.setText("slogin.hgc.jp");
 						port.setText("22");
-						password.setDisable(true);
-						password.setText("");
+						//password.setDisable(true);
+						//password.setText("");
 						workfolder.setText("work");
 						imagefolder.setText("~/img");
 						checkdelete.setSelected(true);
