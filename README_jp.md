@@ -161,7 +161,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-L
 
 2．Ubuntuのインストール
 
-画面左下のWindowsロゴを左クリックし、スタートメニューの中から「Microsoft Store」を起動する。ストアの「検索」をクリックし、「Ubuntu」と入力して検索を実行する。表示される「Ubuntu 18.04 LTS」をインストールし、起動する。 (Ubuntu 16.04 LTSのUbuntuでも大丈夫そうだけど、Ubuntu 20.04はcentos6のdockerコンテナ起動時にエラーが出るので使用しないこと。どうしてもUbuntu 20.04使用する場合はWSL2に切り替え、https://qiita.com/nakat-t/items/271071eeb0c0c9143396　を参考にvsyscall=emulateを有効にしておくこと。)
+画面左下のWindowsロゴを左クリックし、スタートメニューの中から「Microsoft Store」を起動する。ストアの「検索」をクリックし、「Ubuntu」と入力して検索を実行する。表示される「Ubuntu 18.04 LTS」をインストールし、起動する。 (Ubuntu 16.04 LTSのUbuntuでも大丈夫そうだけど、Ubuntu 20.04はcentos6のdockerコンテナ起動時にエラーが出るので使用しないこと。どうしてもUbuntu 20.04使用する場合はWSL2に切り替え、https://qiita.com/nakat-t/items/271071eeb0c0c9143396 を参考にvsyscall=emulateを有効にしておくこと。)
 
 画面左下のWindowsロゴを左クリックし、スタートメニューの中からインストールしたUbuntuを起動する。 初回起動時にアカウント作成画面が表示され、ユーザ名、パスワードを入力する。
 
