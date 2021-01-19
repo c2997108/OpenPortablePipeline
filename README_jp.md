@@ -161,7 +161,7 @@ Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-L
 
 2．Ubuntuのインストール
 
-画面左下のWindowsロゴを左クリックし、スタートメニューの中から「Microsoft Store」を起動する。ストアの「検索」をクリックし、「Ubuntu」と入力して検索を実行する。表示される「Ubuntu 18.04 LTS」をインストールし、起動する。 (ほかのUbuntu 16.04 LTS等のUbuntuでもテストした範囲では大丈夫そうだった。)
+画面左下のWindowsロゴを左クリックし、スタートメニューの中から「Microsoft Store」を起動する。ストアの「検索」をクリックし、「Ubuntu」と入力して検索を実行する。表示される「Ubuntu 18.04 LTS」をインストールし、起動する。 (Ubuntu 16.04 LTSのUbuntuでも大丈夫そうだけど、Ubuntu 20.04はエラーが出るので使用しないこと。)
 
 画面左下のWindowsロゴを左クリックし、スタートメニューの中からインストールしたUbuntuを起動する。 初回起動時にアカウント作成画面が表示され、ユーザ名、パスワードを入力する。
 
