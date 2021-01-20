@@ -1,13 +1,13 @@
 #!/bin/bash
 
 explanation='
-BRAKER gene prediction pipeline with RNA-seq data
+BRAKER gene prediction pipeline with RNA-seq data. Please download GeneMark-ES/ET/EP binary and license from http://exon.gatech.edu/GeneMark/license_download.cgi before using this pipeline.
 '
 inputdef='
 input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_3::GeneMark-ES/ET/EP LINUX 64 binary (http://exon.gatech.edu/GeneMark/license_download.cgi):gmes_linux_64.tar.gz
-input_4::GeneMark-ES/ET/EP LINUX 64 license (http://exon.gatech.edu/GeneMark/license_download.cgi):gm_key_64.gz
+input_3::GeneMark-ES/ET/EP LINUX 64 binary :gmes_linux_64.tar.gz
+input_4::GeneMark-ES/ET/EP LINUX 64 license :gm_key_64.gz
 '
 optiondef='
 opt_c:cpu threads:8

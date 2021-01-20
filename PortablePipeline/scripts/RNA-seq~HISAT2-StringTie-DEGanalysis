@@ -33,7 +33,7 @@ export IM_CUFF="quay.io/biocontainers/cufflinks:2.2.1--py36_2"
 export IM_TRINOTATE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
 export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
 export IM_BLASTN="c2997108/centos7:1-blast_2.9.0-nt_20190618-13"
-export IM_MERGE="c2997108/centos6:3"
+export IM_MERGE="c2997108/centos7:3-java"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -189,7 +189,7 @@ DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/util/cdna_alignment_orf
 
 awk -F'\t' '{if(NR==1){OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (counts)"}; print $0}else{print $0}}' isoforms.count_table > isoforms.count_table.ren
 awk -F'\t' '{if(NR==1){OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (FPKM)"}; print $0}else{print $0}}' isoforms.fpkm_table > isoforms.fpkm_table.ren
-DO_MERGE merge_table.pl -k isoforms.count_table.ren isoforms.fpkm_table.ren Trinotate.xls3.isoform > Trinotate.xls3.isoform.cnt
+DO_MERGE merge_table.pl -k isoforms.count_table.ren isoforms.fpkm_table.ren Trinotate.output.txt > Trinotate.xls3.isoform.cnt
 
 DO_TRINOTATE samtools faidx transcripts.fasta
 DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{g2t[$1][$2]=1} FILENAME==ARGV[2]{len[$1]=$2} END{for(i in g2t){for(j in g2t[i]){print len[j]"\t"i"\t"j}}}' stringtie.merge.gtf.map transcripts.fasta.fai|DO_TRINOTATE sort -k2,2V -k1,1nr -k3,3V|DO_MERGE myuniq.pl 2 > transcripts.fasta.rep_isoform
