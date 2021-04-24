@@ -2,6 +2,7 @@
 
 explanation='
 BRAKER gene prediction pipeline with RNA-seq data. Please download GeneMark-ES/ET/EP binary and license from http://exon.gatech.edu/GeneMark/license_download.cgi before using this pipeline.
+Docker must be installed.
 '
 inputdef='
 input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
