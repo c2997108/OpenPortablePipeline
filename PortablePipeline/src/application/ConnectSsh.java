@@ -35,7 +35,7 @@ public class ConnectSsh {
 	    }
 
 		if((new File(jobDir+"/"+"id_rsa")).exists()) {
-			jsch.addIdentity(jobDir+"/"+"id_rsa", node.get("password").asText());
+			jsch.addIdentity(jobDir+"/"+"id_rsa");
 			//System.out.println("identity added ");
 		}
 		//System.out.println(node.get("user").asText());

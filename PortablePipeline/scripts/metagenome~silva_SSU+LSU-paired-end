@@ -191,8 +191,6 @@ DO_BASE awk -F'\t' '
 DO_BASE java -Xmx1G -jar /usr/local/bin/excel2.jar all.counts.txt all.counts.xlsx
 DO_BASE java -Xmx1G -jar /usr/local/bin/excel2.jar all.counts.per.$opt_g.txt all.counts.per.$opt_g.xlsx
 
-for i in `find $input_1/|egrep "([.]blast[.]filtered(|[.]name[.]lca(|[.]cnt|[.]cnt2|[.]cnt3)))$"`; do DO_BASE rm -f $i; done
-
 post_processing
 #<option detail>
 #<opt_b>

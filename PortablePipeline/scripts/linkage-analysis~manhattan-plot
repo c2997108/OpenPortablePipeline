@@ -15,9 +15,8 @@ opt_q:GQ threshold:20
 opt_d:DP threshold:5
 opt_p:-log10(p-value) threshold to draw:1
 opt_a:draw all chromosome [yes|no]:yes
-opt_s:sort by chromosome length [yes|no]:no
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -p #opt_p# -a #opt_a# -s #opt_s# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -p #opt_p# -a #opt_a# #input_1# #input_2# #input_3#"
 
 export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_5-kegg_4"
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
@@ -51,11 +50,7 @@ set +o pipefail
 ln -sf $ref `basename $vcf`.`basename $ref`
 ref=`basename $vcf`.`basename $ref`
 DO_SAMTOOLS samtools faidx $ref
-if [ "$opt_s" = "yes" ]; then
- sort -k2,2nr -t$'\t' $ref.fai |awk '{print $1"\t"NR"\t"$2"\t0\t0\t0\t0\t2"}' > $ref.fai.axis
-else
- cat $ref.fai |awk '{print $1"\t"NR"\t"$2"\t0\t0\t0\t0\t2"}' > $ref.fai.axis
-fi
+sort -k2,2nr -t$'\t' $ref.fai |awk '{print $1"\t"NR"\t"$2"\t0\t0\t0\t0\t2"}' > $ref.fai.axis
 
 grep -v "^##" $vcf |awk -F'\t' '
 BEGIN{gq='$gq'; pos_gq="'$pos_gq'"+0; dp='$dp'; pos_dp="'$pos_dp'"+0}

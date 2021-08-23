@@ -26,8 +26,6 @@ set -o pipefail
 
 p=$opt_f
 
-sed 's/\r//g' "$input_1" > input.rem.table
-input_1=input.rem.table
 #sample.txt
 cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
 head -n 1 "$input_1"|cut -f 2-|sed 's/\t/\n/g'| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt

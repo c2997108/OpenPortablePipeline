@@ -26,16 +26,8 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$
 
 DO_FC featureCounts $opt_f -T $N_CPU -a "$input_2" -o count.id.txt "$input_1"/*.bam
 
-awk -F'\t' '$3=="gene" || $3=="transcript"{print $0}' "$input_2"|awk -F'\t' '
- {split($9,arr,";"); gene_id=""; gene_name=""; gene="";
-  for(i in arr){sub(/^ +/,"",arr[i]);
-   if(tolower(arr[i])~"^gene_id "){gene_id=substr(arr[i],9); sub(/^[" ]+/,"",gene_id); sub(/[" ]+$/,"",gene_id)}
-   else if(tolower(arr[i])~"^gene_name "){gene_name=substr(arr[i],11); sub(/^[" ]+/,"",gene_name); sub(/[" ]+$/,"",gene_name)}
-   else if(tolower(arr[i])~"^gene "){gene=substr(arr[i],6); sub(/^[" ]+/,"",gene); sub(/[" ]+$/,"",gene)}
-  }; if(gene_id!=""){
-   if(gene_name!=""){print gene_id"\t"gene_name}else if(gene!=""){print gene_id"\t"gene}
-  }
- }'| awk -F'\t' '
+awk -F'\t' '$3=="gene" || $3=="transcript"{print $0}' "$input_2"|grep "gene_id "|grep "; *gene_name "|sed 's/.*gene_id "//; s/".*; *gene_name "/\t/; s/".*//' |
+ awk -F'\t' '
   BEGIN{OFS="\t"; name["Geneid"]="name"}
   FILENAME==ARGV[1]{name[$1]=$2}
   FILENAME==ARGV[2] && FNR>1{if(FNR==2){for(i=7;i<=NF;i++){split($i,arr,"/"); $i=arr[length(arr)]}}; $1=$1"\t"name[$1]; print $0}
