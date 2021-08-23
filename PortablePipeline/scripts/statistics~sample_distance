@@ -45,7 +45,7 @@ if [ -e "$input_2" ]; then
 else
  touch histo.temp.sample.txt
 fi
-head -n 1 "$countisofile"|sed 's/\t/\n/g'|tail -n+2| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' histo.temp.sample.txt /dev/stdin > histo.sample.input.txt
+head -n 1 "$countisofile"|sed 's/\r//g'|sed 's/\t/\n/g'|tail -n+2| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' histo.temp.sample.txt /dev/stdin > histo.sample.input.txt
 
 samplefile=histo.sample.input.txt
 clusterheight=`expr 10 \* $numsample + 600`

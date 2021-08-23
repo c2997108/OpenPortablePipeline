@@ -110,7 +110,7 @@ public class JobCell extends ListCell<JobNode> {
         				}else if(OS_NAME.startsWith("mac")) {
         					cmd = "open -a Finder "+outputdir+"/"+jNode.id+"/results";
         				}else if(OS_NAME.startsWith("linux")) {
-        					cmd = "natilus "+outputdir+"/"+jNode.id+"/results";
+        					cmd = "nautilus "+outputdir+"/"+jNode.id+"/results";
         				}
         				System.out.println(cmd);
         				rt.exec(cmd);
@@ -248,7 +248,7 @@ public class JobCell extends ListCell<JobNode> {
         	if(!(jNode.status.equals("finished")||jNode.status.equals("aborted")||jNode.status.equals("cancelled"))) {
         		deleteButton.setDisable(true);
         	}
-        	
+
         	HBox hBox = new HBox(20d);
         	//hBox.setPrefWidth(500);
         	//HBox.setHgrow(label3, Priority.ALWAYS);

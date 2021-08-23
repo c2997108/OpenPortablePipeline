@@ -10,8 +10,9 @@ input_2::FASTA (y axis):*.fasta,*.fa
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):64
+opt_l:line width:1
 '
-runcmd="$0 -c #opt_c# -m #opt_m# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# #input_1# #input_2#"
 
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
@@ -28,7 +29,9 @@ q=$input_1
 outbase=`basename $q`-`basename ${db}`
 cpu=$N_CPU
 
-DO_MINIMAP2 minimap2 -x asm20 -t $cpu $db $q > $outbase.paf
+DO_MINIMAP2 minimap2 -x asm20 -t $cpu $db $q > $outbase.for.paf
+DO_MINIMAP2 minimap2 -x asm20 -t $cpu $q $db|awk -F'\t' '{print $6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11}' > $outbase.rev.paf
+cat $outbase.for.paf $outbase.rev.paf|cut -f 1-11|awk 'a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]==0{a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]=1; print $0}' > $outbase.paf
 
 ln -s $db $outbase.db.fa
 ln -s $q $outbase.q.fa
@@ -184,7 +187,7 @@ abline(v=0, col='gray', lty=2)
 for(i in 1:dim(yp)[1]){abline(h=yp[i,2], col='gray', lty=2)}
 abline(h=0, col='gray', lty=2)
 #abline(h=max(b[,3:4]), col='gray', lty=2)
-for(i in 1:dim(b)[1]){if((b[i,2]-b[i,1])/1.0*(b[i,4]-b[i,3])/1.0>0){par(col="red")}else{par(col="blue")}; lines(c(b[i,1],b[i,2]),c(b[i,3],b[i,4]))}
+for(i in 1:dim(b)[1]){if((b[i,2]-b[i,1])/1.0*(b[i,4]-b[i,3])/1.0>0){par(col="red")}else{par(col="blue")}; lines(c(b[i,1],b[i,2]),c(b[i,3],b[i,4]),lwd=$opt_l)}
 par(xpd=TRUE, col="red")
 text(xp[,2]-(xp[,2]-xp2)/2,par("usr")[3]-1.5,xp[,1],adj=c(1,1),srt=45)
 text(par("usr")[1]-1.5,yp[,2]-(yp[,2]-yp2)/2,yp[,1],adj=c(1,1),srt=45)

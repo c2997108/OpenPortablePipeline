@@ -10,7 +10,7 @@ input_2:directory option:single-end FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
-opt_o:megahit option:
+opt_o:SPAdes option:
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -o #opt_o# #input_1# #input_2#"
 
