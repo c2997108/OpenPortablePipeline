@@ -221,9 +221,9 @@ h3 {
  <h3>Histogram of read counts by transcripts</h3>
   <img src="histo.count.png">
  <h3>MDS plot</h3>
-  <img src="MDS.png">
+  <img src="MDS.log10.png">
  <h3>Sample-to-sample Distances</h3>
-  <img src="sampleDist.png">
+  <img src="sampleDist.log10.png">
 EOF
 
 cat << 'EOF' > run-make-deg-html.sh
@@ -277,6 +277,16 @@ echo '
 bash run-make-deg-html.sh $countgofile DESeq2 0_result.html go
 echo ' <h3>Differential GO expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
 bash run-make-deg-html.sh $countgofile edgeR 0_result.html go
+echo '<h2>Data download</h2>
+ <h3>Trinity assembled contigs</h3>
+  <a href="Trinity.fasta" download="Trinity.fasta" style="padding-left: 30px;">Trinity.fasta</a><br>
+ <h3>Expression table</h3>
+  <a href="result.isoform.xlsx" download="result.isoform.xlsx" style="padding-left: 30px;">Transcript expression table</a><br>
+  <a href="result.gene.xlsx" download="result.gene.xlsx" style="padding-left: 30px;">Gene expression table</a><br>
+  <a href="result.go.xlsx" download="result.go.xlsx" style="padding-left: 30px;">GO table</a><br>
+ <h3>Mapping data</h3>
+  <a href="'`DO_R realpath --relative-to=. $input_1`'" style="padding-left: 30px;">BAM files</a><br>
+' >> 0_result.html
 echo "</body></html>" >> 0_result.html
 
 

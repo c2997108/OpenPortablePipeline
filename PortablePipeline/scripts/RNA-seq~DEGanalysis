@@ -116,9 +116,9 @@ h3 {
  <h3>Histogram of read counts by transcripts</h3>
   <img src="histo.count.png">
  <h3>MDS plot</h3>
-  <img src="MDS.png">
+  <img src="MDS.log10.png">
  <h3>Sample-to-sample Distances</h3>
-  <img src="sampleDist.png">
+  <img src="sampleDist.log10.png">
 EOF
 
 cat << 'EOF' > run-make-deg-html.sh
