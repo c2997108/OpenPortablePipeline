@@ -71,7 +71,7 @@ if [ "$opt_f" = "" ]; then
  mkdir -p input.cuffdiff.extract.$g1.$g2
  for i in $input_4/*.cuffquant.tar.gz; do tar zvxf $i -C input.cuffdiff.extract.$g1.$g2; done
 else
- ln -s "$opt_f" input.cuffdiff.extract.$g1.$g2
+ ln -s "$opt_f" input.cuffdiff.extract.$g1.$g2 || true
 fi
 
 
@@ -100,7 +100,10 @@ annotationfile=${11}
 scriptdir=${12}
 
 tail -n+2 $outputfile|cut -f 1 > $outputfile.id
-bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputmatrix $outputfile.id $samplex $sampley
+sed 's/ (counts \[cuffdiff\])\t/\t/g; s/ (counts \[cuffdiff\])$//' $inputmatrix > $inputmatrix.2
+bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputmatrix.2 $outputfile.id $samplex $sampley
+mv `basename $inputmatrix`.2.`basename $outputfile`.id.scatter.normal.png `basename $inputmatrix`.`basename $outputfile`.id.scatter.normal.png
+mv `basename $inputmatrix`.2.`basename $outputfile`.id.scatter.png `basename $inputmatrix`.`basename $outputfile`.id.scatter.png
 tail -n+2 $outputfile|awk -F'\t' '{if($8>=$9){print $1"\tx"}else{print $1"\ty"}}' > $outputfile.xy
 awk -F'\t' 'NR==1{OFS="\t"; $1="id"; print $0} NR>1{print $0}' $outputfile| cut -f 1,13|
  awk -F'\t' 'NR==1{print -1"\t"$0} NR>1{print $2"\t"$0}'|sort -k1,1g|cut -f 2- > $outputfile.p

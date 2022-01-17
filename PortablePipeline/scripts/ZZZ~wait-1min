@@ -29,7 +29,7 @@ r1=`ls |egrep "[.]f(ast|)q([.]gz|)$" || echo ""`
 if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; exit; fi
 
 DO_TEST ls > output.txt
-sleep 60
+DO_TEST sleep 60
 touch sleep60.txt
 
 bash "$scriptdir"/ZZZ~wait-10sec ./

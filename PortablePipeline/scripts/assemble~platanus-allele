@@ -20,7 +20,7 @@ opt_l:Platanus_allele consensus option:
 runcmd="$0 -c #opt_c# -m #opt_m# -t #opt_t# -i #opt_i# -a #opt_a# -s #opt_s# -l #opt_l# #input_1# #input_2# #input_3#"
 
 export IM_PLATANUS="cmonjeau/platanus:1.2.4"
-export IM_PLATANUSALLELE="c2997108/platanus-allele:2.0.2"
+export IM_PLATANUSALLELE="c2997108/platanus-allele:2.2.2_2"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -50,12 +50,12 @@ for i in $r1; do
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
-  gzip -dc $i > `basename $i .gz`
-  gzip -dc $j > `basename $j .gz`
-  i=`basename $i .gz`
-  j=`basename $j .gz`
- fi
+# if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
+#  gzip -dc $i > `basename $i .gz`
+#  gzip -dc $j > `basename $j .gz`
+#  i=`basename $i .gz`
+#  j=`basename $j .gz`
+# fi
  fastqtrim="$fastqtrim $i $j"
  n_read=`expr $n_read + 1`
  ipop="$ipop -IP$n_read $i $j"
@@ -82,12 +82,12 @@ if [ "$input_2" != "" ] ;then
    else
     j=`echo $i|sed 's/_R1/_R2/'`
    fi
-   if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
-    gzip -dc $i > `basename $i .gz`
-    gzip -dc $j > `basename $j .gz`
-    i=`basename $i .gz`
-    j=`basename $j .gz`
-   fi
+ #  if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
+ #   gzip -dc $i > `basename $i .gz`
+ #   gzip -dc $j > `basename $j .gz`
+ #   i=`basename $i .gz`
+ #   j=`basename $j .gz`
+ #  fi
    n_read=`expr $n_read + 1`
    ipop="$ipop -OP$n_read $i $j"
   done
@@ -99,17 +99,18 @@ if [ "$input_3" != "" ] ;then
  rlong="`find $input_3/ |egrep '[.]f(ast|)q([.]gz|)$' || true`"
  if [ "$rlong" != "" ]; then ipop="$ipop -p"; fi
  for i in $rlong; do
-  if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
-   gzip -dc $i > `basename $i .gz`
-   i=`basename $i .gz`
-  fi
+#  if [ `echo $i|grep "[.]gz$"|wc -l||true` = 1 ]; then
+#   gzip -dc $i > `basename $i .gz`
+#   i=`basename $i .gz`
+#  fi
   ipop="$ipop $i"
  done
 fi
 
 DO_PLATANUSALLELE platanus_allee assemble -o platanus $opt_a -f $fastqtrim -t $N_CPU -m $N_MEM_G
-DO_PLATANUSALLELE platanus_allee phase -o platanus $opt_s -c platanus_contig.fa platanus_junctionKmer.fa -t $N_CPU $ipop
-DO_PLATANUSALLELE platanus_allee consensus -o platanus $opt_l -c platanus_primaryBubble.fa platanus_nonBubbleHomoCandidate.fa -t $N_CPU $ipop
+DO_PLATANUSALLELE platanus_allee phase -o platanus $opt_s -c platanus_contig.fa -t $N_CPU $ipop
+#platanus_junctionKmer.fa -t $N_CPU $ipop
+DO_PLATANUSALLELE platanus_allee consensus -o platanus $opt_l -c platanus_primaryBubble.fa platanus_nonBubbleOther.fa -t $N_CPU $ipop
 
 post_processing
 

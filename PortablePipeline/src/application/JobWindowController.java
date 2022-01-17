@@ -415,6 +415,8 @@ public class JobWindowController {
     						c.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
     						System.out.println("sending...  "+"common.sh");
     						c.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
+    						System.out.println("sending...  "+"pp.py");
+    						c.put(ppSetting.get("scriptfolder")+"/pp.py", workdir);
     						for(String scripti: scriptcontList) {
     							System.out.println("sending...  "+scripti);
     							c.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
@@ -422,6 +424,7 @@ public class JobWindowController {
     					}
     					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+selectedScript, resultdir);
     					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/common.sh", resultdir);
+    					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/pp.py", resultdir);
     					for(String scripti: scriptcontList) {
     						mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+scripti, resultdir);
     					}
@@ -562,29 +565,39 @@ public class JobWindowController {
     						if(selectedPreset.equals("direct")) {
     							filewriter.write("#!/bin/bash\n");
     							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
+    							filewriter.write("chmod 755 ./pp.py\n");
+    							filewriter.write("chmod 755 "+selectedScript+"\n");
+    							filewriter.write("nohup ./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
     							filewriter.write("echo $! > save_pid.txt\n");
     							cmdString = "cd "+workdir+"; bash wrapper.sh";
     						}else if(selectedPreset.equals("shirokane") || selectedPreset.equals("ddbj")) {
     							filewriter.write("#!/bin/bash\n");
     							filewriter.write("#$ -S /bin/bash\n");
+    							filewriter.write("#$ -notify\n");
     							filewriter.write("#$ -cwd\n");
     							filewriter.write("#$ -pe def_slot "+numCPU+"\n");
     							filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G,s_vmem="+Double.valueOf(numMEM)/Double.valueOf(numCPU)+"G\n");
+    							filewriter.write("trap 'sleep 13; echo Detected SIGUSR2' SIGUSR2\n");
     							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
     							filewriter.write("source ~/.bashrc\n");
-    							filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
-    							cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
+    							filewriter.write("chmod 755 ./pp.py\n");
+    							filewriter.write("chmod 755 "+selectedScript+"\n");
+    							filewriter.write("./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
+    							cmdString = "cd "+workdir+"; qsub wrapper.sh | grep wrapper.sh > save_jid.txt";
     						}else if(selectedPreset.equals("direct (SGE)")) {
     							filewriter.write("#!/bin/bash\n");
     							filewriter.write("#$ -S /bin/bash\n");
+    							filewriter.write("#$ -notify\n");
     							filewriter.write("#$ -cwd\n");
     							filewriter.write("#$ -pe def_slot "+numCPU+"\n");
     							filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G\n");
+    							filewriter.write("trap 'sleep 13; echo Detected SIGUSR2' SIGUSR2\n");
     							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
     							filewriter.write("source ~/.bashrc\n");
-    							filewriter.write("bash "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
-    							cmdString = "cd "+workdir+"; qsub wrapper.sh > save_jid.txt";
+    							filewriter.write("chmod 755 ./pp.py\n");
+    							filewriter.write("chmod 755 "+selectedScript+"\n");
+    							filewriter.write("./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
+    							cmdString = "cd "+workdir+"; qsub wrapper.sh | grep wrapper.sh > save_jid.txt";
     						}else if(selectedPreset.equals("WSL")){
     							String curDir = new File(".").getAbsoluteFile().getParent();
     							String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
@@ -600,7 +613,9 @@ public class JobWindowController {
     							FileWriter filewriter2 = new FileWriter(file2);
     							filewriter2.write("#!/bin/bash\n");
     							filewriter2.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter2.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
+    							filewriter2.write("chmod 755 ./pp.py\n");
+    							filewriter2.write("chmod 755 "+selectedScript+"\n");
+    							filewriter2.write("nohup ./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
     							filewriter2.write("echo $! > save_pid.txt\n");
     							filewriter2.write("wait\n"); // for win10 1803, 1809
     							filewriter2.close();
@@ -612,7 +627,9 @@ public class JobWindowController {
     							filewriter.write("export PATH=/usr/local/bin:${PATH}\n");
     							filewriter.write("export PATH=/usr/local/opt/coreutils/libexec/gnubin:${PATH}\n");
     							filewriter.write("source ~/.bash_profile\n");
-    							filewriter.write("nohup bash "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
+    							filewriter.write("chmod 755 ./pp.py\n");
+    							filewriter.write("chmod 755 "+selectedScript+"\n");
+    							filewriter.write("nohup ./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
     							filewriter.write("echo $! > save_pid.txt\n");
     							cmdString = "bash wrapper.sh";
     						}
@@ -979,7 +996,7 @@ public class JobWindowController {
     		}
     	    });
         for(File script : scriptFiles) {
-        	if(!script.getName().equals("common.sh")) {
+        	if(!script.getName().equals("common.sh") && !script.getName().equals("pp.py") && !script.getName().equals("pp")) {
         		String explanationString = "";
         		boolean explanationfield = false;
         		try {

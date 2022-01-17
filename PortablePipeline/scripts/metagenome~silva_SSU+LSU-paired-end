@@ -17,7 +17,7 @@ opt_g:read number for normalization:10000
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# #input_1#"
 
-export IM_SILVA="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-silva"
+export IM_SILVA="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-silva2"
 export IM_BASE="c2997108/centos7:3-java"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
@@ -27,6 +27,7 @@ set -o pipefail
 
 cat << 'EOF' > run-count-paired.py
 import sys
+import re
 args = sys.argv
 if len(args) < 5:
   raise Exception('python3 ' + args[0] + ' <file_1.fasta> <file_2.fasta> <file_1.fasta.blast> <file_2.fasta.blast>')
@@ -50,8 +51,9 @@ old_lb2_1 = ''
 
 while la1:
   if la1[0]=='>':
-    if la1[1:].strip().split(' ')[0].split('\t')[0] == la2[1:].strip().split(' ')[0].split('\t')[0]:
+    if la1[1:].strip().split(' ')[0].split('\t')[0] == re.sub(r'/2$', "/1", la2[1:].strip().split(' ')[0].split('\t')[0]):
       name = la1[1:].strip().split(' ')[0].split('\t')[0]
+      name2 = la2[1:].strip().split(' ')[0].split('\t')[0]
       a={}
       if lb1:
         while lb1.strip().split('\t')[0] == name:
@@ -65,7 +67,7 @@ while la1:
           if not lb1:
             break
       if lb2:
-        while lb2.strip().split('\t')[0] == name:
+        while lb2.strip().split('\t')[0] == name2:
           if lb2.strip().split('\t')[1] != old_lb2_1:
             old_lb2_1 = lb2.strip().split('\t')[1]
             if a.get(old_lb2_1):

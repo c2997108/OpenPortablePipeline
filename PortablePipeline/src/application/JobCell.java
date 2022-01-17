@@ -178,7 +178,7 @@ public class JobCell extends ListCell<JobNode> {
 		        	    	int jobId = Integer.valueOf(lines.get(0));
 
 		        	    	ChannelExec chexec = ConnectSsh.getSshChannel(node, outputdir);
-		        	    	chexec.setCommand("kill -9 "+jobId);
+		        	    	chexec.setCommand("kill "+jobId);
 		                    chexec.connect();
 
 		                    BufferedInputStream bin = null;
@@ -212,11 +212,11 @@ public class JobCell extends ListCell<JobNode> {
 						}else if(node.get("preset").asText().equals("WSL")) {
 							List<String> lines = Files.readAllLines(Paths.get(outputdir+"/results/"+"save_pid.txt"), StandardCharsets.UTF_8);
 		        	    	int jobId = Integer.valueOf(lines.get(0));
-		        	    	Runtime.getRuntime().exec("bash.exe -c 'kill -9 "+jobId+"'");
+		        	    	Runtime.getRuntime().exec("bash.exe -c 'kill "+jobId+"'");
 						}else if(node.get("preset").asText().equals("Mac")) {
 							List<String> lines = Files.readAllLines(Paths.get(outputdir+"/results/"+"save_pid.txt"), StandardCharsets.UTF_8);
 		        	    	int jobId = Integer.valueOf(lines.get(0));
-		        	    	Runtime.getRuntime().exec("kill -9 "+jobId);
+		        	    	Runtime.getRuntime().exec("kill "+jobId);
 						}
 					} catch (Exception e) {
 						// TODO 自動生成された catch ブロック

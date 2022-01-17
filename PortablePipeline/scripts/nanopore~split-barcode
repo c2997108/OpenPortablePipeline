@@ -5,8 +5,8 @@ Fast and accurate de novo assembler for single molecule sequencing reads
 '
 inputdef='
 input_1:directory:FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
-input_2::FASTA:*.fasta,*.fa,*.fna,*.txt
-input_3::table:*.txt
+input_2::primer sequences (FASTA):*.fasta,*.fa,*.fna,*.txt
+input_3::sample table (Sample name[tab]Forward read name[tab]Reverse read name[tab]Minimum amplicon length[tab]Maximum amplicon length):*.txt
 '
 optiondef='
 opt_c:cpu threads:8

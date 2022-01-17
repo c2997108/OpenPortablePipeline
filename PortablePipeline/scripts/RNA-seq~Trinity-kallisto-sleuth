@@ -81,6 +81,7 @@ DO_TRINITY /usr/local/trinityrnaseq-Trinity-v2.8.5/util/TrinityStats.pl Trinity.
 
 #kallisto index
 echo "#run kallisto index"
+mkdir -p output_bam
 DO_KALLISTO kallisto index -i kallisto.index Trinity.fasta
 if [ ! -e kallisto.output ]; then mkdir kallisto.output; fi
 
@@ -92,7 +93,7 @@ for i in $r1 $r1gz; do
  fi
  #Mapping and quantification by kallisto
  #echo "#run kallisto quant of $i"
- echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i` -t 1 --pseudobam $i $j | $ENV_SAMTOOLS samtools view -@ 1 -Sb - | $ENV_SAMTOOLS samtools sort -@ 1 -o $i.bam - ; $ENV_SAMTOOLS samtools index $i.bam; cd kallisto.output; tar zvcf `basename $i`.kallisto.tar.gz `basename $i`"
+ echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i` -t 1 --pseudobam $i $j; $ENV_SAMTOOLS samtools sort -@ 1 -o kallisto.output/`basename $i`/pseudoalignments.sorted.bam kallisto.output/`basename $i`/pseudoalignments.bam; $ENV_KALLISTO rm -f kallisto.output/`basename $i`/pseudoalignments.sorted.bam; $ENV_KALLISTO mv kallisto.output/`basename $i`/pseudoalignments.bam output_bam/`basename $i`.bam; $ENV_SAMTOOLS samtools index output_bam/`basename $i`.bam; cd kallisto.output; tar zvcf `basename $i`.kallisto.tar.gz `basename $i`"
 done|DOPARALLELONE
 
 WAITPARALLEL
@@ -285,7 +286,7 @@ echo '<h2>Data download</h2>
   <a href="result.gene.xlsx" download="result.gene.xlsx" style="padding-left: 30px;">Gene expression table</a><br>
   <a href="result.go.xlsx" download="result.go.xlsx" style="padding-left: 30px;">GO table</a><br>
  <h3>Mapping data</h3>
-  <a href="'`DO_R realpath --relative-to=. $input_1`'" style="padding-left: 30px;">BAM files</a><br>
+  <a href="'`DO_R realpath --relative-to=. output_bam`'" style="padding-left: 30px;">BAM files</a><br>
 ' >> 0_result.html
 echo "</body></html>" >> 0_result.html
 

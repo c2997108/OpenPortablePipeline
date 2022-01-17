@@ -1,0 +1,135 @@
+#!/bin/bash
+
+explanation='
+MetaWRAP binning pipeline
+'
+inputdef='
+input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_b:MetaWRAP binning option:--metabat2 --concoct
+opt_r:MetaWRAP bin_refinement option:-A INITIAL_BINNING/metabat2_bins/ -B INITIAL_BINNING/concoct_bins/ -c 50 -x 10
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -r #opt_r# #input_1# #input_2#"
+
+export IM_METAWRAP="c2997108/centos7:2-metawrap_2"
+export IM_CHECKM="quay.io/biocontainers/checkm-genome:1.1.3--py_1"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+
+if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+r2gz=$(for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 $r2gz > /dev/null
+
+#decompress input files
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+
+mkdir -p input_fastq
+(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i`
+ j2=`basename $j`
+ ln -s `readlink -f "$i"` input_fastq
+ ln -s `readlink -f "$j"` input_fastq
+done
+for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+ else
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=`basename $i .gz`
+ j2=`basename $j .gz`
+ echo zcat $i ">" input_fastq/$i2
+ echo zcat $j ">" input_fastq/$j2
+done)|DOPARALLELONE
+
+WAITPARALLEL
+
+
+echo 'set -x
+source /usr/local/metaWRAP/bashrc
+conda activate metawrap-env
+metawrap binning -o INITIAL_BINNING -t '$N_CPU' -a '"$input_2"' '"$opt_b"' input_fastq/*.fastq
+metawrap bin_refinement -o BIN_REFINEMENT -t '$N_CPU' '"$opt_r"'
+metawrap quant_bins -b BIN_REFINEMENT/metawrap_*_*_bins -o QUANT_BINS -t '$N_CPU' -a '"$input_2"' input_fastq/*.fastq
+' > run_script.sh
+
+DO_METAWRAP bash run_script.sh
+DO_CHECKM checkm lineage_wf -t $N_CPU --pplacer_threads $N_CPU -x fa BIN_REFINEMENT/metawrap_50_10_bins output_checkM > output_checkM.txt
+
+
+post_processing
+
+#<option detail>
+#<opt_b>
+Options:
+
+        -a STR          metagenomic assembly file
+        -o STR          output directory
+        -t INT          number of threads (default=1)
+        -m INT          amount of RAM available (default=4)
+        -l INT          minimum contig length to bin (default=1000bp). Note: metaBAT will default to 1500bp minimum
+
+        --metabat2      bin contigs with metaBAT2
+        --metabat1      bin contigs with the original metaBAT
+        --maxbin2       bin contigs with MaxBin2
+        --concoct       bin contigs with CONCOCT
+
+        --universal     use universal marker genes instead of bacterial markers in MaxBin2 (improves Archaea binning)
+        --run-checkm    immediately run CheckM on the bin results (requires 40GB+ of memory)
+        --single-end    non-paired reads mode (provide *.fastq files)
+        --interleaved   the input read files contain interleaved paired-end reads
+#</opt_b>
+#<opt_r>
+Options:
+
+        -o STR          output directory
+        -t INT          number of threads (default=1)
+        -m INT          memory available (default=40)
+        -c INT          minimum % completion of bins [should be >50%] (default=70)
+        -x INT          maximum % contamination of bins that is acceptable (default=10)
+
+        -A STR          folder with metagenomic bins (files must have .fa or .fasta extension)
+        -B STR          another folder with metagenomic bins
+        -C STR          another folder with metagenomic bins
+
+        --skip-refinement       dont use binning_refiner to come up with refined bins based on combinations of binner outputs
+        --skip-checkm           dont run CheckM to assess bins
+        --skip-consolidation    choose the best version of each bin from all bin refinement iteration
+        --keep-ambiguous        for contigs that end up in more than one bin, keep them in all bins (default: keeps them only in the best bin)
+        --remove-ambiguous      for contigs that end up in more than one bin, remove them in all bins (default: keeps them only in the best bin)
+        --quick                 adds --reduced_tree option to checkm, reducing runtime, especially with low memory
+#</opt_r>
+#</option detail>
+

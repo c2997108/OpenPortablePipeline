@@ -28,9 +28,9 @@ onerror()
 
 
     if [ "$N_SCRIPT" = 1 ]; then
-     if [ "$CON" = "$CON_DOCKER" ]; then
-      eval $CON $IM_CENTOS6 chmod -R a=rXw $workdir
-     fi
+#     if [ "$CON" = "$CON_DOCKER" ]; then
+#      eval $CON $IM_CENTOS6 chmod -R a=rXw $workdir
+#     fi
      echo $status > $workdir/fin_status
     fi
 
@@ -52,7 +52,9 @@ else
 fi
 DIR_WORK="."
 
-CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
+
+#CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
+CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-docker-list; docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD -u '`id -u`':'`id -g`' -i --rm '
 if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
  CON_SING="singularity exec "
 else
@@ -174,7 +176,7 @@ usage_exit()
  echo "$runcmd"
  echo "$inputdef"
  echo "$optiondef"
- exit 1
+ exit 0
 }
 
 for i in a b c d e f g h i j k l m n o p q r s t u v w x y z; do unset opt_$i; done
@@ -289,9 +291,9 @@ fi
 
 post_processing(){
  if [ "$N_SCRIPT" = 1 ]; then
-  if [ "$CON" = "$CON_DOCKER" ]; then
-   DO_CENTOS6 chmod -R a=rXw .
-  fi
+#  if [ "$CON" = "$CON_DOCKER" ]; then
+#   DO_CENTOS6 chmod -R a=rXw .
+#  fi
   echo 0 > $workdir/fin_status
  fi
  exit

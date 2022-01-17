@@ -1,0 +1,200 @@
+#!/bin/bash
+
+explanation='
+DADA2 pipeline
+'
+inputdef='
+input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_q:The trimming length of forward reads (bp): 200
+opt_r:The trimming length of reverse reads (bp): 160
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -r #opt_r# #input_1#"
+
+export IM_DADA2="c2997108/biocontainers-dada2:1.22.0-phyloseq"
+export IM_EXCEL="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+
+if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+
+
+r2=$(for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+r2gz=$(for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+ else
+  echo $i|sed 's/_R1/_R2/'
+ fi
+done)
+
+echo "#Check paired-end"
+ls $r2 $r2gz > /dev/null
+
+mkdir -p dada_input_fastq
+for i in $r1; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  outbase=$(basename `echo $i|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$//'`)
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ else
+  outbase=$(basename `echo $i|sed 's/_R1.*//'`)
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=${outbase}_1.fastq
+ j2=${outbase}_2.fastq
+ ln -s `readlink -f "$i"` dada_input_fastq/$i2
+ ln -s `readlink -f "$j"` dada_input_fastq/$j2
+done
+for i in $r1gz; do
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  outbase=$(basename `echo $i|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$//'`)
+  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+ else
+  outbase=$(basename `echo $i|sed 's/_R1.*//'`)
+  j=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ i2=${outbase}_1.fastq.gz
+ j2=${outbase}_2.fastq.gz
+ ln -s `readlink -f "$i"` dada_input_fastq/$i2
+ ln -s `readlink -f "$j"` dada_input_fastq/$j2
+done
+
+
+echo '
+library(dada2);
+path <- "dada_input_fastq"
+fnFs <- sort(list.files(path, pattern="_1.fastq", full.names = TRUE))
+fnRs <- sort(list.files(path, pattern="_2.fastq", full.names = TRUE))
+sample.names <- sapply(strsplit(basename(fnFs), "_1.fastq"), `[`, 1)
+plotQualityProfile(fnFs)
+dev.off()
+file.rename("Rplots.pdf","QualityFor.pdf")
+plotQualityProfile(fnRs)
+dev.off()
+file.rename("Rplots.pdf","QualityRev.pdf")
+
+# Place filtered files in filtered/ subdirectory
+filtFs <- file.path(path, "filtered", paste0(sample.names, "_F_filt.fastq.gz"))
+filtRs <- file.path(path, "filtered", paste0(sample.names, "_R_filt.fastq.gz"))
+names(filtFs) <- sample.names
+names(filtRs) <- sample.names
+
+out <- filterAndTrim(fnFs, filtFs, fnRs, filtRs, truncLen=c('"$opt_q"','"$opt_r"'),
+              maxN=0, maxEE=c(2,2), truncQ=2, rm.phix=TRUE,
+              compress=TRUE, multithread=TRUE) # On Windows set multithread=FALSE
+
+filtFs <- sort(list.files(paste(path,"/filtered",sep=""), pattern="_F_filt.fastq.gz", full.names = TRUE))
+filtRs <- sort(list.files(paste(path,"/filtered",sep=""), pattern="_R_filt.fastq.gz", full.names = TRUE))
+sample.names <- sapply(strsplit(basename(filtFs), "_F_filt.fastq.gz"), `[`, 1)
+
+errF <- learnErrors(filtFs, multithread=TRUE)
+errR <- learnErrors(filtRs, multithread=TRUE)
+
+plotErrors(errF, nominalQ=TRUE)
+dev.off()
+file.rename("Rplots.pdf","Errors.pdf")
+
+dadaFs <- dada(filtFs, err=errF, multithread=TRUE)
+dadaRs <- dada(filtRs, err=errR, multithread=TRUE)
+mergers <- mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose=TRUE)
+seqtab <- makeSequenceTable(mergers)
+seqtab.nochim <- removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE, verbose=TRUE)
+write.table(t(seqtab.nochim),file="zOTU-abundance.txt",quote=F, sep="\t",col.names=NA)
+
+sum(seqtab.nochim)/sum(seqtab)
+
+getN <- function(x) sum(getUniques(x))
+track <- cbind(out[out[,2]!=0,], sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
+# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
+colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+rownames(track) <- sample.names
+head(track)
+zero=out[out[,2]==0,]
+if(dim(zero)[1]==0){
+ write.table(track,file="reads-stats.txt",quote=F, sep="\t",col.names=NA)
+}else{
+ track2=rbind(track,cbind(zero,rep(0,dim(zero)[1]),rep(0,dim(zero)[1]),rep(0,dim(zero)[1]),rep(0,dim(zero)[1])))
+ write.table(track2,file="reads-stats.txt",quote=F, sep="\t",col.names=NA)
+}
+
+#taxa <- assignTaxonomy(seqtab.nochim, "./silva_nr99_v138.1_train_set.fa.gz", multithread=TRUE)
+taxa <- assignTaxonomy(seqtab.nochim, "/usr/local/silva_nr99_v138.1_train_set.fa.gz", multithread=TRUE, tryRC=TRUE)
+
+taxa.print <- taxa # Removing sequence rownames for display only
+rownames(taxa.print) <- NULL
+head(taxa.print)
+
+write.table(taxa,file="zOTU-name.txt",quote=F, sep="\t",col.names=NA)
+
+library(phyloseq);
+
+library(Biostrings);
+library(ggplot2);
+
+theme_set(theme_bw())
+
+samples.out <- rownames(seqtab.nochim)
+subject <- samples.out
+sname = sapply(strsplit(rownames(seqtab.nochim), "_F_filt.fastq.gz"), `[`, 1)
+samdf <- data.frame(Subject=subject, Name=sname)
+rownames(samdf) <- samples.out
+
+ps <- phyloseq(otu_table(seqtab.nochim, taxa_are_rows=FALSE),
+               sample_data(samdf),
+               tax_table(taxa))
+
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+ps
+
+plot_richness(ps, x="Name", measures=c("Shannon", "Simpson"), color="Name")
+dev.off()
+file.rename("Rplots.pdf","Richness.pdf")
+
+ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
+ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
+
+plot_ordination(ps.prop, ord.nmds.bray, color="Name", title="Bray NMDS")
+dev.off()
+file.rename("Rplots.pdf","NMDS.pdf")
+
+top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
+ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+ps.top20 <- prune_taxa(top20, ps.top20)
+#plot_bar(ps.top20, x="Day", fill="Family") + facet_wrap(~When, scales="free_x")
+plot_bar(ps.top20, x="Name", fill="Family")
+dev.off()
+file.rename("Rplots.pdf","Family-abundance.pdf")
+plot_bar(ps.top20, x="Name", fill="Genus")
+dev.off()
+file.rename("Rplots.pdf","Genus-abundance.pdf")
+' > run_script.sh
+
+DO_DADA2 R --vanilla < run_script.sh
+DO_EXCEL awk -F'\t' 'FILENAME==ARGV[1]{for(i=2;i<=NF;i++){name[i][$1]=$i}; n=NF} FILENAME==ARGV[2]{ORS=""; print $0; for(i=2;i<=n;i++){print "\t"name[i][$1]}; print "\n"}' zOTU-name.txt zOTU-abundance.txt > zOTU-abundance-name.txt
+
+DO_EXCEL java -Xmx1G -jar /usr/local/bin/excel2.jar zOTU-abundance-name.txt zOTU-abundance-name.xlsx
+
+
+post_processing
+
+#<option detail>
+#</option detail>
+

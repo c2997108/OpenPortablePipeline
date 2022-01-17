@@ -124,6 +124,9 @@ done)|DOPARALLEL
 
 WAITPARALLEL
 
+mkdir -p output_bam
+for i in *.bam *.bam.bai; do ln -sf ../$i output_bam/; done
+
 if [ "$input_3" != "" ];then
  DO_STRINGTIE stringtie --merge -G "$input_3" -o stringtie.merge.gtf output.stringtie/*.gtf
 else
@@ -172,11 +175,15 @@ cat isoforms.ballgown.txt| DO_BASE awk -F'\t' '{if(NR==1){gsub(/\tcov[.]/,"\t",$
 awk -F'\t' '{if(NR==1){gsub(/^FPKM[.]/,"",$0); gsub(/\tFPKM[.]/,"\t",$0); print "id\t"$0}else{print $0}}' genes.ballgown.txt > genes.fpkm_table
 
 DO_CUFF cuffnorm $opt_n -o output.cuffnorm -p $N_CPU -L $(echo `ls output.cuffquant/`|sed 's/ /,/g') stringtie.merge.gtf $(for i in `ls output.cuffquant/`; do echo output.cuffquant/$i/abundances.cxb; done)
-#awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/isoforms.count_table > isoforms.count_table
-#awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/isoforms.fpkm_table > isoforms.fpkm_table
-#awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/genes.count_table > genes.count_table
-#awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/genes.fpkm_table > genes.fpkm_table
-
+mkdir -p output.cuffnorm.forplot
+awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/isoforms.count_table > output.cuffnorm.forplot/isoforms.count_table
+awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/isoforms.fpkm_table > output.cuffnorm.forplot/isoforms.fpkm_table
+awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/genes.count_table > output.cuffnorm.forplot/genes.count_table
+awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/genes.fpkm_table > output.cuffnorm.forplot/genes.fpkm_table
+awk -F'\t' 'NR==1{OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (counts [cuffdiff])"}} {print $0}' output.cuffnorm.forplot/isoforms.count_table > output.cuffnorm.forplot/isoforms.count_table.ren
+awk -F'\t' 'NR==1{OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (FPKM [cuffdiff])"}} {print $0}' output.cuffnorm.forplot/isoforms.fpkm_table > output.cuffnorm.forplot/isoforms.fpkm_table.ren
+awk -F'\t' 'NR==1{OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (counts [cuffdiff])"}} {print $0}' output.cuffnorm.forplot/genes.count_table > output.cuffnorm.forplot/genes.count_table.ren
+awk -F'\t' 'NR==1{OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (FPKM [cuffdiff])"}} {print $0}' output.cuffnorm.forplot/genes.fpkm_table > output.cuffnorm.forplot/genes.fpkm_table.ren
 
 bash "$scriptdir"/statistics~sample_distance -c "$opt_c" -m "$opt_m" -s sample.input.txt isoforms.count_table || true
 
@@ -207,9 +214,13 @@ DO_MERGE merge_table.pl -k gos.count_table.ren Trinotate.xls3.go > Trinotate.xls
 tail -n+2 sample.input.txt |cut -f 2|sort -V|uniq|awk '{a[NR]=$1} END{for(i=1;i<=NR-1;i++){for(j=i+1;j<=NR;j++){print a[i]"\t"a[j]}}}' > sample.input.pair.txt
 
 
+DO_MERGE merge_table.pl -k output.cuffnorm.forplot/isoforms.count_table.ren output.cuffnorm.forplot/isoforms.fpkm_table.ren Trinotate.xls3.isoform.cnt > output.cuffnorm.forplot/Trinotate.xls3.isoform.cnt
+DO_MERGE merge_table.pl -k output.cuffnorm.forplot/genes.count_table.ren output.cuffnorm.forplot/genes.fpkm_table.ren Trinotate.xls3.gene.cnt > output.cuffnorm.forplot/Trinotate.xls3.gene.cnt
+
+
 #make html
-i=Trinotate.xls3.isoform.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
-i=Trinotate.xls3.gene.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=output.cuffnorm.forplot/Trinotate.xls3.isoform.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > `basename ${i}`.temp
+i=output.cuffnorm.forplot/Trinotate.xls3.gene.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > `basename ${i}`.temp
 i=Trinotate.xls3.go.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
 DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.isoform.cnt.temp result.isoform.xlsx
 DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.gene.cnt.temp result.gene.xlsx
@@ -337,7 +348,7 @@ bash run-make-deg-html.sh $countfile edgeR 0_result.html transcript
 echo ' <h3>Differential transcript expression analysis by ballgown with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
 bash run-make-deg-html.sh $countfile ballgown 0_result.html transcript
 echo ' <h3>Differential transcript expression analysis by Cuffdiff with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
-bash run-make-deg-html.sh $countfile cuffdiff 0_result.html transcript
+bash run-make-deg-html.sh $countfile.ren cuffdiff 0_result.html transcript
 echo '
 <h2>Gene</h2>
  <h3>Differential gene expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
@@ -348,7 +359,7 @@ bash run-make-deg-html.sh $countgenefile edgeR 0_result.html gene
 echo ' <h3>Differential gene expression analysis by ballgown with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
 bash run-make-deg-html.sh $countgenefile ballgown 0_result.html gene
 echo ' <h3>Differential gene expression analysis by Cuffdiff with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
-bash run-make-deg-html.sh $countgenefile cuffdiff 0_result.html gene
+bash run-make-deg-html.sh $countgenefile.ren cuffdiff 0_result.html gene
 echo '
 <h2>GO</h2>
  <h3>Differential go expression analysis by DESeq2 with scatter plot of read counts (counts per million)</h3>
@@ -356,6 +367,16 @@ echo '
 bash run-make-deg-html.sh $countgofile DESeq2 0_result.html go
 echo ' <h3>Differential GO expression analysis by edgeR with scatter plot of read counts (counts per million)</h3>' >> 0_result.html
 bash run-make-deg-html.sh $countgofile edgeR 0_result.html go
+echo '<h2>Data download</h2>
+ <h3>Stringtie predicted genes</h3>
+  <a href="stringtie.merge.gtf" download="stringtie.merge.gtf" style="padding-left: 30px;">stringtie.merge.gtf</a><br>
+ <h3>Expression table</h3>
+  <a href="result.isoform.xlsx" download="result.isoform.xlsx" style="padding-left: 30px;">Transcript expression table</a><br>
+  <a href="result.gene.xlsx" download="result.gene.xlsx" style="padding-left: 30px;">Gene expression table</a><br>
+  <a href="result.go.xlsx" download="result.go.xlsx" style="padding-left: 30px;">GO table</a><br>
+ <h3>Mapping data</h3>
+  <a href="output_bam" style="padding-left: 30px;">BAM files</a><br>
+' >> 0_result.html
 echo "</body></html>" >> 0_result.html
 
 
@@ -368,6 +389,10 @@ for i in `seq 1 $(cat sample.input.pair.txt|wc -l)`; do
  annfile=Trinotate.xls3.isoform.cnt
  anngenefile=Trinotate.xls3.gene.cnt
  anngofile=Trinotate.xls3.go.cnt
+ countfilecuff=output.cuffnorm.forplot/isoforms.count_table.ren
+ countgenefilecuff=output.cuffnorm.forplot/genes.count_table.ren
+ annfilecuff=output.cuffnorm.forplot/Trinotate.xls3.isoform.cnt
+ anngenefilecuff=output.cuffnorm.forplot/Trinotate.xls3.gene.cnt
 
  cat << EOF > run-DE.$g1.$g2.sh
 set -x
@@ -378,6 +403,9 @@ awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.inp
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $countgenefile.$g1.$g2.txt
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $countgofile.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfilecuff > $countfilecuff.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefilecuff > $countgenefilecuff.$g1.$g2.txt
+
 #DESeq2
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
@@ -389,7 +417,7 @@ echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.
 #ballgown
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~ballgown -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
 #Cuffdiff
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfile -b $anngenefile -d "\'$opt_d\'" $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d "\'$opt_d\'" $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
 
 EOF
 
