@@ -14,8 +14,8 @@ PortablePipeline is software that allows Windows and Mac users to perform NGS an
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
-Win https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.9e/PortablePipeline-win-v0.9f.zip  
-Mac https://github.com/c2997108/OpenPortablePipeline/releases/download/v0.9e/PortablePipeline-mac-v0.9f.tar.gz  
+Win https://github.com/c2997108/OpenPortablePipeline/releases/download/v1.0/PortablePipeline-win-v1.0.zip  
+Mac https://github.com/c2997108/OpenPortablePipeline/releases/download/v1.0/PortablePipeline-mac-v1.0.tar.gz  
 
 2. In the unzipped file, double-click "PortablePipeline.bat" on Windows or "PortablePipeline.command" on Mac to launch it.
 Windows users need administrator privileges to create the junction file, so they will be asked if they can run it as an administrator, and then press OK. Mac users only need to allow it to run the first time by clicking "System Preferences" in OS System menu → "Security & Privacy" → "General" tab → "Open Anyway".
