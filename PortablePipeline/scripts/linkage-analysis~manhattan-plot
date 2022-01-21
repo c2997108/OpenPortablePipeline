@@ -126,7 +126,7 @@ dev.off()
 CairoPNG('dominant.BHnormalized.$filename.png', width=2000, height=1000)
 manhattan(c2, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
 dev.off()
-" | DO_R R --vanilla < /dev/stdin
+" | (DO_R R --vanilla < /dev/stdin)
 
 (echo -e "p-value\tmatch rate\tCHROM\tPOS\tthe number of sample 1 individuals\tthe number of sample 1 positive individuals\tthe number of sample 2 individuals\tthe number of sample 2 positive individu
 als\t"|tr -d '\n';

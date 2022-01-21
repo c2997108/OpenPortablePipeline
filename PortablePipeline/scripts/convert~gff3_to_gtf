@@ -46,7 +46,7 @@ awk -F'\t' '{OFS="\t"; gsub(/%../,"_",$9); gsub(/[^0-9a-zA-Z_;=.-]/,"_",$9); pri
  }' > "$input_1.rename"
 temp_1=`echo "$input_1"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
 temp_2=`echo "$input_1"|sed 's/[.]\(gff\|gff3\)$/.withname.gtf/'`
-DO_BASE gff3ToGenePred "$input_1.rename" /dev/stdout | DO_BASE genePredToGtf file stdin "$temp_1"
+DO_BASE gff3ToGenePred "$input_1.rename" /dev/stdout | (DO_BASE genePredToGtf file stdin "$temp_1")
 sed 's/ \+/ /g' "$temp_1"| awk -F'\t' '
  FILENAME==ARGV[1] && $3=="gene"{
   split($9,arr,";"); id=""; name=""; note=""; for(i in arr){

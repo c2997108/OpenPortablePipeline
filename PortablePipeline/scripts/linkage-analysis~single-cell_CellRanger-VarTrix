@@ -79,9 +79,9 @@ set -o pipefail
 
 DO_SAMTOOLS samtools faidx pseudochr.re.fa
 DO_BWA bwa index pseudochr.re.fa
-DO_BWA bwa mem -t $N_CPU pseudochr.re.fa temp100xtrim_1.fastq temp100xtrim_2.fastq |DO_SAMTOOLS samtools sort -@ $N_CPU - > pseudochr.re.fa.100x.bam
+DO_BWA bwa mem -t $N_CPU pseudochr.re.fa temp100xtrim_1.fastq temp100xtrim_2.fastq |(DO_SAMTOOLS samtools sort -@ $N_CPU -) > pseudochr.re.fa.100x.bam
 DO_SAMTOOLS samtools index pseudochr.re.fa.100x.bam
-DO_BCF bcftools mpileup -Ou --annotate AD,DP,INFO/AD -f pseudochr.re.fa pseudochr.re.fa.100x.bam | DO_BCF bcftools call -vm -f GQ -o pseudochr.re.fa.100x.bam.vcf
+DO_BCF bcftools mpileup -Ou --annotate AD,DP,INFO/AD -f pseudochr.re.fa pseudochr.re.fa.100x.bam | (DO_BCF bcftools call -vm -f GQ -o pseudochr.re.fa.100x.bam.vcf)
 
 
 DO_SELDLA tar zvxf "$input_3"

@@ -17,6 +17,8 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -r #opt_r# #in
 
 export IM_METAWRAP="c2997108/centos7:2-metawrap_2"
 export IM_CHECKM="quay.io/biocontainers/checkm-genome:1.1.3--py_1"
+export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
+export IM_R="c2997108/centos6:2"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -57,10 +59,10 @@ mkdir -p input_fastq
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- i2=`basename $i`
- j2=`basename $j`
- ln -s `readlink -f "$i"` input_fastq
- ln -s `readlink -f "$j"` input_fastq
+ i2=`basename $i|sed 's/[.]\(fastq\|fq\)//'`
+ j2=`basename $j|sed 's/[.]\(fastq\|fq\)//'`
+ ln -sf `readlink -f "$i"` input_fastq/$i2.fastq
+ ln -sf `readlink -f "$j"` input_fastq/$j2.fastq
 done
 for i in $r1gz; do
  if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
@@ -68,10 +70,10 @@ for i in $r1gz; do
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- i2=`basename $i .gz`
- j2=`basename $j .gz`
- echo zcat $i ">" input_fastq/$i2
- echo zcat $j ">" input_fastq/$j2
+ i2=`basename $i .gz|sed 's/[.]\(fastq\|fq\)//'`
+ j2=`basename $j .gz|sed 's/[.]\(fastq\|fq\)//'`
+ echo zcat $i ">" input_fastq/$i2.fastq
+ echo zcat $j ">" input_fastq/$j2.fastq
 done)|DOPARALLELONE
 
 WAITPARALLEL
@@ -86,8 +88,42 @@ metawrap quant_bins -b BIN_REFINEMENT/metawrap_*_*_bins -o QUANT_BINS -t '$N_CPU
 ' > run_script.sh
 
 DO_METAWRAP bash run_script.sh
-DO_CHECKM checkm lineage_wf -t $N_CPU --pplacer_threads $N_CPU -x fa BIN_REFINEMENT/metawrap_50_10_bins output_checkM > output_checkM.txt
+k=`ls -d BIN_REFINEMENT/metawrap_*_*_bins|head -n 1`
+DO_CHECKM checkm lineage_wf -t $N_CPU --pplacer_threads $N_CPU -x fa $k output_checkM > output_checkM.txt
 
+DO_SAMTOOLS samtools faidx "$input_2"
+mkdir -p script
+mkdir -p images
+echo '<html><head></head><body>' > bin_tpm-length-graph.html
+for i in QUANT_BINS/quant_files/*.quant.counts; do
+ j=`basename $i .quant.counts`;
+ echo 'a=read.table("'"$input_2"'.fai", sep="\t")
+b=read.table("QUANT_BINS/quant_files/'"$j"'.quant.counts", sep="\t",header=T)
+c=read.table("'"$k"'.contigs", sep="\t")
+a=a[,1:2]
+d=merge(c, a, by.x=1, by.y=1)
+e=merge(d,b,by.x=1,by.y=1)
+
+library(Cairo)
+j="'"$j"'"
+for(i in unique(e[,2])){
+ CairoPNG(paste("images",paste(j,i,"png",sep="."),sep="/"))
+ f=e[e[,2]==i,]
+ plot(main=paste(i,j), x=e[,4], y=e[,3], xlab="TPM", ylab="contig length [bp]", log="xy", pch = 20, cex = 0.1, xlim=c(min(e[e[,4]!=0,4]),max(e[,4])), ylim=c(min(e[,3]),max(e[,3])))
+ par(new=T)
+ plot(main="",x=f[,4], y=f[,3], xlab="", ylab="", log="xy", pch = 20, cex = 0.1, col="red", xlim=c(min(e[e[,4]!=0,4]),max(e[,4])), ylim=c(min(e[,3]),max(e[,3])))
+ dev.off()
+}
+' > script/"$j".R
+ echo $ENV_R Rscript script/"$j".R
+ for m in `cat $k.contigs|cut -f 2|sort -V|uniq`; do
+  echo '<img src="'"images/$j.$m.png"'">' >> bin_tpm-length-graph.html
+ done
+done|DOPARALLELONE
+
+WAITPARALLEL
+
+echo '</body></html>' >> bin_tpm-length-graph.html
 
 post_processing
 

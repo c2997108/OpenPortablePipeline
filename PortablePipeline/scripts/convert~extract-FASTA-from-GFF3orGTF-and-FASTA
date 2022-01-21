@@ -49,21 +49,21 @@ awk -F'\t' '$3=="gene"{
    if($0~"^>"){split($0,arr," "); split(arr[2],arr2,"="); if(id[arr2[2]]!=""){arr[2]="gene="id[arr2[2]]}; print arr[1]" "arr[2]" "arr[3]}else{print $0}
   }' /dev/stdin "$output" > "$outputid"
 
-DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$output" | DO_BASE awk -F'\t' '
+DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$output" | (DO_BASE awk -F'\t' '
  {
   split($1,arr," "); gene=""; for(i in arr){if(arr[i]~"^gene="){gene=substr(arr[i],6)}};
   name=arr[1]; if(gene!=""){name=gene}; len[name][arr[1]]=length($2); seq[arr[1]]=$2
  }
  END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in len){for(j in len[i]){print ">"i" transcript="j; print seq[j]; break}}}
-' > "$output2"
+') > "$output2"
 
-DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$outputid" | DO_BASE awk -F'\t' '
+DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$outputid" | (DO_BASE awk -F'\t' '
  {
   split($1,arr," "); gene=""; for(i in arr){if(arr[i]~"^gene="){gene=substr(arr[i],6)}};
   name=arr[1]; if(gene!=""){name=gene}; len[name][arr[1]]=length($2); seq[arr[1]]=$2
  }
  END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in len){for(j in len[i]){print ">"i" transcript="j; print seq[j]; break}}}
-' > "$outputid2"
+') > "$outputid2"
 
 post_processing
 

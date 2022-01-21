@@ -74,7 +74,7 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$
 if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
 if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
  temp_3=`echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
- DO_BASE gff3ToGenePred "$input_3" /dev/stdout | DO_BASE genePredToGtf file stdin "$temp_3"
+ DO_BASE gff3ToGenePred "$input_3" /dev/stdout | (DO_BASE genePredToGtf file stdin "$temp_3")
  input_3="$temp_3"
 fi
 if [ "$input_3" != "" ];then
@@ -119,7 +119,7 @@ r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|'$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ';' $ENV_SAMTOOLS samtools index `basename "$i"`.bam';' $ENV_STRINGTIE stringtie $opt_t -p $N_CPU -o output.stringtie/`basename "$i"`.gtf `basename "$i"`.bam
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|('$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ');' $ENV_SAMTOOLS samtools index `basename "$i"`.bam';' $ENV_STRINGTIE stringtie $opt_t -p $N_CPU -o output.stringtie/`basename "$i"`.gtf `basename "$i"`.bam
 done)|DOPARALLEL
 
 WAITPARALLEL
@@ -157,7 +157,7 @@ if [ -e "$input_4" ]; then
 else
  touch sample.txt2
 fi
-ls input.ballgown| DO_BASE sort -V| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+ls input.ballgown| (DO_BASE sort -V)| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
 cat << 'EOF' > run-estimate-fpkm.R
 library(ballgown)
 pheno_data = read.table(file ="sample.input.txt", header = TRUE, sep = "\t")
@@ -171,7 +171,7 @@ EOF
 DO_R R --vanilla < run-estimate-fpkm.R
 awk -F'\t' '{ORS=""; if(NR==1){gsub(/\tcov[.]/,"\t",$0)}; print $6; for(i=11;i<NF;i=i+2){print "\t"$i}; print "\n"}' isoforms.ballgown.txt > isoforms.count_table
 awk -F'\t' '{ORS=""; if(NR==1){gsub(/\tFPKM[.]/,"\t",$0)}; print $6; for(i=12;i<=NF;i=i+2){print "\t"$i}; print "\n"}' isoforms.ballgown.txt > isoforms.fpkm_table
-cat isoforms.ballgown.txt| DO_BASE awk -F'\t' '{if(NR==1){gsub(/\tcov[.]/,"\t",$0); name[9]=$9; for(i=11;i<NF;i=i+2){name[i]=$i}}else{for(i=11;i<NF;i=i+2){cnt[$9][i]+=$i}}} END{ORS=""; print name[9]; for(i=11;i<=NF;i=i+2){print "\t"name[i]}; print "\n"; for(j in cnt){print j; for(i=11;i<=NF;i=i+2){print "\t"cnt[j][i]}; print "\n"}}' > genes.count_table
+cat isoforms.ballgown.txt| (DO_BASE awk -F'\t' '{if(NR==1){gsub(/\tcov[.]/,"\t",$0); name[9]=$9; for(i=11;i<NF;i=i+2){name[i]=$i}}else{for(i=11;i<NF;i=i+2){cnt[$9][i]+=$i}}} END{ORS=""; print name[9]; for(i=11;i<=NF;i=i+2){print "\t"name[i]}; print "\n"; for(j in cnt){print j; for(i=11;i<=NF;i=i+2){print "\t"cnt[j][i]}; print "\n"}}') > genes.count_table
 awk -F'\t' '{if(NR==1){gsub(/^FPKM[.]/,"",$0); gsub(/\tFPKM[.]/,"\t",$0); print "id\t"$0}else{print $0}}' genes.ballgown.txt > genes.fpkm_table
 
 DO_CUFF cuffnorm $opt_n -o output.cuffnorm -p $N_CPU -L $(echo `ls output.cuffquant/`|sed 's/ /,/g') stringtie.merge.gtf $(for i in `ls output.cuffquant/`; do echo output.cuffquant/$i/abundances.cxb; done)
@@ -199,7 +199,7 @@ awk -F'\t' '{if(NR==1){OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (
 DO_MERGE merge_table.pl -k isoforms.count_table.ren isoforms.fpkm_table.ren Trinotate.output.txt > Trinotate.xls3.isoform.cnt
 
 DO_TRINOTATE samtools faidx transcripts.fasta
-DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{g2t[$1][$2]=1} FILENAME==ARGV[2]{len[$1]=$2} END{for(i in g2t){for(j in g2t[i]){print len[j]"\t"i"\t"j}}}' stringtie.merge.gtf.map transcripts.fasta.fai|DO_TRINOTATE sort -k2,2V -k1,1nr -k3,3V|DO_MERGE myuniq.pl 2 > transcripts.fasta.rep_isoform
+DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{g2t[$1][$2]=1} FILENAME==ARGV[2]{len[$1]=$2} END{for(i in g2t){for(j in g2t[i]){print len[j]"\t"i"\t"j}}}' stringtie.merge.gtf.map transcripts.fasta.fai|(DO_TRINOTATE sort -k2,2V -k1,1nr -k3,3V)|(DO_MERGE myuniq.pl 2) > transcripts.fasta.rep_isoform
 DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{id[$3]=1} FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; $1="gene_id"; print $0}else{if(id[$2]==1){print $0}}}' transcripts.fasta.rep_isoform Trinotate.xls3 > Trinotate.xls3.gene
 awk -F'\t' '{if(NR==1){OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (counts)"}; print $0}else{print $0}}' genes.count_table > genes.count_table.ren
 awk -F'\t' '{if(NR==1){OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (FPKM)"}; print $0}else{print $0}}' genes.fpkm_table > genes.fpkm_table.ren

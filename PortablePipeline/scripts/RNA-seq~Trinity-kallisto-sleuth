@@ -120,7 +120,7 @@ awk -F'\t' '{if(NR==1){OFS="\t"; $1="transcript_id"; for(i=2;i<=NF;i++){$i=$i" (
 DO_MERGE merge_table.pl -k kallisto.isoform.counts.matrix.ren kallisto.isoform.TPM.not_cross_norm.ren Trinotate.output.txt > Trinotate.xls3.isoform.cnt
 
 DO_TRINOTATE samtools faidx Trinity.fasta
-DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{g2t[$1][$2]=1} FILENAME==ARGV[2]{len[$1]=$2} END{for(i in g2t){for(j in g2t[i]){print len[j]"\t"i"\t"j}}}' Trinity.fasta.gene_trans_map Trinity.fasta.fai|DO_TRINOTATE sort -k2,2V -k1,1nr -k3,3V|DO_MERGE myuniq.pl 2 > Trinity.fasta.rep_isoform
+DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{g2t[$1][$2]=1} FILENAME==ARGV[2]{len[$1]=$2} END{for(i in g2t){for(j in g2t[i]){print len[j]"\t"i"\t"j}}}' Trinity.fasta.gene_trans_map Trinity.fasta.fai|(DO_TRINOTATE sort -k2,2V -k1,1nr -k3,3V)|(DO_MERGE myuniq.pl 2) > Trinity.fasta.rep_isoform
 DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{id[$3]=1} FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; $1="gene_id"; print $0}else{if(id[$2]==1){print $0}}}' Trinity.fasta.rep_isoform Trinotate.xls3 > Trinotate.xls3.gene
 awk -F'\t' '{if(NR==1){OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (counts)"}; print $0}else{print $0}}' kallisto.gene.counts.matrix > kallisto.gene.counts.matrix.ren
 awk -F'\t' '{if(NR==1){OFS="\t"; $1="gene_id"; for(i=2;i<=NF;i++){$i=$i" (TPM)"}; print $0}else{print $0}}' kallisto.gene.TPM.not_cross_norm > kallisto.gene.TPM.not_cross_norm.ren

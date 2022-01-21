@@ -100,7 +100,7 @@ echo "" > bamlist;
  else
   j=`echo $i|sed 's/_R1/_R2/'`
  fi
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|'$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ';' $ENV_SAMTOOLS samtools index `basename "$i"`.bam;
+ echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|('$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ');' $ENV_SAMTOOLS samtools index `basename "$i"`.bam;
  echo `basename "$i"`.bam >> bamlist
 done)|DOPARALLEL
 
@@ -136,7 +136,7 @@ DO_BRAKER bash temp_bashrc
 rm -f braker/braker.exons.fasta
 DO_GFFREAD gffread -g "$input_2" -w braker/braker.exons.fasta braker/braker.gtf
 DO_TRANSEQ transeq -sequence braker/braker.exons.fasta -outseq tmp.braker.exons.aa.fasta -frame F
-DO_SEQKIT seqkit fx2tab tmp.braker.exons.aa.fasta |DO_BLAST awk -F'\t' '{split($1,arr," "); split(substr(arr[length(arr)],5),arr2,"-"); split(arr[1],arr3,"_"); if(arr3[length(arr3)]==arr2[1]){str=arr3[1]; for(i=2;i<length(arr3);i++){str=str"_"arr3[i]}; print str"\t"$0}}'|awk '{print ">"$1; print $NF}'|sed 's/[*]$//' > braker/braker.exons.aa.fasta
+DO_SEQKIT seqkit fx2tab tmp.braker.exons.aa.fasta |(DO_BLAST awk -F'\t' '{split($1,arr," "); split(substr(arr[length(arr)],5),arr2,"-"); split(arr[1],arr3,"_"); if(arr3[length(arr3)]==arr2[1]){str=arr3[1]; for(i=2;i<length(arr3);i++){str=str"_"arr3[i]}; print str"\t"$0}}')|awk '{print ">"$1; print $NF}'|sed 's/[*]$//' > braker/braker.exons.aa.fasta
 rm -f tmp.braker.exons.aa.fasta
 DO_BLAST blastp -query braker/braker.exons.aa.fasta -db /usr/local/Trinotate-Trinotate-v3.1.1/db/uniprot_sprot.pep -num_threads $N_CPU -max_target_seqs 1 -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle" -evalue 1e-5 > braker/braker.exons.aa.fasta.uniprot.blastp
 DO_SEQKIT seqkit fx2tab braker/braker.exons.aa.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{print ">"$1" "name[$1]":"desc[$1]" evalue:"evalue[$1]; print $2}' braker/braker.exons.aa.fasta.uniprot.blastp /dev/stdin > braker/braker.exons.uniprot.aa.fasta

@@ -26,7 +26,7 @@ set -o pipefail
 
 fq="$input_1"
 ref="$input_2"
-DO_MINIMAP2 minimap2 -t $N_CPU -a $opt_f "$ref" "$fq" | DO_SAMTOOLS samtools sort -@ $N_CPU -o output.bam
+DO_MINIMAP2 minimap2 -t $N_CPU -a $opt_f "$ref" "$fq" | (DO_SAMTOOLS samtools sort -@ $N_CPU -o output.bam)
 DO_SAMTOOLS samtools index output.bam
 DO_SAMTOOLS samtools faidx "$ref"
 

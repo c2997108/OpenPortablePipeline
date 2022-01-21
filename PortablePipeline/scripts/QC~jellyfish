@@ -56,7 +56,7 @@ d=as.matrix(c)
 row.names(d)=2^(0:m)
 CairoPNG("kmer-base-histogram.png", width = 1000, height = 1000)
 barplot(t(d),xlab = "K-mer frequency section", ylab = "K-mer frequency x coverage")
-dev.off()'|DO_R R --vanilla < /dev/stdin
+dev.off()'|(DO_R R --vanilla < /dev/stdin)
 
 post_processing
 #<option detail>

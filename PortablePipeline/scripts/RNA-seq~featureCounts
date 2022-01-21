@@ -40,7 +40,7 @@ awk -F'\t' '$3=="gene" || $3=="transcript"{print $0}' "$input_2"|awk -F'\t' '
   FILENAME==ARGV[1]{name[$1]=$2}
   FILENAME==ARGV[2] && FNR>1{if(FNR==2){for(i=7;i<=NF;i++){split($i,arr,"/"); $i=arr[length(arr)]}}; $1=$1"\t"name[$1]; print $0}
  ' /dev/stdin count.id.txt > count.id-genename.txt
-head -n 2 count.id.txt.summary|DO_BASE trans-row-column.sh -|awk -F'/' '{print $NF}'|awk -F'\t' '
+head -n 2 count.id.txt.summary|(DO_BASE trans-row-column.sh -)|awk -F'/' '{print $NF}'|awk -F'\t' '
   FILENAME==ARGV[1]{cnt[$1]=$2; if(cnt[$1]==0){cnt[$1]=1}}
   FILENAME==ARGV[2]{if(FNR==1){for(i=8;i<=NF;i++){name[i]=$i}; OFS="\t"}else{for(i=8;i<=NF;i++){$i=$i/cnt[name[i]]*1000*1000/$7*1000}}; print $0}
  ' /dev/stdin count.id-genename.txt > count.id-genename.fpkm.txt

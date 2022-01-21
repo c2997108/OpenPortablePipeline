@@ -44,7 +44,7 @@ rgz="`find $input_1/ |egrep '[.]f(ast|)q[.]gz$' || echo ''`"
 
 if [ "$r$rgz" = "" ]; then echo "Place fastq(.gz) files in input folder"; post_processing; fi
 
-echo "$opt_f"|DO_BASE awk -v name="primer_f" '
+echo "$opt_f"|(DO_BASE awk -v name="primer_f" '
 BEGIN{
 D["R"][1]="A"; D["R"][2]="G"; 
 D["M"][1]="A"; D["M"][2]="C"; 
@@ -72,9 +72,9 @@ D["N"][1]="A"; D["N"][2]="C"; D["N"][3]="G"; D["N"][4]="T"
   for(i=1;i<=k;i++){a[i]=b[i]}
  }; for(i=1;i<=k;i++){print ">"name"-"i; print a[i]}
 }
-' > primer_f
+') > primer_f
 
-echo "$opt_r"|DO_BASE awk -v name="primer_r" '
+echo "$opt_r"|(DO_BASE awk -v name="primer_r" '
 BEGIN{
 D["R"][1]="A"; D["R"][2]="G"; 
 D["M"][1]="A"; D["M"][2]="C"; 
@@ -102,9 +102,9 @@ D["N"][1]="A"; D["N"][2]="C"; D["N"][3]="G"; D["N"][4]="T"
   for(i=1;i<=k;i++){a[i]=b[i]}
  }; for(i=1;i<=k;i++){print ">"name"-"i; print a[i]}
 }
-' > primer_r
+') > primer_r
 
-echo "$opt_g"|DO_BASE awk -v name="adapter_f" '
+echo "$opt_g"|(DO_BASE awk -v name="adapter_f" '
 BEGIN{
 D["R"][1]="A"; D["R"][2]="G"; 
 D["M"][1]="A"; D["M"][2]="C"; 
@@ -132,9 +132,9 @@ D["N"][1]="A"; D["N"][2]="C"; D["N"][3]="G"; D["N"][4]="T"
   for(i=1;i<=k;i++){a[i]=b[i]}
  }; for(i=1;i<=k;i++){print ">"name"-"i; print a[i]}
 }
-' > adapter_f
+') > adapter_f
 
-echo "$opt_s"|DO_BASE awk -v name="adapter_r" '
+echo "$opt_s"|(DO_BASE awk -v name="adapter_r" '
 BEGIN{
 D["R"][1]="A"; D["R"][2]="G"; 
 D["M"][1]="A"; D["M"][2]="C"; 
@@ -162,7 +162,7 @@ D["N"][1]="A"; D["N"][2]="C"; D["N"][3]="G"; D["N"][4]="T"
   for(i=1;i<=k;i++){a[i]=b[i]}
  }; for(i=1;i<=k;i++){print ">"name"-"i; print a[i]}
 }
-' > adapter_r
+') > adapter_r
 cat primer_f primer_r adapter_f adapter_r > primers.fa
 DO_BLAST makeblastdb -in primers.fa -dbtype nucl
 DO_SAMTOOLS samtools faidx primers.fa
@@ -205,7 +205,7 @@ cat umi-find/*.fasta.blastn.tsv2 > all.fasta.blastn.tsv2
 sort -k2,2 -t$'\t' all.fasta.blastn.tsv2 > all.fasta.blastn.tsv2.sort
 
 mkdir -p umi-all
-cat all.fasta.blastn.tsv2 |DO_BASE awk '{cnt[$2]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}'|awk 'FILENAME==ARGV[1] && $2>=5{a[$1]=$2} FILENAME==ARGV[2]  && a[$2]>0{print ">"$1"\n"$3 > "umi-all/umi-"$2".fa"}' /dev/stdin all.fasta.blastn.tsv2.sort
+cat all.fasta.blastn.tsv2 |(DO_BASE awk '{cnt[$2]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}'|awk 'FILENAME==ARGV[1] && $2>=5{a[$1]=$2} FILENAME==ARGV[2]  && a[$2]>0{print ">"$1"\n"$3 > "umi-all/umi-"$2".fa"}' /dev/stdin all.fasta.blastn.tsv2.sort)
 cd umi-all
 wc -l umi-*-*.fa|awk '{print $2"\t"$1/2}' > count.umi
 mkdir -p ../umi-correct
@@ -254,11 +254,11 @@ DO_SEQKIT seqkit fx2tab umi-all.medaka|cut -f 2|awk '{print toupper($0)}'|sort|u
 DO_MITOFISH blastn -db /opt/mito/mitofish_2021-06-02_complete_partial_47mix.fa -query umi-all.medaka.umi.fa -outfmt 6 -max_target_seqs 3 > umi-all.medaka.umi.fa.blastn.temp
 DO_MITOFISH awk -F'\t' 'FILENAME==ARGV[1]{if($3!=""){a[$1]=$3}else if($2!=""){a[$1]="taxid:"$2}else{a[$1]=$1}} FILENAME==ARGV[2]{OFS="\t"; $2=a[$2]; print $0}' /opt/mito/mitofish_2021-06-02_complete_partial_47mix.fa.path2 umi-all.medaka.umi.fa.blastn.temp > umi-all.medaka.umi.fa.blastn
 rm -f umi-all.medaka.umi.fa.blastn.temp
-cat umi-all.medaka.umi.fa.blastn|DO_MERGE myuniq.pl 1|sort -k2,2 -t$'\t' > umi-all.medaka.umi.fa.blastn.sort
+cat umi-all.medaka.umi.fa.blastn|(DO_MERGE myuniq.pl 1)|sort -k2,2 -t$'\t' > umi-all.medaka.umi.fa.blastn.sort
 DO_SEQKIT seqkit fx2tab umi-all.medaka.umi.fa > umi-all.medaka.umi.fa.tab
 DO_SEQKIT seqkit fx2tab umi-all.medaka > umi-all.medaka.tab
 wc -l umi-*-*.fa|awk '{print $2"\t"$1/2}' > count.umi
-cat umi-all.medaka.umi.fa.blastn.sort|cut -f 1-6|DO_BASE awk -F'\t' 'FILENAME==ARGV[1]{count[$1]=$2} FILENAME==ARGV[2]{len1[$2]++; seq2umi[$2][len1[$2]]=$1} FILENAME==ARGV[3]{id2seq[$1]=$2} FILENAME==ARGV[4]{for(i in seq2umi[id2seq[$1]]){print $0"\t"seq2umi[id2seq[$1]][i]"\t"count[seq2umi[id2seq[$1]][i]]}}' count.umi umi-all.medaka.tab umi-all.medaka.umi.fa.tab /dev/stdin |awk -F'\t' '{OFS="\t"; temp=$1; $1=$2; $2=$3; $3=$4; $4=$5; $5=$6; $6=temp; print $0}' |sort -k1,1 -k8,8nr -t$'\t' > umi-all.medaka.umi.fa.blastn.sort.tsv
+cat umi-all.medaka.umi.fa.blastn.sort|cut -f 1-6|(DO_BASE awk -F'\t' 'FILENAME==ARGV[1]{count[$1]=$2} FILENAME==ARGV[2]{len1[$2]++; seq2umi[$2][len1[$2]]=$1} FILENAME==ARGV[3]{id2seq[$1]=$2} FILENAME==ARGV[4]{for(i in seq2umi[id2seq[$1]]){print $0"\t"seq2umi[id2seq[$1]][i]"\t"count[seq2umi[id2seq[$1]][i]]}}' count.umi umi-all.medaka.tab umi-all.medaka.umi.fa.tab /dev/stdin) |awk -F'\t' '{OFS="\t"; temp=$1; $1=$2; $2=$3; $3=$4; $4=$5; $5=$6; $6=temp; print $0}' |sort -k1,1 -k8,8nr -t$'\t' > umi-all.medaka.umi.fa.blastn.sort.tsv
 mkdir -p umi-merge
 rm -f umi-merge/*.reads.fa
 for i in `seq 1 $(cat umi-all.medaka.umi.fa.blastn.sort.tsv|wc -l)`; do a=`head -n $i umi-all.medaka.umi.fa.blastn.sort.tsv|tail -n 1`; id=`echo "$a"|cut -f 6`; umi=`echo "$a"|cut -f 7`; cat $umi >> umi-merge/$id.reads.fa; done
@@ -316,7 +316,7 @@ awk -F'\t' '{split($1,arr,"_"); cnt[$2]+=arr[2]} END{for(i in cnt){print i"\t"cn
 
 cd ..
 echo -e "Reads\tCluster ID\tNumber of UMI\tSpecies\tTaxonomy Path\tTop hit similarity to MitoFISH\tAlignment length\tMismatchs\tGap length\tSequence" > result.txt
-cat umi-merge/*.cons.fa|DO_SEQKIT seqkit fx2tab|awk -F'\t' 'FILENAME==ARGV[1]{seq[$1]=$2} FILENAME==ARGV[2]{umi[$1]=$2} FILENAME==ARGV[3]{OFS="\t"; split($3,arr,";"); $3=arr[length(arr)]"\t"$3; id=$2; $2=$2"\t"umi[$2]; print $0"\t"seq[id]}' /dev/stdin umi-merge/count.spec.merge.id.txt2  <(cat umi-merge/count.spec.merge.txt|cut -f 1-7) >> result.txt
+cat umi-merge/*.cons.fa|(DO_SEQKIT seqkit fx2tab)|awk -F'\t' 'FILENAME==ARGV[1]{seq[$1]=$2} FILENAME==ARGV[2]{umi[$1]=$2} FILENAME==ARGV[3]{OFS="\t"; split($3,arr,";"); $3=arr[length(arr)]"\t"$3; id=$2; $2=$2"\t"umi[$2]; print $0"\t"seq[id]}' /dev/stdin umi-merge/count.spec.merge.id.txt2  <(cat umi-merge/count.spec.merge.txt|cut -f 1-7) >> result.txt
 DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar result.txt result.xlsx
 mv -f result.txt result.xlsx ..
 

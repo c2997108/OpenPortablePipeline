@@ -28,7 +28,7 @@ ln -sf "$input_1" input.table.txt
 echo 'data=read.table("input.table.txt",header=T,row.names=1)
 data2=log2(data[order(apply(data,1,sum),decreasing=T),]+1)
 data2=data2[apply(data2,1,sum)!=0,]
-write.table(data2, "input.table.sorted.log2p1.txt",row.names=T, quote=F, sep="\t")'| DO_BASE /opt/R/4.0.3/bin/R --vanilla --silent
+write.table(data2, "input.table.sorted.log2p1.txt",row.names=T, quote=F, sep="\t")'| (DO_BASE /opt/R/4.0.3/bin/R --vanilla --silent)
 
 DO_BASE awk -F'\t' 'NR==1{print "id\t"$0} NR>1{print $0}' input.table.sorted.log2p1.txt > input.table.sorted.log2p1.h.txt
 DO_BASE java -cp /opt corclust.Clustering input.table.sorted.log2p1.h.txt $opt_r $opt_c > input.table.sorted.log2p1.h.txt.clust
@@ -54,7 +54,7 @@ for(i in sort(unique(clust[,1]))){
   points(as.numeric(colMeans(data3)), type="o", col="blue")
   dev.off()
  }
-}'| DO_BASE /opt/R/4.0.3/bin/R --vanilla --silent
+}'| (DO_BASE /opt/R/4.0.3/bin/R --vanilla --silent)
 
 paste input.table.sorted.log2p1.h.txt <(echo cluster; cat input.table.sorted.log2p1.h.txt.clust|cut -f 2) > output.table.txt
 
