@@ -14,7 +14,9 @@ PortablePipeline is software that allows Windows and Mac users to perform NGS an
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
+
 https://github.com/c2997108/OpenPortablePipeline/releases
+
 Win: PortablePipeline-win-vXXX.zip  
 Mac: PortablePipeline-mac-vXXX.tar.gz  
 
