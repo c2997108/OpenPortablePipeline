@@ -63,6 +63,30 @@ done)
 echo "#Check paired-end"
 ls $r2 $r2gz > /dev/null
 
+mkdir -p 10x_input
+j=0
+for i in $r1; do
+ j=`expr $j + 1`;
+ k=`printf "%03d" "${j}"`
+ if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  i2=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`
+ else
+  i2=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ ln -s "`readlink -f $i`" 10x_input/input_S1_L${k}_R1_001.fastq
+ ln -s "`readlink -f $i2`" 10x_input/input_S1_L${k}_R2_001.fastq
+done
+for i in $r1gz; do
+ j=`expr $j + 1`;
+ k=`printf "%03d" "${j}"`
+ if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  i2=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`
+ else
+  i2=`echo $i|sed 's/_R1/_R2/'`
+ fi
+ ln -s "`readlink -f $i`" 10x_input/input_S1_L${k}_R1_001.fastq.gz
+ ln -s "`readlink -f $i2`" 10x_input/input_S1_L${k}_R2_001.fastq.gz
+done
 
 ref="$input_2"
 DO_SAMTOOLS samtools faidx "$ref"
@@ -85,10 +109,10 @@ DO_BCF bcftools mpileup -Ou --annotate AD,DP,INFO/AD -f pseudochr.re.fa pseudoch
 
 
 DO_SELDLA tar zvxf "$input_3"
-name=`basename $(echo $r1 $r1gz|awk '{print $1}')|sed 's/[.]gz$//; s/_S._L..._R1_...[.]fastq$//'`
+#name=`basename $(echo $r1 $r1gz|awk '{print $1}')|sed 's/[.]gz$//; s/_S._L..._R1_...[.]fastq$//'`
 (echo '{"species_prefixes": [""],"primary_contigs": ['; awk '{ORS=""; if(NR!=1){print ","}; print "\""$1"\""}' pseudochr.re.fa.fai; echo '],"sex_chromosomes": {"_male": {"pseudochr1": 2},"_female": {"pseudochr1": 2}},"non_nuclear_contigs": ["chrM"]}' ) > pseudochr.re.fa.json
 DO_SELDLA ./cellranger-dna-1.1.0/cellranger-dna mkref pseudochr.re.fa pseudochr.re.fa.json
-DO_SELDLA ./cellranger-dna-1.1.0/cellranger-dna cnv --id=10x_output --reference=refdata-pseudochr.re --fastqs="$input_1" --sample="$name" $opt_b
+DO_SELDLA ./cellranger-dna-1.1.0/cellranger-dna cnv --id=10x_output --reference=refdata-pseudochr.re --fastqs="10x_input" $opt_b
 cat 10x_output/outs/per_cell_summary_metrics.csv |awk -F, '$16==-2 || ($16>2 && $15<2) {print $1}' > tags.removedup.txt
 
 DO_VARTRIX vartrix_linux --bam 10x_output/outs/possorted_bam.bam --cell-barcodes tags.removedup.txt --fasta pseudochr.re.fa --vcf pseudochr.re.fa.100x.bam.vcf --mapq 5 --out-matrix pseudochr.re.fa.removedup.matrix --out-variants pseudochr.re.fa.removedup.variants --threads $N_CPU

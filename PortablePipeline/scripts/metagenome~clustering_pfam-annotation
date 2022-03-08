@@ -20,7 +20,7 @@ export IM_SAMTOOLS="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_BWA="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
-export IM_COR="c2997108/centos7:metacor3"
+export IM_COR="c2997108/centos7:metacor7"
 export IM_MERGE="c2997108/centos7:3-java"
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -90,7 +90,7 @@ done
 DO_MERGE merge_table.pl -k *.coverage.txt.input|sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/' > all.coverage.txt
 rm -f *.coverage.txt.input run-count.sh
 
-echo "ln -s /ddca2/* /ddca/; /ddca/app/jdk1.8.0_05/bin/java -Xmx${N_MEM_G}G -cp /ddca/download/ddca/bin/ corclust.Clustering all.coverage.txt $opt_r 20 > temp.txt" > run.temp.sh
+echo "/ddca/app/jdk1.8.0_05/bin/java -Xmx${N_MEM_G}G -cp /ddca/download/ddca/bin/ corclust.Clustering all.coverage.txt $opt_r 20 > temp.txt" > run.temp.sh
 DO_COR bash run.temp.sh
 
 echo cluster_id > cluster.txt
@@ -98,13 +98,13 @@ cut -f 2 temp.txt >> cluster.txt
 paste all.coverage.txt cluster.txt > all.coverage.cluster.txt
 rm -f temp.txt all.coverage.txt cluster.txt *.coverage.txt
 
-echo "ln -s /ddca2/* /ddca/; /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit $ref . -c $N_CPU" > run.temp.sh
+echo "/ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit $ref . -c $N_CPU" > run.temp.sh
 DO_COR bash run.temp.sh
 
 base=`basename ${ref}`
-echo 'i=$1; ln -s /ddca2/* /ddca/; /ddca/tool/EMBOSS-6.6.0/bin/transeq -frame 6 $i -outseq $i.aa' > run.temp.sh
+echo 'i=$1; /ddca/tool/EMBOSS-6.6.0/bin/transeq -frame 6 $i -outseq $i.aa' > run.temp.sh
 for i in `ls ${base}_chunk_*|grep -v [.]aa$|grep -v [.]pfam`; do DO_COR bash run.temp.sh "$i" ; done
-echo 'i=$1; ln -s /ddca2/* /ddca/; export PATH=$PATH:/ddca/tool/hmmer-3.1b2/bin;
+echo 'i=$1; export PATH=$PATH:/ddca/tool/hmmer-3.1b2/bin;
  PERL5LIB=/ddca/download/PfamScan:/perl5/lib/perl5 /ddca/download/PfamScan/pfam_scan.pl -fasta $i -dir /ddca/download/PfamScan -cpu 1 > $i.pfam' > run.temp.sh
 for i in ${base}_chunk_*.aa; do DO_COR bash run.temp.sh "$i" & done
 wait
@@ -124,7 +124,6 @@ awk -F'\t' 'FILENAME==ARGV[1]{a[$1]++} FILENAME==ARGV[2]{ORS="\t"; print $1; for
  sed 's/\t$//' > all.pfam.tsv4
 
 cat << 'EOF' > run-pfamadd.sh
-ln -s /ddca2/* /ddca/
 i=/ddca/db/pfam/pfam.tsv
 j=all.pfam.tsv4
 m=`head -n 1 $i|awk -F'\t' '{print NF}'`;
@@ -162,8 +161,7 @@ m=`expr $n + 1`
 head -n $n all.tsv2 > pfam.tsv
 tail -n+$m all.tsv2 > all.tsv3
 
-echo "ln -s /ddca2/* /ddca/;
-java -Xmx${N_MEM_G}G -classpath /ddca/download/ddca/bin/ corclust/Pfamclustering pfam.tsv all.tsv3 > pfam.ann.tsv
+echo "/ddca/app/jdk1.8.0_05/bin/java -Xmx${N_MEM_G}G -classpath /ddca/download/ddca/bin/ corclust/Pfamclustering pfam.tsv all.tsv3 > pfam.ann.tsv
 cut -f 2- pfam.ann.tsv > all.tsv.cluster" > run.temp.sh
 cat << 'EOF' >> run.temp.sh
 awk -F'\t' '

@@ -18,10 +18,10 @@ opt_d:SELDLA mode (crossbreed, haploid, duploid, selfpollination):haploid
 opt_o:SELDLA output basename:seldla
 opt_r:Upper limit of intersection frequency (%):5
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -o #opt_o# -p #input_4# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -o #opt_o# -r #opt_r# -p #input_4# #input_1# #input_2# #input_3#"
 
-export IM_SELDLA="c2997108/seldla:2.1.2_2"
-export IM_BASE="c2997108/seldla:2.1.2_2"
+export IM_SELDLA="c2997108/seldla:2.3.0"
+export IM_BASE="c2997108/seldla:2.3.0"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
