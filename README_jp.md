@@ -213,3 +213,18 @@ export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/xargs$`|head -n 1))':
 source ~/.bash_profile
 ```
 途中でMacのパスワードが聞かれるはずなので、入力する。
+
+## GUIではなく、コマンドラインから実行する場合
+
+```
+/Path/To/PP/pp metagenome~silva_SSU+LSU -c 8 -m 32 -t 0.995 fastq/
+```
+などとすればよい。
+
+もしグリッドエンジンで分散処理したい場合は
+
+```
+RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\nsource ~/.bashrc\necho "$*"\neval "$*"'` pp metagenome~silva_SSU+LSU -c 8 -m 32 -t 0.995 fastq/
+```
+
+と、環境変数RUNPARALLELにグリッドエンジンのヘッダー＋「`eval "$*"`」とコマンドを実行させる部分が書いてあるスクリプトが入っていれば良い。
