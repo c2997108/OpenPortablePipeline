@@ -108,7 +108,7 @@ Hello World!
 path/to/OpenPortablePipeline/PortablePipeline/scripts/pp linkage-analysis~single-cell_CellRanger-VarTrix -c 32 input_fastq/ contig.fasta cellranger-dna-1.1.0.tar.gz
 ```
 
-出来上がったpseudochr.re.fa.removedup.matrix.clean.txt.vcf`と`pseudochr.re.fa.removedup.matrix.clean.txt_clean.txt`と`pseudochr.re.fa.removedup.matrix.clean.txt.vcf2.family`をSELDLAのインプットとして入力すれば良い。SELDLA単体で実行しても良いし、Portable Pipelineを経由して実行してもよい。Portable PipelineのSELDLAは1回目の実行でキメラの細胞を検出して、それを除去して2回目のSELDLAを実行するようにしている。不要な場合はSELDLAを単体で実行するほうが良い。
+出来上がった`pseudochr.re.fa.removedup.matrix.clean.txt.vcf`と`pseudochr.re.fa.removedup.matrix.clean.txt_clean.txt`と`pseudochr.re.fa.removedup.matrix.clean.txt.vcf2.family`をSELDLAのインプットとして入力すれば良い。SELDLA単体で実行しても良いし、Portable Pipelineを経由して実行してもよい。Portable PipelineのSELDLAは1回目の実行でキメラの細胞を検出して、それを除去して2回目のSELDLAを実行するようにしている。不要な場合はSELDLAを単体で実行するほうが良い。
 
 ```
 path/to/OpenPortablePipeline/PortablePipeline/scripts/pp linkage-analysis~SELDLA -b "--exmatch 0.60 --clmatch 0.92 --spmatch 0.90 -p 0.03 -b 0.03 --NonZeroSampleRate=0.05 --NonZeroPhaseRate=0.1 -r 20000 --RateOfNotNASNP=0.001 --RateOfNotNALD=0.01 --ldseqnum 2" -r 10 -p pseudochr.re.fa.removedup.matrix.clean.txt_clean.txt contig.fasta pseudochr.re.fa.removedup.matrix.clean.txt.vcf pseudochr.re.fa.removedup.matrix.clean.txt.vcf2.family
