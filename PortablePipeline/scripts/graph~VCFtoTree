@@ -66,9 +66,9 @@ dev.off()
 DO_R R --vanilla < make-sample-relation-nonNA.R
 
 cat output.tsv|awk -F'\t' '{
- if(NR==1){ORS=""; print "id"; for(i=10;i<=NF;i++){print "\t"$i}}
+ if(NR==1){ORS=""; print "id"; for(i=7;i<=NF;i++){print "\t"$i}}
  else{print $1":"$2":"$3":"$4;
-  for(i=10;i<=NF;i++){
+  for(i=7;i<=NF;i++){
    if($i=="1/1"||$i=="1|1"){print "\t2"}
    else if($i=="0/1"||$i=="0|1"||$i=="1|0"){print "\t1"}
    else if($i=="0/0"||$i=="0|0"){print "\t0"}
