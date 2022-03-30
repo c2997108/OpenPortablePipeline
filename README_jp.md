@@ -102,10 +102,10 @@ Hello World!
 
 5. 例えば10x CNVの精子シングルセルデータを使って連鎖解析を行いゲノムを伸長する場合
 
-今いるフォルダの中にシーケンスした10x CNVのリードを全部入れたフォルダ(例：`input_fastq`)と、伸長前のゲノムファイル(例：`contig.fasta`)を準備しておく。また、ライセンスの関係上、cellranger-dna-1.1.0.tar.gzを10xのウェブサイトからダウンロードしておく。次のコマンドを実行すると、CellRangerの解析＋VarTrixによるVCF作成＋SELDLA用インプットファイル作成が行われる。
+今いるフォルダの中にシーケンスした10x CNVのリードを全部入れたフォルダ(例：`input_fastq`)と、伸長前のゲノムファイル(例：`contig.fasta`)を準備しておく。また、ライセンスの関係上、`cellranger-dna-1.1.0.tar.gz`を10xのウェブサイトからダウンロードしておく。次のコマンドを実行すると、CellRangerの解析＋VarTrixによるVCF作成＋SELDLA用インプットファイル作成が行われる。
 
 ```
-path/to/OpenPortablePipeline/PortablePipeline/scripts/pp linkage-analysis~single-cell_CellRanger-VarTrix -c 32 input_fastq/ contig.fasta cellranger-dna-1.1.0.tar.gz
+path/to/OpenPortablePipeline/PortablePipeline/scripts/pp linkage-analysis~single-cell_CellRanger-VarTrix input_fastq/ contig.fasta cellranger-dna-1.1.0.tar.gz
 ```
 
 出来上がった`pseudochr.re.fa.removedup.matrix.clean.txt.vcf`と`pseudochr.re.fa.removedup.matrix.clean.txt_clean.txt`と`pseudochr.re.fa.removedup.matrix.clean.txt.vcf2.family`をSELDLAのインプットとして入力すれば良い。SELDLA単体で実行しても良いし、Portable Pipelineを経由して実行してもよい。Portable PipelineのSELDLAは1回目の実行でキメラの細胞を検出して、それを除去して2回目のSELDLAを実行するようにしている。不要な場合はSELDLAを単体で実行するほうが良い。
