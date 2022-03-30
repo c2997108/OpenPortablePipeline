@@ -49,6 +49,72 @@ Windowsユーザは、ジャンクションファイルの作成に管理者権�
 結果ファイル一覧の例は下記のような感じ。下記は単にサーバ上でHello Worldを表示させただけなので、log.txtファイルにその痕跡が残っているだけだけど、マッピングなどを行えばここにbamファイルなどが表示される。
 ![image](https://user-images.githubusercontent.com/5350508/79915687-64248d80-8462-11ea-884f-46dc0047c7c6.png)
 
+## 操作方法（コマンドライン版 Linux上でのみ使用可能）
+1. DockerとPython3をインストールしておく。Dockerはsudoなしで実行できるように`sudo usermod -aG docker $USER`を実行して再ログインしておく。
+
+2. GitHubからソースコード一式をダウンロードする。
+
+`git clone https://github.com/c2997108/OpenPortablePipeline.git`
+
+3. 使用可能なパイプライン一覧を見る
+
+`path/to/OpenPortablePipeline/PortablePipeline/scripts/pp`
+
+```
+QC~jellyfish						assemble~platanus					nanopore~flye-sickle_se
+QC~multi-fastqc						assemble~platanus-allele				nanopore~minimap2
+RNA-seq~DEGanalysis					basic-tools~merge_table					nanopore~pilon
+RNA-seq~HISAT2-StringTie-DEGanalysis			convert~FASTA_to_FASTQ					nanopore~sickle_se
+...
+```
+
+4. ちゃんと動くかテストする
+
+`path/to/OpenPortablePipeline/PortablePipeline/scripts/pp ZZZ~hello-world`
+
+```
+PID: 922021
+c2997108/centos7:1 centos:centos6
+using docker
+++ docker pull c2997108/centos7:1
+1: Pulling from c2997108/centos7
+8ba884070f61: Pull complete
+07a5b0e61101: Pull complete
+Digest: sha256:76a0f89ef3201ce10bfa5907bf884d128028352769a90a201ca017a914634c4e
+Status: Downloaded newer image for c2997108/centos7:1
+docker.io/c2997108/centos7:1
+++ set +ex
+++ docker pull centos:centos6
+centos6: Pulling from library/centos
+ff50d722b382: Pull complete
+Digest: sha256:a93df2e96e07f56ea48f215425c6f1673ab922927894595bb5c0ee4c5a955133
+Status: Downloaded newer image for centos:centos6
+docker.io/library/centos:centos6
+++ set +ex
++ set -o pipefail
++ echo 'Hello World!'
+Hello World!
++ post_processing
++ '[' 1 = 1 ']'
++ echo 0
++ exit
+```
+
+5. 例えば10x CNVの精子シングルセルデータを使って連鎖解析を行いゲノムを伸長する場合
+
+今いるフォルダの中にシーケンスした10x CNVのリードを全部入れたフォルダ(例：`input_fastq`)と、伸長前のゲノムファイル(例：`contig.fasta`)を準備しておく。また、ライセンスの関係上、cellranger-dna-1.1.0.tar.gzを10xのウェブサイトからダウンロードしておく。次のコマンドを実行すると、CellRangerの解析＋VarTrixによるVCF作成＋SELDLA用インプットファイル作成が行われる。
+
+```
+path/to/OpenPortablePipeline/PortablePipeline/scripts/pp linkage-analysis~single-cell_CellRanger-VarTrix -c 32 input_fastq/ contig.fasta cellranger-dna-1.1.0.tar.gz
+```
+
+出来上がったpseudochr.re.fa.removedup.matrix.clean.txt.vcf`と`pseudochr.re.fa.removedup.matrix.clean.txt_clean.txt`と`pseudochr.re.fa.removedup.matrix.clean.txt.vcf2.family`をSELDLAのインプットとして入力すれば良い。SELDLA単体で実行しても良いし、Portable Pipelineを経由して実行してもよい。Portable PipelineのSELDLAは1回目の実行でキメラの細胞を検出して、それを除去して2回目のSELDLAを実行するようにしている。不要な場合はSELDLAを単体で実行するほうが良い。
+
+```
+path/to/OpenPortablePipeline/PortablePipeline/scripts/pp linkage-analysis~SELDLA -b "--exmatch 0.60 --clmatch 0.92 --spmatch 0.90 -p 0.03 -b 0.03 --NonZeroSampleRate=0.05 --NonZeroPhaseRate=0.1 -r 20000 --RateOfNotNASNP=0.001 --RateOfNotNALD=0.01 --ldseqnum 2" -r 10 -p pseudochr.re.fa.removedup.matrix.clean.txt_clean.txt contig.fasta pseudochr.re.fa.removedup.matrix.clean.txt.vcf pseudochr.re.fa.removedup.matrix.clean.txt.vcf2.family
+```
+
+
 ## JAVA開発者用メモ
 GitHubに50 MBを超えるファイルを登録しているので、git cloneで全てのファイルをダウンロードするには、git lfsのインストールが必要。git lfsを[このリンク先のページ](https://github.com/git-lfs/git-lfs/wiki/Installation)の手順でインストールしたあと、```git clone https://github.com/c2997108/OpenPortablePipeline.git``` とすればよい。
 
