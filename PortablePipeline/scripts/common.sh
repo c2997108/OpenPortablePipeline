@@ -55,11 +55,12 @@ DIR_WORK="."
 
 #CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
 CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-docker-list; docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
-if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
- CON_SING="singularity exec $PPSINGBINDS "
-else
- CON_SING="singularity exec -B $PWD:/mnt --pwd /mnt $PPSINGBINDS "
-fi
+#if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
+# CON_SING="singularity exec $PPSINGBINDS "
+#else
+# CON_SING="singularity exec -B $PWD:/mnt --pwd /mnt $PPSINGBINDS "
+#fi
+CON_SING="singularity exec -B $PWD:$PWD --pwd $PWD $PPSINGBINDS "
 CHECK_SING="singularity"
 
 mkdir -p "$DIR_IMG"
@@ -238,6 +239,21 @@ echo "Checking the realpath of input files."
 PPINDIRS=()
 for i in `set|grep "^input_[0-9]\+="`; do
  PPINDIRTMP=`echo "$i"|sed 's/^input_[0-9]\+=//'`;
+ if [ "$PPINDIRTMP" != "" ]; then
+  for j in `find "$PPINDIRTMP"`; do
+   echo "$j"
+   PPINDIRTMP2=`readlink "$j" || true`;
+   #if [ "$PPINDIRTMP2" != "" ]; then echo "$PPINDIRTMP2"; fi;
+   while [ "$PPINDIRTMP2" != "" ]; do
+    if [ -d "$PPINDIRTMP2" ]; then PPINDIRS+=(`realpath "$PPINDIRTMP2"`); else PPINDIRTMP3=`dirname "$PPINDIRTMP2"`; PPINDIRS+=(`realpath "$PPINDIRTMP3"`); fi;
+    PPINDIRTMP2=`readlink "$PPINDIRTMP2" || true`;
+    #if [ "$PPINDIRTMP2" != "" ]; then echo "$PPINDIRTMP2"; fi;
+   done;
+  done
+ fi
+
+ #check symbolic link of folder itself
+ PPINDIRTMP=`echo "$i"|sed 's/^input_[0-9]\+=//; s%/*$%%'`;
  if [ "$PPINDIRTMP" != "" ]; then
   for j in `find "$PPINDIRTMP"`; do
    echo "$j"
