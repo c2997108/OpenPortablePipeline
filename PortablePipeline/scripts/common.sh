@@ -236,36 +236,64 @@ done
 
 #input file realpath check
 echo "Checking the realpath of input files."
+depth_max=10
+function find_link_path_recursive () {
+ # 明示的にローカル変数を使う
+ local _count=${1}
+ # 深さが最大となったら終了
+ # _countは0始まりなので、depth_maxから1を引いている
+ if [ ${_count} -ge $((${depth_max}-1)) ]; then
+  echo "[${_count}] FINISH (Depth=${depth_max})"
+ # 最大でなければ再帰呼び出し
+ else
+  local PPINDIRTMP="$2"
+  echo ${_count} "$PPINDIRTMP"
+  if [ -d "$PPINDIRTMP" ]; then #-dは最後の/の有無によらない
+   PPINDIRTMP=`realpath -s "$PPINDIRTMP"` #最後の/を削る目的
+   if [ -L "$PPINDIRTMP" ]; then #-Lは最後の/の有無で動作が変わる /がなければリンクと判定される
+    #echo find_link_path1 $((${_count}+1)) "$PPINDIRTMP"
+    find_link_path $((${_count}+1)) "$PPINDIRTMP"
+   fi
+   for j in `find "$PPINDIRTMP"/|tail -n+2`; do
+    #echo ${_count} "$j"
+    find_link_path_recursive $((${_count}+1)) "$j"
+   done
+  else
+   if [ -L "$PPINDIRTMP" ]; then
+    #echo find_link_path2 $((${_count}+1)) "$PPINDIRTMP"
+    find_link_path $((${_count}+1)) "$PPINDIRTMP"
+   fi
+  fi
+ fi
+}
+function find_link_path () {
+ local _count=${1}
+ if [ ${_count} -ge $((${depth_max}-1)) ]; then
+  echo "[${_count}] FINISH (Depth=${depth_max})"
+ else
+  local _file=`readlink "${2}"`
+  if [ "$_file" != "" ]; then
+   local _is_abs=`echo "$_file"|awk '{if(substr($0,1,1)=="/"){print 1}else{print 0}}'`
+   if [ "$_is_abs" = 0 ]; then
+    _file=`dirname "$2"`/"$_file"
+   fi
+   local _dir=`dirname "$_file"`
+   PPINDIRS+=(`realpath "$_dir"`)
+   #echo "$_file"
+   _file=`realpath -s "$_file"` #if文の判定式の中で``にするだけだとスペースがきちんと展開されない
+   #echo "$_file"
+   if [ -L "$_file" ]; then
+    #echo "in find_link_path: " $_count "$_file"
+    find_link_path_recursive $_count "$_file"
+   fi
+  fi
+ fi
+}
+
 PPINDIRS=()
 for i in `set|grep "^input_[0-9]\+="`; do
  PPINDIRTMP=`echo "$i"|sed 's/^input_[0-9]\+=//'`;
- if [ "$PPINDIRTMP" != "" ]; then
-  for j in `find "$PPINDIRTMP"`; do
-   echo "$j"
-   PPINDIRTMP2=`readlink "$j" || true`;
-   #if [ "$PPINDIRTMP2" != "" ]; then echo "$PPINDIRTMP2"; fi;
-   while [ "$PPINDIRTMP2" != "" ]; do
-    if [ -d "$PPINDIRTMP2" ]; then PPINDIRS+=(`realpath "$PPINDIRTMP2"`); else PPINDIRTMP3=`dirname "$PPINDIRTMP2"`; PPINDIRS+=(`realpath "$PPINDIRTMP3"`); fi;
-    PPINDIRTMP2=`readlink "$PPINDIRTMP2" || true`;
-    #if [ "$PPINDIRTMP2" != "" ]; then echo "$PPINDIRTMP2"; fi;
-   done;
-  done
- fi
-
- #check symbolic link of folder itself
- PPINDIRTMP=`echo "$i"|sed 's/^input_[0-9]\+=//; s%/*$%%'`;
- if [ "$PPINDIRTMP" != "" ]; then
-  for j in `find "$PPINDIRTMP"`; do
-   echo "$j"
-   PPINDIRTMP2=`readlink "$j" || true`;
-   #if [ "$PPINDIRTMP2" != "" ]; then echo "$PPINDIRTMP2"; fi;
-   while [ "$PPINDIRTMP2" != "" ]; do
-    if [ -d "$PPINDIRTMP2" ]; then PPINDIRS+=(`realpath "$PPINDIRTMP2"`); else PPINDIRTMP3=`dirname "$PPINDIRTMP2"`; PPINDIRS+=(`realpath "$PPINDIRTMP3"`); fi;
-    PPINDIRTMP2=`readlink "$PPINDIRTMP2" || true`;
-    #if [ "$PPINDIRTMP2" != "" ]; then echo "$PPINDIRTMP2"; fi;
-   done;
-  done
- fi
+ find_link_path_recursive 0 "$PPINDIRTMP"
 done
 IFS=$'\n' PPINDIRS=(`printf "%s\n" "${PPINDIRS[@]}" |sort -u`);
 unset IFS

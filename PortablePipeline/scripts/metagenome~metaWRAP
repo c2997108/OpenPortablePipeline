@@ -56,22 +56,26 @@ mkdir -p input_fastq
 (for i in $r1; do
  if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+  i2=`basename $i|sed 's/[.]\(fastq\|fq\)//'`
+  j2=`basename $j|sed 's/[.]\(fastq\|fq\)//'`
  else
   j=`echo $i|sed 's/_R1/_R2/'`
+  i2=`basename $i|sed 's/_R1.*//'`_1
+  j2=`basename $i|sed 's/_R1.*//'`_2
  fi
- i2=`basename $i|sed 's/[.]\(fastq\|fq\)//'`
- j2=`basename $j|sed 's/[.]\(fastq\|fq\)//'`
  ln -sf `readlink -f "$i"` input_fastq/$i2.fastq
  ln -sf `readlink -f "$j"` input_fastq/$j2.fastq
 done
 for i in $r1gz; do
  if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
   j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+  i2=`basename $i .gz|sed 's/[.]\(fastq\|fq\)//'`
+  j2=`basename $j .gz|sed 's/[.]\(fastq\|fq\)//'`
  else
   j=`echo $i|sed 's/_R1/_R2/'`
+  i2=`basename $i .gz|sed 's/_R1.*//'`_1
+  j2=`basename $i .gz|sed 's/_R1.*//'`_2
  fi
- i2=`basename $i .gz|sed 's/[.]\(fastq\|fq\)//'`
- j2=`basename $j .gz|sed 's/[.]\(fastq\|fq\)//'`
  echo zcat $i ">" input_fastq/$i2.fastq
  echo zcat $j ">" input_fastq/$j2.fastq
 done)|DOPARALLELONE
