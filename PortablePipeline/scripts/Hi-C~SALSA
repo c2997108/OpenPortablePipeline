@@ -16,7 +16,7 @@ opt_s:SALSA options:-e DNASE
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -s #opt_s# #input_1# #input_2# #input_3#"
 
-export IM_SALSA="c2997108/centos7:mamba-salsa"
+export IM_SALSA="c2997108/centos7:mamba-salsa_2"
 export IM_BWA="quay.io/biocontainers/bwa:0.7.17--pl5.22.0_1"
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
 export IM_BEDTOOLS="biocontainers/bedtools:v2.28.0_cv2"
@@ -60,8 +60,8 @@ fi
 DO_BEDTOOLS bamToBed -i mapped.bam > mapped.bed
 DO_SAMTOOLS samtools faidx "$input_2"
 
-echo 'source activate salsa2
-python /usr/local/SALSA/run_pipeline.py -a "'$input_2'" -l "'$input_2'".fai -b mapped.bed -o SALSA_HiC '$opt_s'
+echo 'source /usr/local/miniconda3/bin/activate salsa2
+python /usr/local/SALSA/run_pipeline.py -a "'$input_2'" -l "'$input_2'".fai -b mapped.bed -o SALSA_HiC '"$opt_s"'
 /usr/local/SALSA/convert.sh SALSA_HiC' > run-salsa.sh
 
 DO_SALSA bash run-salsa.sh
