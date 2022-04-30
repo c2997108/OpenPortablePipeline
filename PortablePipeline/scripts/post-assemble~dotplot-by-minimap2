@@ -4,8 +4,8 @@ explanation='
 compare large genomes by dot plot using minimap2
 '
 inputdef='
-input_1::FASTA (x axis):*.fasta,*.fa
-input_2::FASTA (y axis):*.fasta,*.fa
+input_1::FASTA (x axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2::FASTA (y axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -18,11 +18,15 @@ export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.16--h84994c4_0"
 export IM_IMAGEMAGICK="c2997108/centos6:2-imagemagick"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 
 db=$input_2
 q=$input_1
@@ -35,8 +39,8 @@ cat $outbase.for.paf $outbase.rev.paf|cut -f 1-11|awk 'a[$6"\t"$7"\t"$8"\t"$9"\t
 
 ln -s $db $outbase.db.fa
 ln -s $q $outbase.q.fa
-samtools faidx $outbase.db.fa
-samtools faidx $outbase.q.fa
+DO_SAMTOOLS samtools faidx $outbase.db.fa
+DO_SAMTOOLS samtools faidx $outbase.q.fa
 
 in=$outbase.paf
 fafai1=$outbase.db.fa.fai
@@ -163,7 +167,7 @@ DO_AWK awk -F'\t' '
 
  FILENAME==ARGV[3]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'$in'.yp.txt"}}
 ' $in.da3 $in.da $fafai1 $fafai2 > $in.da4
-DO_R R --vanilla << EOF
+cat << EOF > run-R.R
 xp=read.table("$in.xp.txt")
 xm=read.table("$in.xm.txt")
 yp=read.table("$in.yp.txt")
@@ -197,6 +201,7 @@ text(par("usr")[1]-1.5,ym[,2]-(ym[,2]-ym2)/2,ym[,1],adj=c(1,1),srt=45)
 dev.off()
 EOF
 
+DO_R R --vanilla < run-R.R
 DO_IMAGEMAGICK convert -density 300 $in.pdf $in.png
 
 
