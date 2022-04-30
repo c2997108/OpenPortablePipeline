@@ -201,7 +201,6 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 - wslコマンドで起動したら、Ubuntuがデフォルトになるようにインストールしておく必要あり。
   2つ以上のディストリビューションをインストールしたならばwslconfigで設定しておく。
 - 一度はUbuntuを起動し、ユーザ名、パスワードを設定しておく必要あり。
-- WSL1ではcentos6のコンテナのbashは起動しない。直接chmodなどを実行する分には起動する。
 - WSLでは入力ファイルは元ファイルへハードリンクを貼れる場合はハードリンクを作るけど、その影響でgzip -dで解凍すると、元ファイルがハードリンクで消せないよというエラーを吐くので、gzip -dc > xxx として、明示的に別ファイルを作る必要がある。
 
 ## Linuxサーバのセットアップ方法
@@ -223,21 +222,26 @@ sudo usermod -aG docker $USER
 ```
 
 ## WSLサーバのセットアップ方法
+
+基本的にはPortable PipelineからWSLモードで実行すれば、必要なツールをインストールしていくが、下記を手動でセットアップしても良い。
+
 1．Windows Subsystem for Linux (WSL)をインストールする。
 
-Windows10のバージョンが、1903 (2019年春)以降であることを確認。 WSLを有効化するためPowerShellを管理者権限で開く。 (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))
+WSL2以降が動作するWindows10もしくはWindows11を準備する。基本的にはPowerShellを管理者権限で開き (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))、```wsl --install```を実行すればよい。
 
-次のコマンドを貼り付けて実行し、WSLの機能を有効にする。
-```
-Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Windows-Subsystem-Linux
-```
 その後、Windowsを再起動
 
 2．Ubuntuのインストール
 
-画面左下のWindowsロゴを左クリックし、スタートメニューの中から「Microsoft Store」を起動する。ストアの「検索」をクリックし、「Ubuntu」と入力して検索を実行する。表示される「Ubuntu 18.04 LTS」をインストールし、起動する。 (Ubuntu 16.04 LTSのUbuntuでも大丈夫そうだけど、Ubuntu 20.04はcentos6のdockerコンテナ起動時にエラーが出るので使用しないこと。どうしてもUbuntu 20.04使用する場合はWSL2に切り替え、https://qiita.com/nakat-t/items/271071eeb0c0c9143396 を参考にvsyscall=emulateを有効にしておくこと。)
+```wsl --install```でインストールしたなら、自動でUbuntuがインストールされているはずだが、もし他のディストリビューションを使用したいならば、画面左下のWindowsロゴを左クリックし、スタートメニューの中から「Microsoft Store」を起動する。例としてUbuntu 20.04を使用したい場合は、ストアの「検索」をクリックし、「Ubuntu」と入力して検索を実行する。表示される「Ubuntu 20.04 LTS」をインストールし、起動する。(テストしたのはUbuntu 20.04では動作確認済み。Ubuntu 22.04ではdockerの自動インストールが動作しなかった。どのディストリビューションでもdockerを手動でインストールしていれば大丈夫)
 
 画面左下のWindowsロゴを左クリックし、スタートメニューの中からインストールしたUbuntuを起動する。 初回起動時にアカウント作成画面が表示され、ユーザ名、パスワードを入力する。
+
+https://qiita.com/nakat-t/items/271071eeb0c0c9143396 を参考にvsyscall=emulateを有効にしておくこと。
+
+3. Dockerのインストール
+
+WSL用のDokcerインストール手順は公式のものとは少し異なるはず。https://zenn.dev/sprout2000/articles/95b125e3359694 などを参照。
 
 ## Macをサーバとして使用する場合のセットアップ方法
 1．Dockerのインストール
