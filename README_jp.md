@@ -20,7 +20,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 - 東大ヒトゲノム解析センタースパコン https://supcom.hgc.jp/japanese/
 
 ## 操作方法
-1. 最新のPortablePipelineのリリースをダウンロードして解凍する。 
+1. 最新のPortablePipelineのリリースをダウンロードして解凍する。 日本語のフォルダやスペースを含むフォルダの中に解凍しないでください。
   
   https://github.com/c2997108/OpenPortablePipeline/releases
   
