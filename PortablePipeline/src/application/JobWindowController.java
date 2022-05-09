@@ -614,7 +614,7 @@ public class JobWindowController {
     							filewriter.write(" powershell.exe start-process cmd -verb runas -ArgumentList '/K \\\"wsl --install -d Ubuntu\\\"'\r\n");
     							filewriter.write(")\r\n");
     							filewriter.write(":WAIT\r\n");
-    							filewriter.write("wsl bash -c \\\"cat /proc/cmdline |grep vsyscall=emulate\\\"\\r\\n");
+    							filewriter.write("wsl bash -c \"cat /proc/cmdline |grep vsyscall=emulate\"\r\n");
     							filewriter.write("if not \"%ERRORLEVEL%\" == \"0\" (\r\n");
     							filewriter.write(" echo Waiting for Ubuntu installation\r\n");
     							filewriter.write(" timeout 10\r\n");
@@ -638,7 +638,7 @@ public class JobWindowController {
     							filewriter2.write("wait\n"); // for win10 1803, 1809
     							filewriter2.close();
 
-    							cmdString = "cmd.exe /c wrapper.bat";
+    							cmdString = "cmd.exe /c start cmd.exe /k wrapper.bat";
     						}else if(selectedPreset.equals("Mac")){
     							filewriter.write("#!/bin/bash\n");
     							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
