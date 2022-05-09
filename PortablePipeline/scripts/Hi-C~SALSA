@@ -46,7 +46,7 @@ for i in `find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
  fi
  outbase=output.bwa/`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
  samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
- echo "$ENV_BWA bwa mem $opt_b -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$i2\' |( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o \'$outbase\'.bam); $ENV_SAMTOOLS samtools index \'$outbase\'.bam"
+ echo "$ENV_BWA bwa mem $opt_b -t $N_CPU \'$ref\' \'$i\' \'$i2\' |( $ENV_SAMTOOLS samtools view -@ $N_CPU -o \'$outbase\'.bam -Sb -);"
 done | DOPARALLEL
 
 WAITPARALLEL
@@ -54,7 +54,7 @@ WAITPARALLEL
 if [ $num_fastq = 1 ]; then
  ln -s "$outbase".bam mapped.bam
 else
- DO_SAMTOOLS samtools merge mapped.bam output.bwa/*.bam
+ DO_SAMTOOLS samtools cat -o mapped.bam output.bwa/*.bam
 fi
 
 DO_BEDTOOLS bamToBed -i mapped.bam > mapped.bed
@@ -65,7 +65,7 @@ python /usr/local/SALSA/run_pipeline.py -a "'$input_2'" -l "'$input_2'".fai -b m
 /usr/local/SALSA/convert.sh SALSA_HiC' > run-salsa.sh
 
 DO_SALSA bash run-salsa.sh
-
+rm -rf ?
 
 post_processing
 #<option detail>

@@ -25,8 +25,8 @@ source $(dirname `readlink -f $0 || echo $0`)/common.sh
 set -eux
 set -o pipefail
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 
 db=$input_2
 q=$input_1

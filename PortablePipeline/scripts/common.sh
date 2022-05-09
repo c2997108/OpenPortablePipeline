@@ -230,7 +230,7 @@ done
 #for i in `echo "$inputdef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '$2!~"option"{print $1}'`; do export $i="$1"; shift; done
 for i in `echo "$optiondef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '{print $1}'`; do
  k=`echo "$optiondef"|tail -n+2|awk '{if(NR>1){print old}; old=$0}'|awk -F':' '$1=="'$i'"{print $3}'|head -n 1`;
- export $i="$(eval echo \${$i:-$k})";
+ export $i="$(eval echo \"\${$i:-$k}\")";
 # export $i="`eval echo \\\$$i`";
 done
 

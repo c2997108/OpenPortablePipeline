@@ -1,0 +1,373 @@
+#!/bin/bash
+
+explanation='
+Draw circos plot with single copy genes.
+Augustus and Orthofinder are used.
+'
+inputdef='
+input_1::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2::target genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_l:minimum scaffold length for visualization:1000000
+opt_s:augustus species option:human
+opt_a:augustus other options:
+opt_b:orthofinder options:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -s #opt_s# -a #opt_a# -b #opt_b# #input_1# #input_2#"
+
+export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
+export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
+export IM_COR="c2997108/centos7:metacor7"
+export IM_AUGUSTUS="c2997108/augustus:3.4.0"
+export IM_ORTHOFINDER="davidemms/orthofinder:2.5.4"
+export IM_CIRCOS="quay.io/biocontainers/circos:0.69.8--hdfd78af_1"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+mkdir -p reformat
+DO_EXONERATE fastareformat "$input_1" > reformat/input_1.fa
+DO_SAMTOOLS samtools faidx reformat/input_1.fa
+DO_EXONERATE fastareformat "$input_2" > reformat/input_2.fa
+DO_SAMTOOLS samtools faidx reformat/input_2.fa
+mkdir -p split/input_1
+DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_1.fa split/input_1
+mkdir -p split/input_2
+DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_2.fa split/input_2
+
+unset AUGUSTUS_CONFIG_PATH
+for i in `ls split/*/*|grep -v "[.]gff$"`; do
+ j=`cat $i|wc -l`
+ if [ $j -gt 1 ]; then
+  echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $i > $i.gff";
+ fi
+done | DOPARALLELONE
+
+WAITPARALLEL
+
+for i in input_1 input_2; do awk -F'\t' '$3=="transcript"{print FILENAME"."$9"\t"$1":"$4":"$5}' split/$i/*.gff|sed 's%^split/.*/%%' > split/$i.tab; done
+
+mkdir -p protein
+
+for i in input_1 input_2; do
+ DO_COR awk -F'\t' '$0!~"^#"{split($NF,arr,";"); for(i in arr){if(arr[i]~"^transcript_id "){name=arr[i]}}} $0~"^# protein sequence ="{seq=""; ORS="\n"; print ""; print FILENAME"."name} $0~"^#"{n=split($0,arr," "); ORS=""; print arr[n]}' split/$i/*.gff|sed 's/].*//; s/^[[]//; s%^split/.*/%>%; s/transcript_id "//; s/"$//'|tail -n+2 > protein/$i.fa
+done
+DO_ORTHOFINDER orthofinder -t $N_CPU $opt_b -f protein
+cat `ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1` |grep -v ", "|sed 's/\r//g'|(DO_COR awk 'FILENAME!="/dev/stdin"{a[$1]=$2} FILENAME=="/dev/stdin"{if(FNR==1){print $0}else{print $1"\t"a[$2]"\t"a[$3]}}' split/*.tab /dev/stdin) > orthogroups.tsv
+
+DO_COR awk -F'\t' -v minlen=$opt_l 'FILENAME!="orthogroups.tsv"{if(FNR==1){n++}; len[n][$1]=$2} FILENAME=="orthogroups.tsv"{split($2,arr1,":"); split($3,arr2,":"); if(len[1][arr1[1]]>=minlen && len[2][arr2[1]]>=minlen){print $0} }' reformat/*.fai orthogroups.tsv > orthogroups.long.tsv
+DO_COR awk -F'\t' '{split($2,part,":"); split($3,arr,":"); cnt[arr[1]][part[1]]+=arr[3]-arr[2]} END{for(i in cnt){for(j in cnt[i]){print i"\t"j"\t"cnt[i][j]}}}' orthogroups.long.tsv |sort -k1,1V -k3,3nr > orthogroups.long.pair.tsv
+awk -F'\t' '{print $2":"$3}' orthogroups.long.tsv |sed 's/:/ /g' > circos.link.txt
+awk -F'\t' '$2>='$opt_l'{n++; print "chr - "$1" 1 0 "$2" spectral-11-div-"(n-1)%11+1}' reformat/input_1.fa.fai  > ref1.txt
+tac ref1.txt |(DO_COR awk 'FILENAME==ARGV[1]{if(flag[$1]==0){flag[$1]=1; cnt[$2][$1]=$3}} FILENAME==ARGV[2]{len[$1]=$2} FILENAME==ARGV[3]{split($0,arr," "); if(length(cnt[arr[3]])>0){PROCINFO["sorted_in"]="@val_num_asc"; for(i in cnt[arr[3]]){print "chr - "i" 1 0 "len[i]" "arr[7]; flag2[i]=1}}} FILENAME==ARGV[4]&&flag2[$1]!=1&&$2>='$opt_l'{print "chr - "$1" 1 0 "$2" spectral-11-div-1"}' orthogroups.long.pair.tsv reformat/input_2.fa.fai /dev/stdin ./reformat/input_2.fa.fai) > ref2.txt
+cat ref1.txt ref2.txt > circos.karyotype.txt
+
+echo "karyotype= circos.karyotype.txt" > circos.conf
+echo "chromosomes_units= 1000000" >> circos.conf
+echo "chromosomes= "`cat circos.karyotype.txt |cut -f 3 -d ' '|sed 's/$/;/'|tr -d '\n'|sed 's/;$//'` >> circos.conf
+echo "<links>
+<link>
+file=circos.link.txt
+radius= 0.9r
+color= red
+<rules>" >> circos.conf
+
+n=0
+for i in `cut -f 3 -d ' ' ref1.txt`; do
+ n=`expr $n + 1`;
+ if [ $n -gt 11 ]; then n=1; fi
+ echo "<rule>
+condition= from("$i")
+color= spectral-11-div-"$n"
+</rule>" >> circos.conf
+done
+
+echo '</rules>
+</link>
+</links>
+<ideogram>
+<spacing>
+default= 0.005r
+</spacing>
+thickness= 7p
+stroke_thickness= 2p
+stroke_color= black
+
+fill= yes
+fill_color= black
+
+radius= 0.80r
+show_label= yes
+label_font= default
+label_radius= dims(ideogram,radius) + 0.1r
+label_size= 5p
+label_case= upper
+label_parallel = yes
+
+label_format= eval(sprintf("%s",var(chr)))
+
+</ideogram>
+<image>
+<<include etc/image.conf>>
+radius*= 1000p
+</image>
+<<include etc/colors_fonts_patterns.conf>>
+<<include etc/housekeeping.conf>>' >> circos.conf
+
+DO_CIRCOS circos -conf circos.conf
+
+echo Predicted proteins of input_1 : `grep ">" protein/input_1.fa |wc -l` > result.txt
+echo Predicted proteins of input_2 : `grep ">" protein/input_2.fa |wc -l` >> result.txt
+awk 'END{print "Orthogroups : "NR-1}' `ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1` >> result.txt
+awk 'END{print "Single copy orthologs : "NR-1}' orthogroups.tsv >> result.txt
+echo Single copy orthologs on long scafolds: `cat orthogroups.long.tsv|wc -l` >> result.txt
+
+post_processing
+
+#<option detail>
+#<opt_s>
+Anopheles_gambiae
+Argopecten_irradians
+Aurelia_aurita
+Bathycoccus_prasinos
+Berviolum_minutum
+Branchiostoma_floridae
+Cassiopea_xamachana
+Chlamydomonas_eustigma
+Chloropicon_primus
+Chrysaora_chesapeakei
+Conidiobolus_coronatus
+Cryptosporidium_hominis
+Cyclotella_cryptica
+Dermasterias_imbricata
+Dunaliella_salina
+E_coli_K12
+Ectocarpus_siliculosus
+Encephalitozoon_cuniculi
+Fistulifera_solaris
+Fragilariopsis_cylindrus_CCMP1102
+Gonapodya_prolifera
+Hydra_vulgaris
+Leptasterias_sp
+Loa_loa
+Micromonas_commoda
+Micromonas_pusilla
+Monoraphidium_neglectum
+Monosiga_brevicollis
+Naegleria_gruberi
+Nemopilema_nomurai
+Notospermus_geniculatus
+Ostreococcus_sp_lucimarinus
+Ostreococcus_tauri
+Paramecium_tetraurelia
+Pediculus_humanus
+Perkinsus_marinus
+Phaeodactylum_tricornutum
+Physcomitrium_patens
+Populus_trichocarpa
+Pseudo-nitzschia_multistriata
+Ptychodera_flava
+Pycnopodia_helianthoides
+Raphidocelis_subcapitata
+Rhopilema_esculentum
+Ricinus_communis
+Sclerotinia_sclerotiorum
+Skeletonema_costatum
+Sordaria_macrospora
+Sphaceloma_murrayae
+Taeniopygia_guttata
+Thalassiosira_pseudonana_CCMP1335
+Trichoplax_adhaerens
+Trypanosoma_cruzi
+Vitis_vinifera
+Vitrella_brassicaformis
+Xenopus_tropicalis
+Xiphophorus_maculatus
+Xipophorus_maculatus
+adorsata
+aedes
+amphimedon
+ancylostoma_ceylanicum
+anidulans
+arabidopsis
+aspergillus_fumigatus
+aspergillus_nidulans
+aspergillus_oryzae
+aspergillus_terreus
+b_pseudomallei
+bombus_impatiens1
+bombus_terrestris2
+botrytis_cinerea
+brugia
+c_elegans_trsk
+cacao
+caenorhabditis
+camponotus_floridanus
+candida_albicans
+candida_guilliermondii
+candida_tropicalis
+chaetomium_globosum
+chicken
+chiloscyllium
+chlamy2011
+chlamydomonas
+chlorella
+ciona
+coccidioides_immitis
+coprinus
+coprinus_cinereus
+coyote_tobacco
+cryptococcus
+cryptococcus_neoformans_gattii
+cryptococcus_neoformans_neoformans_B
+cryptococcus_neoformans_neoformans_JEC21
+culex
+debaryomyces_hansenii
+elephant_shark
+encephalitozoon_cuniculi_GB
+eremothecium_gossypii
+fly
+fly_exp
+fusarium
+fusarium_graminearum
+galdieria
+generic
+gigaspora_margarita
+heliconius_melpomene1
+histoplasma
+histoplasma_capsulatum
+honeybee1
+human
+hymenolepis_microstoma
+japaneselamprey
+kluyveromyces_lactis
+laccaria_bicolor
+leishmania_tarentolae
+lodderomyces_elongisporus
+magnaporthe_grisea
+maize
+maize5
+mnemiopsis_leidyi
+nasonia
+nematostella_vectensis
+neurospora
+neurospora_crassa
+parasteatoda
+pchrysosporium
+pea_aphid
+pfalciparum
+phanerochaete_chrysosporium
+pichia_stipitis
+pisaster
+pneumocystis
+rhincodon
+rhizopus_oryzae
+rhodnius
+rice
+s_aureus
+s_pneumoniae
+saccharomyces
+saccharomyces_cerevisiae_S288C
+saccharomyces_cerevisiae_rm11-1a_1
+schistosoma
+schistosoma2
+schizosaccharomyces_pombe
+scyliorhinus
+sealamprey
+strongylocentrotus_purpuratus
+sulfolobus_solfataricus
+sunflower
+template_prokaryotic
+tetrahymena
+thermoanaerobacter_tengcongensis
+tomato
+toxoplasma
+tribolium2012
+trichinella
+ustilago
+ustilago_maydis
+verticillium_albo_atrum1
+verticillium_longisporum1
+volvox
+wheat
+yarrowia_lipolytica
+zebrafish
+#</opt_s>
+#<opt_a>
+parameters:
+--strand=both, --strand=forward or --strand=backward
+--genemodel=partial, --genemodel=intronless, --genemodel=complete, --genemodel=atleastone or --genemodel=exactlyone
+  partial      : allow prediction of incomplete genes at the sequence boundaries (default)
+  intronless   : only predict single-exon genes like in prokaryotes and some eukaryotes
+  complete     : only predict complete genes
+  atleastone   : predict at least one complete gene
+  exactlyone   : predict exactly one complete gene
+--singlestrand=true
+  predict genes independently on each strand, allow overlapping genes on opposite strands
+  This option is turned off by default.
+--hintsfile=hintsfilename
+  When this option is used the prediction considering hints (extrinsic information) is turned on.
+  hintsfilename contains the hints in gff format.
+--AUGUSTUS_CONFIG_PATH=path
+  path to config directory (if not specified as environment variable)
+--alternatives-from-evidence=true/false
+  report alternative transcripts when they are suggested by hints
+--alternatives-from-sampling=true/false
+  report alternative transcripts generated through probabilistic sampling
+--sample=n
+--minexonintronprob=p
+--minmeanexonintronprob=p
+--maxtracks=n
+  For a description of these parameters see section 2 of RUNNING-AUGUSTUS.md.
+--proteinprofile=filename
+  When this option is used the prediction will consider the protein profile provided as parameter.
+  The protein profile extension is described in section 5 of RUNNING-AUGUSTUS.md.
+--progress=true
+  show a progressmeter
+--gff3=on/off
+  output in gff3 format
+--predictionStart=A, --predictionEnd=B
+  A and B define the range of the sequence for which predictions should be found.
+--UTR=on/off
+  predict the untranslated regions in addition to the coding sequence. This currently works only for a subset of species.
+--noInFrameStop=true/false
+  Do not report transcripts with in-frame stop codons. Otherwise, intron-spanning stop codons could occur. Default: false
+--noprediction=true/false
+  If true and input is in genbank format, no prediction is made. Useful for getting the annotated protein sequences.
+--uniqueGeneId=true/false
+  If true, output gene identifyers like this: seqname.gN
+--/Testing/testMode=prepare, --/Testing/testMode=run, (disabled by default)
+  prepare      : prepare a new minimal data set to test comparative Augustus
+  intronless   : run prediction over some given minimal data set
+  (*) a minimal data set is one retaining only the information need in prediction, usually very small (order of Mb) compared to full sequence data sets (ordet of Gb)
+#</opt_a>
+#<opt_b>
+OPTIONS:
+ -M <txt>        Method for gene tree inference. Options 'dendroblast' & 'msa'
+                 [Default = dendroblast]
+ -S <txt>        Sequence search program [Default = diamond]
+                 Options: blast, mmseqs, blast_gz, diamond, diamond_ultra_sens, blast_nucl
+ -A <txt>        MSA program, requires '-M msa' [Default = mafft]
+                 Options: muscle, mafft
+ -T <txt>        Tree inference method, requires '-M msa' [Default = fasttree]
+                 Options: iqtree, raxml-ng, fasttree, raxml
+ -s <file>       User-specified rooted species tree
+ -I <int>        MCL inflation parameter [Default = 1.5]
+ -x <file>       Info for outputting results in OrthoXML format
+ -p <dir>        Write the temporary pickle files to <dir>
+ -1              Only perform one-way sequence search
+ -X              Don't add species names to sequence IDs
+ -y              Split paralogous clades below root of a HOG into separate HOGs
+ -z              Don't trim MSAs (columns>=90% gap, min. alignment length 500)
+ -n <txt>        Name to append to the results directory
+ -o <txt>        Non-default results directory
+ -h              Print this help text
+#</opt_b>
+#</option detail>
