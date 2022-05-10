@@ -223,7 +223,7 @@ sudo usermod -aG docker $USER
 
 ## WSLサーバのセットアップ方法
 
-基本的にはPortable PipelineからWSLモードで実行すれば、必要なツールをインストールしていくが、下記を手動でセットアップしても良い。
+基本的にはPortable PipelineからWSLモードで実行すれば、必要なツールをインストールしていくが、下記を手動でセットアップしても良い。Administratorグループのユーザでログインして実行すること。
 
 1．Windows Subsystem for Linux (WSL)をインストールする。
 
