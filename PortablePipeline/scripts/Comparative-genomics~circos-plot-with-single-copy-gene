@@ -7,6 +7,8 @@ Augustus and Orthofinder are used.
 inputdef='
 input_1::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
 input_2::target genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:option:gene model file of reference genome (gff3) [optional]:*.gff,*.gff3,*.gff.gz,*.gff3.gz
+input_4:option:gene model file of target genome (gff3) [optional]:*.gff,*.gff3,*.gff.gz,*.gff3.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -16,7 +18,7 @@ opt_s:augustus species option:human
 opt_a:augustus other options:
 opt_b:orthofinder options:
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -s #opt_s# -a #opt_a# -b #opt_b# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -s #opt_s# -a #opt_a# -b #opt_b# -x #input_3# -y #input_4# #input_1# #input_2#"
 
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
 export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
@@ -24,6 +26,8 @@ export IM_COR="c2997108/centos7:metacor7"
 export IM_AUGUSTUS="c2997108/augustus:3.4.0"
 export IM_ORTHOFINDER="davidemms/orthofinder:2.5.4"
 export IM_CIRCOS="quay.io/biocontainers/circos:0.69.8--hdfd78af_1"
+export IM_GFFREAD="quay.io/biocontainers/cufflinks:2.2.1--py36_1"
+export IM_BASE="c2997108/centos7:metacor7"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -32,33 +36,68 @@ set -o pipefail
 
 if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
 if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_4"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_4" > `echo "$input_4"|sed 's/[.]gz$//'`; input_4=`echo "$input_4"|sed 's/[.]gz$//'`; fi
+
 mkdir -p reformat
 DO_EXONERATE fastareformat "$input_1" > reformat/input_1.fa
+sed -i 's/;/_/g' reformat/input_1.fa
 DO_SAMTOOLS samtools faidx reformat/input_1.fa
 DO_EXONERATE fastareformat "$input_2" > reformat/input_2.fa
+sed -i 's/;/_/g' reformat/input_2.fa
 DO_SAMTOOLS samtools faidx reformat/input_2.fa
 mkdir -p split/input_1
-DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_1.fa split/input_1
 mkdir -p split/input_2
-DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_2.fa split/input_2
-
 unset AUGUSTUS_CONFIG_PATH
-for i in `ls split/*/*|grep -v "[.]gff$"`; do
- j=`cat $i|wc -l`
- if [ $j -gt 1 ]; then
-  echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $i > $i.gff";
- fi
-done | DOPARALLELONE
+(if [ "$input_3" = "" ]; then
+ DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_1.fa split/input_1
+ for i in `ls split/input_1/*|grep -v "[.]gff$"`; do
+  j=`cat $i|wc -l`
+  if [ $j -gt 1 ]; then
+   echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $i > $i.gff";
+  fi
+ done
+fi
+if [ "$input_4" = "" ]; then
+ DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_2.fa split/input_2
+ for i in `ls split/input_2/*|grep -v "[.]gff$"`; do
+  j=`cat $i|wc -l`
+  if [ $j -gt 1 ]; then
+   echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $i > $i.gff";
+  fi
+ done
+fi) | DOPARALLELONE
 
 WAITPARALLEL
 
-for i in input_1 input_2; do awk -F'\t' '$3=="transcript"{print FILENAME"."$9"\t"$1":"$4":"$5}' split/$i/*.gff|sed 's%^split/.*/%%' > split/$i.tab; done
-
 mkdir -p protein
-
-for i in input_1 input_2; do
+i=input_1
+j="$input_3"
+if [ "$j" = "" ]; then
+ awk -F'\t' '$3=="transcript"{print FILENAME"."$9"\t"$1":"$4":"$5}' split/$i/*.gff|sed 's%^split/.*/%%' > split/$i.tab
  DO_COR awk -F'\t' '$0!~"^#"{split($NF,arr,";"); for(i in arr){if(arr[i]~"^transcript_id "){name=arr[i]}}} $0~"^# protein sequence ="{seq=""; ORS="\n"; print ""; print FILENAME"."name} $0~"^#"{n=split($0,arr," "); ORS=""; print arr[n]}' split/$i/*.gff|sed 's/].*//; s/^[[]//; s%^split/.*/%>%; s/transcript_id "//; s/"$//'|tail -n+2 > protein/$i.fa
-done
+else
+ cat "$j"|awk -F'\t' '{OFS="\t"; if($0~"^#"){print $0}else{gsub(";","_",$1); print $0}}' > "$j".replaced.gff
+ j="$j".replaced.gff
+ awk -F'\t' '$3=="gene"||$3=="transcript"||$3=="pseudogene"{split($9,arr,";"); id=""; for(i in arr){if(arr[i]~"^ID="){id=substr(arr[i],4)}}; print "'$i'."id"\t"$1":"$4":"$5}' "$j" > split/$i.tab
+ DO_GFFREAD gffread "$j" -g reformat/$i.fa -y protein/$i.temp.fa
+ awk '{if($0~"^>"){gsub("^>",">'$i'.",$0); $0=$1; print $0}else{gsub("[.]","",$0); print $0}}' protein/$i.temp.fa > protein/$i.fa
+ rm -f protein/$i.temp.fa
+fi
+i=input_2
+j="$input_4"
+if [ "$j" = "" ]; then
+ awk -F'\t' '$3=="transcript"{print FILENAME"."$9"\t"$1":"$4":"$5}' split/$i/*.gff|sed 's%^split/.*/%%' > split/$i.tab
+ DO_COR awk -F'\t' '$0!~"^#"{split($NF,arr,";"); for(i in arr){if(arr[i]~"^transcript_id "){name=arr[i]}}} $0~"^# protein sequence ="{seq=""; ORS="\n"; print ""; print FILENAME"."name} $0~"^#"{n=split($0,arr," "); ORS=""; print arr[n]}' split/$i/*.gff|sed 's/].*//; s/^[[]//; s%^split/.*/%>%; s/transcript_id "//; s/"$//'|tail -n+2 > protein/$i.fa
+else
+ cat "$j"|awk -F'\t' '{OFS="\t"; if($0~"^#"){print $0}else{gsub(";","_",$1); print $0}}' > "$j".replaced.gff
+ j="$j".replaced.gff
+ awk -F'\t' '$3=="gene"||$3=="transcript"||$3=="pseudogene"{split($9,arr,";"); id=""; for(i in arr){if(arr[i]~"^ID="){id=substr(arr[i],4)}}; print "'$i'."id"\t"$1":"$4":"$5}' "$j" > split/$i.tab
+ DO_GFFREAD gffread "$j" -g reformat/$i.fa -y protein/$i.temp.fa
+ awk '{if($0~"^>"){gsub("^>",">'$i'.",$0); $0=$1; print $0}else{gsub("[.]","",$0); print $0}}' protein/$i.temp.fa > protein/$i.fa
+ rm -f protein/$i.temp.fa
+fi
+
 DO_ORTHOFINDER orthofinder -t $N_CPU $opt_b -f protein
 cat `ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1` |grep -v ", "|sed 's/\r//g'|(DO_COR awk 'FILENAME!="/dev/stdin"{a[$1]=$2} FILENAME=="/dev/stdin"{if(FNR==1){print $0}else{print $1"\t"a[$2]"\t"a[$3]}}' split/*.tab /dev/stdin) > orthogroups.tsv
 

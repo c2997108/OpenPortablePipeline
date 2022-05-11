@@ -609,9 +609,15 @@ public class JobWindowController {
     							filewriter.write(" wsl --shutdown\r\n");
     							filewriter.write(")\r\n");
     							filewriter.write("wsl -l\r\n");
-    							filewriter.write("if not \"%ERRORLEVEL%\" == \"0\" (\r\n");
+    							filewriter.write("if not \"%ERRORLEVEL%\" == \"1\" (\r\n");
     							filewriter.write(" echo INSTALLING WSL... After the WSL installation, restart your PC and enter your new user name and password.If you get an error, you probably need to turn on the virtualization support function in the BIOS.\r\n");
     							filewriter.write(" powershell.exe start-process cmd -verb runas -ArgumentList '/K \\\"wsl --install -d Ubuntu\\\"'\r\n");
+    							filewriter.write(" if not ERRORLEVEL 0 (\r\n");
+    							filewriter.write("  mkdir %LOCALAPPDATA%\\PPUbuntu20\r\n");
+    							filewriter.write("  powershell -Command \"Invoke-WebRequest http://suikou.fs.a.u-tokyo.ac.jp/pp/PPUbuntu20.tar -outFile PPUbuntu20.tar\"\r\n");
+    							filewriter.write("  wsl --import PPUbuntu20 %LOCALAPPDATA%/PPUbuntu20 PPUbuntu20.tar --version 2\r\n");
+    							filewriter.write("  wsl -s PPUbuntu20\r\n");
+    							filewriter.write(" )\r\n");
     							filewriter.write(")\r\n");
     							filewriter.write(":WAIT\r\n");
     							filewriter.write("wsl bash -c \"cat /proc/cmdline |grep vsyscall=emulate\"\r\n");
