@@ -1,7 +1,9 @@
 next
 
-# 1.0.9 (2022/5/11)
+# 1.0.9 (2022/5/12)
 - WSL使用時にAdministrator権限のないユーザでログインした場合に、wsl --installでは管理者のアカウントにインストールされないので、wsl --importでセットアップする手法を追加
+- linkage-analysis~single-cell_CellRanger-VarTrixのスクリプトでawkの出力区切り文字が環境によって反映されない件を修正
+- Comparative-genomics~circos-plot-with-single-copy-geneでFASTAの配列名に「;」や「=」が入っているとエラーになる件を修正
 
 # 1.0.8 (2022/5/9)
 - オプションが-e, -E, -nで始まる場合に消されていた不具合修正
