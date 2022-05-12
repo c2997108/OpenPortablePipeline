@@ -40,11 +40,13 @@ if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$
 if [ `echo "$input_4"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_4" > `echo "$input_4"|sed 's/[.]gz$//'`; input_4=`echo "$input_4"|sed 's/[.]gz$//'`; fi
 
 mkdir -p reformat
-DO_EXONERATE fastareformat "$input_1" > reformat/input_1.fa
-sed -i 's/;/_/g' reformat/input_1.fa
+DO_EXONERATE fastareformat "$input_1" |sed 's/\r//g' > reformat/input_1.fa.tmp
+awk '{if($1~"^>"){str=substr($1,2); gsub("[^A-Za-z0-9_-]","_",str); print ">"str}else{print $0}}' reformat/input_1.fa.tmp > reformat/input_1.fa
+rm -f reformat/input_1.fa.tmp
 DO_SAMTOOLS samtools faidx reformat/input_1.fa
-DO_EXONERATE fastareformat "$input_2" > reformat/input_2.fa
-sed -i 's/;/_/g' reformat/input_2.fa
+DO_EXONERATE fastareformat "$input_2" |sed 's/\r//g' > reformat/input_2.fa.tmp
+awk '{if($1~"^>"){str=substr($1,2); gsub("[^A-Za-z0-9_-]","_",str); print ">"str}else{print $0}}' reformat/input_2.fa.tmp > reformat/input_2.fa
+rm -f reformat/input_2.fa.tmp
 DO_SAMTOOLS samtools faidx reformat/input_2.fa
 mkdir -p split/input_1
 mkdir -p split/input_2
@@ -77,7 +79,7 @@ if [ "$j" = "" ]; then
  awk -F'\t' '$3=="transcript"{print FILENAME"."$9"\t"$1":"$4":"$5}' split/$i/*.gff|sed 's%^split/.*/%%' > split/$i.tab
  DO_COR awk -F'\t' '$0!~"^#"{split($NF,arr,";"); for(i in arr){if(arr[i]~"^transcript_id "){name=arr[i]}}} $0~"^# protein sequence ="{seq=""; ORS="\n"; print ""; print FILENAME"."name} $0~"^#"{n=split($0,arr," "); ORS=""; print arr[n]}' split/$i/*.gff|sed 's/].*//; s/^[[]//; s%^split/.*/%>%; s/transcript_id "//; s/"$//'|tail -n+2 > protein/$i.fa
 else
- cat "$j"|awk -F'\t' '{OFS="\t"; if($0~"^#"){print $0}else{gsub(";","_",$1); print $0}}' > "$j".replaced.gff
+ cat "$j"|awk -F'\t' '{OFS="\t"; if($0~"^#"){print $0}else{OFS="\t"; gsub("[^A-Za-z0-9_-]","_",$1); print $0}}' > "$j".replaced.gff
  j="$j".replaced.gff
  awk -F'\t' '$3=="gene"||$3=="transcript"||$3=="pseudogene"{split($9,arr,";"); id=""; for(i in arr){if(arr[i]~"^ID="){id=substr(arr[i],4)}}; print "'$i'."id"\t"$1":"$4":"$5}' "$j" > split/$i.tab
  DO_GFFREAD gffread "$j" -g reformat/$i.fa -y protein/$i.temp.fa
@@ -90,7 +92,7 @@ if [ "$j" = "" ]; then
  awk -F'\t' '$3=="transcript"{print FILENAME"."$9"\t"$1":"$4":"$5}' split/$i/*.gff|sed 's%^split/.*/%%' > split/$i.tab
  DO_COR awk -F'\t' '$0!~"^#"{split($NF,arr,";"); for(i in arr){if(arr[i]~"^transcript_id "){name=arr[i]}}} $0~"^# protein sequence ="{seq=""; ORS="\n"; print ""; print FILENAME"."name} $0~"^#"{n=split($0,arr," "); ORS=""; print arr[n]}' split/$i/*.gff|sed 's/].*//; s/^[[]//; s%^split/.*/%>%; s/transcript_id "//; s/"$//'|tail -n+2 > protein/$i.fa
 else
- cat "$j"|awk -F'\t' '{OFS="\t"; if($0~"^#"){print $0}else{gsub(";","_",$1); print $0}}' > "$j".replaced.gff
+ cat "$j"|awk -F'\t' '{OFS="\t"; if($0~"^#"){print $0}else{OFS="\t"; gsub("[^A-Za-z0-9_-]","_",$1); print $0}}' > "$j".replaced.gff
  j="$j".replaced.gff
  awk -F'\t' '$3=="gene"||$3=="transcript"||$3=="pseudogene"{split($9,arr,";"); id=""; for(i in arr){if(arr[i]~"^ID="){id=substr(arr[i],4)}}; print "'$i'."id"\t"$1":"$4":"$5}' "$j" > split/$i.tab
  DO_GFFREAD gffread "$j" -g reformat/$i.fa -y protein/$i.temp.fa
