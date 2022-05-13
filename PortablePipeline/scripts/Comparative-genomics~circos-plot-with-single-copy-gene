@@ -25,7 +25,7 @@ export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
 export IM_COR="c2997108/centos7:metacor7"
 export IM_AUGUSTUS="c2997108/augustus:3.4.0"
 export IM_ORTHOFINDER="davidemms/orthofinder:2.5.4"
-export IM_CIRCOS="quay.io/biocontainers/circos:0.69.8--hdfd78af_1"
+export IM_CIRCOS="c2997108/circos:0.69.8"
 export IM_GFFREAD="quay.io/biocontainers/cufflinks:2.2.1--py36_1"
 export IM_BASE="c2997108/centos7:metacor7"
 
