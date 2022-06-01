@@ -1,6 +1,7 @@
 next
 - WSL Ubuntu 22でdockerが起動しない不具合修正
 - salmon, bbmapを追加
+- singularity使用時にフォルダを移動するとエラーになっていた問題修正
 
 # 1.0.9 (2022/5/12)
 - WSL使用時にAdministrator権限のないユーザでログインした場合に、wsl --installでは管理者のアカウントにインストールされないので、wsl --importでセットアップする手法を追加
