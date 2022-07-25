@@ -1,0 +1,205 @@
+#!/bin/bash
+
+explanation='
+Salmon is a tool for quantifying the expression of transcripts using RNA-seq data.
+'
+inputdef='
+input_1:directory:paired-end or single-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2::reference transcriptome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_i:Salmon indexing options:-k 31
+opt_j:Salmon quant options:-l A --validateMappings
+opt_l:Add a contig length column to output files ( n_read.tsv and TPM.tsv) (ON/OFF):OFF
+opt_b:Output bam and bam.bai files (ON/OFF):OFF
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -j #opt_j# -l #opt_l# -b #opt_b# #input_1# #input_2#"
+
+export IM_SALMON="quay.io/biocontainers/salmon:1.8.0--h7e5ed60_1"
+export IM_SAMTOOLS="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
+export IM_AWK="centos:centos7"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+#log export
+exec > >(tee log.txt) 2>&1
+
+LANG=C
+
+threads=$N_CPU
+three=${threads}
+threads2=`expr ${threads} / 2`
+threads1=`expr ${threads} - 2`
+memG=`free -g |grep "Mem" |sed -e "s/Mem: *\([0-9]*\) .*/\1/"`
+memG3=`expr ${memG} \* 3 / 4` 
+
+
+echo "
+#####SYSTEM ENVIRONMENT#####
+  threads=${threads}
+  memory=${memG}G
+############################
+"
+
+time0=$(date "+%s")
+echo start at ${time0}
+cur_prg=$(dirname $0)
+
+echo "extract parameters from parameter files"
+index_param="$opt_i"
+mapping_param="$opt_j"
+out_contig_length="$opt_l"
+bam_output="$opt_b"
+
+cat << 'EOF' > run-make_output.sh
+#!/bin/bash
+	#produce output files
+	id="$1"
+	threads1="$2"
+	bam_output="$3"
+	out_contig_length="$4"
+	ref="$5"
+
+	#perform flagstat of samtools
+	echo "calulating flagstat..."
+	samtools view -Sb -@ ${threads1} output/"${id}"/"${id}".sam > output/"${id}"/temp.bam 
+	samtools flagstat output/"${id}"/temp.bam > output/"${id}"/"${id}"_flagstat.txt
+	
+	#create a header column
+	awk '{print $1}' output/"${id}"/quant.sf > output/"${id}"/tpm.tsv
+	awk '{print $1}' output/"${id}"/quant.sf > output/"${id}"/n_reads.tsv
+	sed -e 's/^.* + [0-9]\+ //; s/(.*:.*)//; 1iSample\nnumber of reads\nmap rate\n' output/"${id}"/"${id}"_flagstat.txt > output/"${id}"/summary_flagstat.tsv
+	
+	#merge columns
+	awk '{print $4}' output/"${id}"/quant.sf \
+	| sed -e "1s/.*/${id}/" \
+	| paste output/"${id}"/tpm.tsv - > output/"${id}"/temp_tpm.tsv	
+	mv output/"${id}"/temp_tpm.tsv output/"${id}"/tpm.tsv
+	
+	awk '{print $5}' output/"${id}"/quant.sf \
+	| sed -e "1s/.*/${id}/" \
+	| paste output/"${id}"/n_reads.tsv - > output/"${id}"/temp_n_reads.tsv	
+	mv output/"${id}"/temp_n_reads.tsv output/"${id}"/n_reads.tsv
+	
+	#make summary
+	mapped=`awk '$0~"read1$"{print $1}' output/"${id}"/"${id}"_flagstat.txt`
+	map_rate=`awk '$0~"Mapping rate = [0-9.]+%"{print $NF}' output/"${id}"/logs/salmon_quant.log |sed 's/%//'`
+
+	sed -e "s/([Qm].*//; s/\(+ [0-9]\+ \)[a-z12 ]\+/\1/; 1i${id}\n${n_read}\n${map_rate}\n" output/"${id}"/"${id}"_flagstat.txt > output/"${id}"/temp_s.tsv
+		
+	paste output/"${id}"/summary_flagstat.tsv output/"${id}"/temp_s.tsv > output/"${id}"/temp_ss.tsv  
+	mv output/"${id}"/temp_ss.tsv output/"${id}"/summary_flagstat.tsv
+	rm output/"${id}"/temp_s.tsv
+
+    #make bam and bamindex
+    if [ "${bam_output}" != "OFF" ]; then 
+	    echo Sorting and indexing bam
+    	samtools sort output/"${id}"/temp.bam > output/"${id}".bam -@ ${threads1} -m 100M
+    	samtools index output/"${id}".bam
+
+	fi
+
+   	rm output/"${id}"/"${id}".sam output/"${id}"/temp.bam
+
+#contig length output option
+if [ "${out_contig_length}" != "OFF" ]  ; then
+    echo "Proceccing a contig lenght output option"
+	samtools faidx "$ref"
+	awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{OFS="\t"; $1=$1"\t"len[$1]; print $0}' "$ref".fai output/"${id}"/n_reads.tsv > output/"${id}"/n_reads.tsv.temp
+	mv output/"${id}"/n_reads.tsv.temp output/"${id}"/n_reads.tsv
+	awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{OFS="\t"; $1=$1"\t"len[$1]; print $0}' "$ref".fai output/"${id}"/tpm.tsv > output/"${id}"/tpm.tsv.temp
+	mv output/"${id}"/tpm.tsv.temp output/"${id}"/tpm.tsv
+fi
+
+EOF
+
+
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+ref="$input_2"
+DO_SALMON salmon index -t "$ref" -i index ${index_param}
+
+
+pppair1=()
+pppair2=()
+ppsingle=()
+while IFS= read i; do
+ if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
+  temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
+ else
+  temppair2=`echo "$i"|sed 's/_R1/_R2/'`
+ fi
+ if [ -e "$temppair2" ]; then
+  pppair1+=( "$i" )
+  pppair2+=( "$temppair2" )
+ else
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_1/" |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$')
+
+while IFS= read i; do
+ ppinputcheck=0
+ for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+  if [ "$j" = "$i" ]; then
+   ppinputcheck=1
+   break
+  fi
+ done
+ if [ $ppinputcheck = 0 ];then
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_1/" |egrep '[.]f(ast|)q(|[.]gz)$')
+
+mkdir -p output
+
+(
+#for single-end reads
+for i in ${ppsingle[@]:-}; do
+ id=`basename "$i"`
+ echo "$ENV_SALMON salmon quant -i index -p ${threads1} ${mapping_param} -r \"$i\" -o output/\"${id}\" --writeMappings=output/\"${id}\"/\"${id}\".sam; $ENV_SAMTOOLS bash run-make_output.sh \"$id\" \"$threads1\" \"$bam_output\" \"$out_contig_length\" \"$ref\""
+done
+
+#for paired-end reads
+for ((i = 0; i < ${#pppair1[@]}; i++)) {
+ id=`basename "${pppair1[i]}"`
+ echo "$ENV_SALMON salmon quant -i index -p ${threads1} ${mapping_param} -1 \"${pppair1[i]}\" -2 \"${pppair2[i]}\" -o output/\"${id}\" --writeMappings=output/\"${id}\"/\"${id}\".sam; $ENV_SAMTOOLS bash run-make_output.sh \"$id\" \"$threads1\" \"$bam_output\" \"$out_contig_length\" \"$ref\""
+}
+) | DOPARALLEL
+
+WAITPARALLEL
+
+DO_AWK awk -F'\t' '{if(NR==1){key=$1}; data[FILENAME][$1]=$NF; id[$1]=1; if(NF==3){len[$1]=$2}} END{if(key!=""){i=key; PROCINFO["sorted_in"]="@ind_str_asc"; ORS=""; if(NF==3){print i"\tlength"}else{print i}; for(j in data){print "\t"data[j][i]}; print "\n"; delete id[i]}; for(i in id){if(NF==3){print i"\t"len[i]}else{print i}; for(j in data){if(i in data[j]){print "\t"data[j][i]}else{print "\t0"}}; print "\n";}}' output/*/n_reads.tsv > output/all.n_reads.tsv
+DO_AWK awk -F'\t' '{if(NR==1){key=$1}; data[FILENAME][$1]=$NF; id[$1]=1; if(NF==3){len[$1]=$2}} END{if(key!=""){i=key; PROCINFO["sorted_in"]="@ind_str_asc"; ORS=""; if(NF==3){print i"\tlength"}else{print i}; for(j in data){print "\t"data[j][i]}; print "\n"; delete id[i]}; for(i in id){if(NF==3){print i"\t"len[i]}else{print i}; for(j in data){if(i in data[j]){print "\t"data[j][i]}else{print "\t0"}}; print "\n";}}' output/*/tpm.tsv > output/all.tpm.tsv
+
+
+echo completion at $(date)
+time_fin=$(date "+%s")
+echo -e "Total running time is `echo "scale=2; ($time_fin - $time0)/60" |bc` min"  
+echo "${cur_prg} completed!" 
+
+
+post_processing
+
+#<option detail>
+#<opt_i>
+index options:
+-k :	The size of k-mers that should be used for the quasi index. [31]
+--keepDuplicates :	This flag will disable the default indexing behavior of discarding sequence-identical duplicate transcripts. 
+	If this flag is passed, then duplicate transcripts that appear in the input will be retained and quantified separately
+#</opt_i>
+#<opt_j>
+-l :	Library type, A=auto detection, IU=inward:unstranded, ISR=inward:stranded:R-F, etc
+--validateMappings :	Validate mappings using alignment-based verifcation.
+--mimicBT2 :	Set flags to mimic parameters similar to Bowtie2 with --no-discordant and --no-mixed flags.
+--mimicStrictBT2 :	Set flags to mimic the very strict parameters used by RSEM+Bowtie2.
+--recoverOrphans :	Attempt to recover the mates of orphaned reads.
+--hardFilter :	This flag turns off soft filtering and range-factorized equivalence classes
+--allowDovetail :	allow dovetailing mappings. (same to older salmon)
+#</opt_j>
+#</option detail>
+

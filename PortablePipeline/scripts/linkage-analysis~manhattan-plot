@@ -16,6 +16,7 @@ opt_d:DP threshold:5
 opt_p:-log10(p-value) threshold to draw:1
 opt_a:draw all chromosome [yes|no]:yes
 opt_s:sort by chromosome length [yes|no]:no
+opt_b:Proportion of specimens for which SNPs are not called:0.3
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -p #opt_p# -a #opt_a# -s #opt_s# #input_1# #input_2# #input_3#"
 
@@ -40,7 +41,7 @@ dp=$opt_d
 pval=$opt_p
 corax=$opt_a
 
-th_snp=0.4
+th_snp=$opt_b
 additional_chr=1000
 
 set +o pipefail
@@ -71,6 +72,21 @@ NR>1 && $5!~","{
  };
  ORS="\n"; print ""
 }'|sed 's/\t$//' |awk -F'\t' 'NR==1{print $0} NR>1{cnt=0; for(i=10;i<=NF;i++){if($i==-1){cnt++}}; if(cnt<(NF-9)*(1-'$th_snp')){print $0}}' > $vcf.GQ$gq.DP$dp.rm$th_snp
+
+grep -v "^##" $vcf |awk -F'\t' '
+BEGIN{gq=0; pos_gq="'$pos_gq'"+0; dp=0; pos_dp="'$pos_dp'"+0}
+NR==1{print $0}
+NR>1 && $5!~","{
+ ORS="\t";
+ for(i=1;i<=9;i++){print $i};
+ for(i=10;i<=NF;i++){
+  split($i,arr,":");
+  if((pos_gq==0 || arr[pos_gq]+0>=gq) && (pos_dp==0 || arr[pos_dp]+0>=dp)){
+   if(arr[1]=="0/0"||arr[1]=="0|0"){print 0}else if(arr[1]=="0/1"||arr[1]=="0|1"||arr[1]=="1|0"){print 1}else if(arr[1]=="1/1"||arr[1]=="1|1"){print 2}else{print -1}
+  }else{print -1}
+ };
+ ORS="\n"; print ""
+}'|sed 's/\t$//' |awk -F'\t' 'NR==1{print $0} NR>1{cnt=0; for(i=10;i<=NF;i++){if($i==-1){cnt++}}; if(cnt<(NF-9)*(1-'$th_snp')){print $0}}' > $vcf.GQ0.DP0.rm$th_snp
 
 runRmanhattan(){
 filename=$1
@@ -120,11 +136,24 @@ dev.off()
 CairoPNG('BHnormalized.$filename.png', width=2000, height=1000)
 manhattan(b2, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
 dev.off()
-CairoPNG('dominant.$filename.png', width=2000, height=1000)
+CairoPNG('$filename.rm-non-causal-snps.png', width=2000, height=1000)
 manhattan(c, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
 dev.off()
-CairoPNG('dominant.BHnormalized.$filename.png', width=2000, height=1000)
+CairoPNG('BHnormalized.$filename.rm-non-causal-snps.png', width=2000, height=1000)
 manhattan(c2, cex=0.1, col=rainbow(10), chrlabs = as.character(tempax[,1]))
+dev.off()
+library(Cairo)
+CairoPNG('$filename.bw.png', width=2000, height=1000)
+manhattan(b, cex=0.1, chrlabs = as.character(tempax[,1]))
+dev.off()
+CairoPNG('BHnormalized.$filename.bw.png', width=2000, height=1000)
+manhattan(b2, cex=0.1, chrlabs = as.character(tempax[,1]))
+dev.off()
+CairoPNG('$filename.rm-non-causal-snps.bw.png', width=2000, height=1000)
+manhattan(c, cex=0.1, chrlabs = as.character(tempax[,1]))
+dev.off()
+CairoPNG('BHnormalized.$filename.rm-non-causal-snps.bw.png', width=2000, height=1000)
+manhattan(c2, cex=0.1, chrlabs = as.character(tempax[,1]))
 dev.off()
 " | (DO_R R --vanilla < /dev/stdin)
 
@@ -140,6 +169,36 @@ cat $filename.fisher.txt|sort -k1,1g|awk 'NR==1{print $0} $1<=1e-05 && $2>0.5{pr
 
 #obs="male"
 for obs in `cut -f 2 $phenotype|sort|uniq|sed '/^$/d'`; do
+
+(awk -F'\t' '
+BEGIN{obs="'$obs'"}
+FILENAME==ARGV[1]{pheno[$1]=$2}
+FILENAME==ARGV[2]{
+ if(FNR==1){
+  for(i=10;i<=NF;i++){if(pheno[$i]==obs){id["ph1"]=id["ph1"]","i}else if(pheno[$i]!=""){id["ph2"]=id["ph2"]","i}};
+  split(id["ph1"],ph1,","); split(id["ph2"],ph2,",")
+ }else{
+  nph1=0; aph1=0; nph2=0; aph2=0;
+  for(i=2;i<=length(ph1);i++){if($ph1[i]==-1){nph1++}else{aph1++}};
+  for(i=2;i<=length(ph2);i++){if($ph2[i]==-1){nph2++}else{aph2++}};
+  print aph1/(aph1+nph1)*nph2/(aph2+nph2)"\t"$1"\t"$2"\t"aph1+nph1"\t"aph1"\t"aph2+nph2"\t"aph2"\t"$0
+ }
+}' $phenotype $vcf.GQ0.DP0.rm$th_snp|sort -k1,1nr > $vcf.GQ0.DP0.0.rm$th_snp.sp.$obs
+#cut -f 2-7 $vcf.GQ$gq.DP$dp.rm$th_snp.sp.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|sed 's/^'$chrname'//'|awk -F'\t' '
+# BEGIN{n='$additional_chr'} {if($1~"^[0-9]+$"){print $0}else{if(cnt[$1]==0){n++; cnt[$1]=n}; $1=cnt[$1]; OFS="\t"; print $0}}
+#'|sort -k1,1V -k2,2n > $vcf.GQ$gq.DP$dp.rm$th_snp.sp.${obs}2
+cut -f 2-7 $vcf.GQ0.DP0.0.rm$th_snp.sp.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{id[$1]=$2; len[$1]=$3}
+ FILENAME==ARGV[2]{$1=id[$1]; OFS="\t"; print $0}
+' $ref.fai.axis /dev/stdin > $vcf.GQ0.DP0.0.rm$th_snp.sp.${obs}2
+cut -f 2-7 $vcf.GQ0.DP0.0.rm$th_snp.sp.$obs |sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/'|awk '
+ FILENAME==ARGV[1]{flag[$1]=1}
+ FILENAME==ARGV[2]{if(flag[$1]==1){print $0}}
+' /dev/stdin $ref.fai.axis > $vcf.GQ0.DP0.0.rm$th_snp.sp.${obs}2.axis
+
+
+runRmanhattan $vcf.GQ0.DP0.0.rm$th_snp.sp.${obs}2
+) &
 
 (awk -F'\t' '
 BEGIN{obs="'$obs'"}

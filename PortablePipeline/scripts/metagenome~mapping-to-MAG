@@ -1,0 +1,124 @@
+#!/bin/bash
+
+explanation='
+Create an abundance heatmap of MAGs
+'
+inputdef='
+input_1:directory:MAG FASTA files:*.fa,*.fasta
+input_2:directory:Paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_b:alignment coverage threshold:0.8
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_b# #input_1# #input_2# #input_3#"
+
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h91753b0_3"
+export IM_AWK="centos:7"
+export IM_BWA="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
+export IM_R="c2997108/ubuntu20:R-2_gplots"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+ls "$input_1"/*|while read i; do seqkit fx2tab "$i"|awk -F'\t' '{print ">'`basename "$i"`'/"$1; print $2}'; done > ref.fa
+
+ref=ref.fa
+
+cat << 'EOF' > run.awk
+BEGIN{FS="\t"; print "id\tcoverage\tmapped bases\tlength"}
+FILENAME==ARGV[1]{len[$1]=$2}
+FILENAME==ARGV[2]{
+ a=$6;
+ gsub(/[0-9]+[^0-9M]/,"",a);
+ split(a,arr,"M");
+ map=0;
+ for(i in arr){map+=arr[i]};
+ b=$6;
+ gsub(/[^0-9]/,",",b);
+ split(b,arr,",");
+ total=0;
+ for(i in arr){total+=arr[i]};
+ for(i=12;i<=NF;i++){
+  if($i~"^MD:Z:"){
+   c=$i;
+   gsub(/^MD:Z:/,"",c);
+   gsub(/[0-9]/,"",c);
+   if((map-length(c))/total>=cov){ #-v cov=$opt_b
+    cnt[$3]+=map
+   }
+  }
+ }
+}
+END{for(i in cnt){print i"\t"cnt[i]/len[i]"\t"cnt[i]"\t"len[i]}}
+EOF
+
+if [ ! -e "$ref".sa ]; then
+ DO_BWA bwa index $ref
+fi
+if [ ! -e "$ref".fai ]; then
+ DO_SAMTOOLS samtools faidx $ref
+fi
+
+DO_SEQKIT seqkit stats input_2/*|sed 's%^input_2/%%' > stats.txt
+DO_AWK awk '{gsub(",","",$5); print $1"\t"$5}' stats.txt > stats.sum.txt
+rm -f stats.sum2.txt
+
+(if [ "$input_2" != "" ]; then
+ for i in `find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
+  if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+  elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
+   j=`echo $i|sed 's/_R1/_R2/'`;
+  else
+   j=none
+  fi
+  i2=`basename $i`
+  if [ -e "$j" ]; then
+   j2=`basename $j`
+   samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
+   awk -F'\t' 'FILENAME==ARGV[1]{a=$2} FILENAME==ARGV[2]{print $1"\t"$2+a}' <(grep "^$j2"$'\t' stats.sum.txt) <(grep "^$i2"$'\t' stats.sum.txt) >> stats.sum2.txt
+   echo "($ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$j\')|($ENV_AWK awk -v cov=$opt_b -f run.awk \'$ref.fai\' /dev/stdin) > \'$i2.cnt\'"
+  else
+   samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
+   grep "^$i2"$'\t' stats.sum.txt >> stats.sum2.txt
+   echo "($ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\')|($ENV_AWK awk -v cov=$opt_b -f run.awk) > \'$i2.cnt\'"
+  fi
+ done
+fi) | DOPARALLEL
+
+WAITPARALLEL
+
+cat << 'EOF' > run2.sh
+#!/bin/bash
+export LC_NUMERIC="en_US.UTF-8"
+awk -F'\t' 'FILENAME==ARGV[1]{sum[$1]=$2} FILENAME==ARGV[2]{split($1,arr,"/"); bp[arr[1]]+=$2} FILENAME!=ARGV[1]&&FILENAME!=ARGV[2]{if(FNR==1){name=FILENAME; sub("[.]cnt$","",name); files[name]=1}else{split($1,arr,"/"); cnt[arr[1]][name]+=$3}} END{ORS=""; PROCINFO["sorted_in"]="@ind_str_asc"; print "id"; for(j in files){print "\t"j}; print "\n"; for(i in cnt){print i; for(j in files){if(j in cnt[i]){print "\t"cnt[i][j]/bp[i]*10*1000*1000*1000/sum[j]}else{print "\t0"}}; print "\n"}}' stats.sum2.txt ref.fa.fai *.cnt > all.txt
+awk -F'\t' 'FILENAME==ARGV[1]{sum[$1]=$2} FILENAME==ARGV[2]{split($1,arr,"/"); bp[arr[1]]+=$2} FILENAME!=ARGV[1]&&FILENAME!=ARGV[2]{if(FNR==1){name=FILENAME; sub("[.]cnt$","",name); files[name]=1}else{split($1,arr,"/"); cnt[arr[1]][name]+=$3}} END{ORS=""; PROCINFO["sorted_in"]="@ind_str_asc"; print "id"; for(j in files){printf("\t"j" [%\047dbp]",sum[j])}; print "\n"; for(i in cnt){printf(i" [%\047dbp]",bp[i]); for(j in files){if(j in cnt[i]){printf("\t%\047d",cnt[i][j])}else{print "\t0"}}; print "\n"}}' stats.sum2.txt ref.fa.fai *.cnt > all_raw.txt
+EOF
+
+DO_AWK bash run2.sh
+
+#outname=`basename $ref`
+cat << 'EOF' > run3.R
+library("Cairo")
+library("gplots")
+
+a=read.table("all.txt",sep="\t",row.names=1,header=T)
+
+myh=min(10000,dim(a)[1]*12+500)
+if(myh*0.1<200){myh2=200}else{myh2=myh*0.1}
+CairoPNG(file="output.png",width=min(10000,dim(a)[2]*12+500),height=min(10000,dim(a)[1]*12+500));
+heatmap.2(as.matrix(log10(a+min(a[a>0]))),cexCol = 1, cexRow = 1, trace="none", margins=c(20,20), lhei=c(myh2, myh))
+dev.off()
+EOF
+
+DO_R R --vanilla < run3.R
+
+
+post_processing
+#<option detail>
+#</option detail>

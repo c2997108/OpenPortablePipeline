@@ -20,7 +20,7 @@ onerror()
     echo "Error occured on $script [Line $line]: Status $status"
     echo ""
     echo "PID: $$"
-    echo "User: $USER"
+    echo "User: ${USER:-}"
     echo "Current directory: $PWD"
     echo "Command line: $script $args"
     echo "------------------------------------------------------------"
@@ -53,6 +53,7 @@ fi
 DIR_WORK="."
 
 
+#本当はPWDをrealpathに変換してから-v -wをしたほうがよいかも
 #CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
 CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-docker-list; docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
 #if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
@@ -60,7 +61,7 @@ CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"
 #else
 # CON_SING="singularity exec -B $PWD:/mnt --pwd /mnt $PPSINGBINDS "
 #fi
-CON_SING="singularity exec -B $PWD:$PWD --pwd $PWD $PPSINGBINDS "
+CON_SING='singularity exec -B $PWD:$PWD --pwd $PWD '"$PPSINGBINDS "
 CHECK_SING="singularity"
 
 mkdir -p "$DIR_IMG"
@@ -88,7 +89,8 @@ IMS=$((eval "cat $0 $SCRIPT0"|grep "^export IM_"|cut -f 2 -d =|sed 's/"//g';
        set |grep ^IM_|cut -f 2 -d =)|sort|uniq)
 echo $IMS
 
-if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
+if [ "$PP_USE_SING" = "y" ]; then touch pp-singularity-flag; else rm -f pp-singularity-flag; fi
+if [ ! -e pp-singularity-flag -a `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
  echo using docker;
  CON="$CON_DOCKER";
 
@@ -100,25 +102,81 @@ if [ `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
    set +ex
   fi
  done
-elif [ `$CHECK_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
- echo using singularity;
- CON="$CON_SING""$DIR_IMG/";
-
- for i in $IMS; do
-  if [ ! -e "$DIR_IMG"/$i ]; then
-   set -ex
-   singularity pull --name "`basename $i`" docker://$i;
-   mkdir -p "$DIR_IMG/`dirname $i`";
-   mv "`basename $i`" "$DIR_IMG/`dirname $i`";
-   set +ex
-  fi
- done
- cd "$DIR_CUR";
 else
- echo docker or singularity should be installed;
- echo 1 > $workdir/fin_status;
- exit 1;
+ echo Checking singularity
+ set +ex
+ $CHECK_SING run library://godlovedc/funny/lolcow
+ if [ $? = 0 ];then
+  echo using singularity;
+  CON="$CON_SING""$DIR_IMG/";
+  for i in $IMS; do
+   if [ ! -e "$DIR_IMG"/$i ]; then
+    set -ex
+    singularity pull --name "`basename $i`" docker://$i;
+    mkdir -p "$DIR_IMG/`dirname $i`";
+    mv "`basename $i`" "$DIR_IMG/`dirname $i`";
+    set +ex
+   fi
+  done
+  cd "$DIR_CUR"; #不要な気がする
+
+ elif [ `$CHECK_SING 2>&1|head -n 1|grep -i usage|wc -l` = 1 ]; then
+  #Terraのpp in docker用 c2997108/ubuntu:20.04-singularity_pp4
+  #chroot時に/proc, /devなどがないことによるエラーが多発 javaではjava: error while loading shared libraries: libjli.so: cannot open shared object file: No such file or directoryなど
+  #unshare --user --map-root-user --mount-proc --pid --fork /sbin/chroot / echo Checking chroot => こっちを使うくらいならsingularityで./mconfig --prefix=/path --without-suidでビルドしたのを使ったほうが良さそう
+  chroot / echo Checking chroot
+  if [ $? = 0 ];then
+   #echo using unshare_chroot;
+   echo using chroot_singularity;
+   cat << 'EOF' > run-chroot.sh
+#!/bin/bash
+    DIR_IMG="$1"
+    shift
+    imagename="$1"
+    shift
+    ppcmd=""
+    while [ "$1" != "" ]; do
+     ppcmd="$ppcmd '$1'"
+     shift
+    done
+    set -x
+    mkdir -p "$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"`
+    #--copy-linksにしておかないと、DIR_IMGとPWDのディスクが異なる場合に、symlinkがあるとなぜか？戻りのrsyncでrsync: failed to hard-link ... : Invalid cross-device link (18)となる
+    #--link-destを使うと＞で保存したファイルが初期化されてしまう。本来は--link-dest=../$(realpath --relative-to="$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"` `dirname "$PWD"`)を使いたいのだけど。
+    rsync -a --copy-links --modify-window=-1 --update --exclude="$DIR_IMG" "$PWD" "$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"`
+    set -e
+    trap 'echo Line: $LINENO "$@"; rsync -a --copy-links --modify-window=-1 --update "$DIR_IMG/sandbox/$imagename"/"$PWD" `dirname "$PWD"`' ERR
+    #unshare --user --map-root-user --mount-proc --pid --fork /sbin/chroot "$DIR_IMG/sandbox/$imagename" /bin/bash -c "mkdir -p /proc /dev/pts; mount -t proc proc /proc; mount -t devpts devpts /dev/pts; cd \"$PWD\"; $ppcmd"
+    chroot "$DIR_IMG/sandbox/$imagename" /bin/bash -c "export LD_LIBRARY_PATH=/usr/local/lib; cd \"$PWD\"; $ppcmd"
+    #--link-destを使うと＞で保存したファイルが初期化されてしまう。本来は--link-dest=$(realpath --relative-to=`dirname "$PWD"` "$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"`)を使いたいのだけど。
+    set +e
+    rsync -a --copy-links --modify-window=-1 --update "$DIR_IMG/sandbox/$imagename"/"$PWD" `dirname "$PWD"`
+EOF
+
+   CON="bash $PWD/run-chroot.sh $DIR_IMG/ ";
+   for i in $IMS; do
+    if [ ! -e "$DIR_IMG"/sandbox/$i ]; then
+     set -ex
+     singularity build --sandbox "`basename $i`" docker://$i;
+     mkdir -p "$DIR_IMG/sandbox/`dirname $i`";
+     mv "`basename $i`" "$DIR_IMG/sandbox/`dirname $i`";
+     set +ex
+    fi
+   done
+   cd "$DIR_CUR"; #不要な気がする
+
+  else
+   echo docker, singularity or chroot should be available;
+   echo 1 > $workdir/fin_status;
+   exit 1;
+  fi
+ else
+  echo docker or singularity should be installed;
+  echo 1 > $workdir/fin_status;
+  exit 1;
+ fi
 fi
+
 
 for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do export ENV_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
 shopt -s expand_aliases
@@ -295,8 +353,24 @@ for i in `set|grep "^input_[0-9]\+="`; do
  PPINDIRTMP=`echo "$i"|sed 's/^input_[0-9]\+=//'`;
  find_link_path_recursive 0 "$PPINDIRTMP"
 done
+OLDIFS="$IFS"
 IFS=$'\n' PPINDIRS=(`printf "%s\n" "${PPINDIRS[@]}" |sort -u`);
-unset IFS
+#unset IFS
+IFS="$OLDIFS"
+
+#今いるフォルダまでの物理パスをマウントしておく singularity用
+PPPWDS="";
+OLDIFS="$IFS"
+IFS="/" PPPWD=($PWD)
+IFS="$OLDIFS"
+for i in "${PPPWD[@]}"; do
+ PPPWDS=`echo "$PPPWDS/$i"|sed 's%^//%/%'`; PPPWDS2=`realpath "$PPPWDS"`;
+  if [ "$PPPWDS" != "$PPPWDS2" ]; then
+   echo "$PPPWDS" "->" "$PPPWDS2"
+   PPINDIRS+=("$PPPWDS2")
+ fi;
+done
+
 PPDOCBINDS=""
 PPSINGBINDS=""
 for i in "${PPINDIRS[@]}"; do

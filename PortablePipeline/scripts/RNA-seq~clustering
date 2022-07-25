@@ -32,6 +32,7 @@ write.table(data2, "input.table.sorted.log2p1.txt",row.names=T, quote=F, sep="\t
 
 DO_BASE awk -F'\t' 'NR==1{print "id\t"$0} NR>1{print $0}' input.table.sorted.log2p1.txt > input.table.sorted.log2p1.h.txt
 DO_BASE java -cp /opt corclust.Clustering input.table.sorted.log2p1.h.txt $opt_r $opt_c > input.table.sorted.log2p1.h.txt.clust
+paste input.table.sorted.log2p1.h.txt <(echo cluster; cat input.table.sorted.log2p1.h.txt.clust|cut -f 2) > output.table.txt
 
 echo 'data=read.table("input.table.sorted.log2p1.h.txt",header=T,row.names=1)
 clust=read.table("input.table.sorted.log2p1.h.txt.clust", row.names=1)
@@ -55,8 +56,6 @@ for(i in sort(unique(clust[,1]))){
   dev.off()
  }
 }'| (DO_BASE /opt/R/4.0.3/bin/R --vanilla --silent)
-
-paste input.table.sorted.log2p1.h.txt <(echo cluster; cat input.table.sorted.log2p1.h.txt.clust|cut -f 2) > output.table.txt
 
 rm -f input.table.txt input.table.sorted.log2p1.h.txt input.table.sorted.log2p1.h.txt.clust input.table.sorted.log2p1.txt
 

@@ -1,0 +1,107 @@
+#!/bin/bash
+
+explanation='
+Draw UPGMA phylogenetic tree
+'
+inputdef='
+input_1::fasta(.gz) file:*.fasta,*.fa,*.fasta.gz,*.fa.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_d:model ("identity" for DNA or protein, "blosum62" for protein):identity
+opt_b:bootstrap:10
+opt_f:MAFFT options:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -d #opt_d# -b #opt_b# #input_1#"
+
+export IM_BASE="c2997108/centos7:mamba-biopython"
+export IM_TREE="c2997108/centos7:mamba-biopython"
+export IM_MAFFT="quay.io/biocontainers/mafft:7.505--hec16e2b_0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+#decompress input files
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+
+cat << 'EOF' > run-upgma.py
+import sys
+filename=sys.argv[1]
+model=sys.argv[2]
+numb=sys.argv[3]
+
+from Bio import Phylo, AlignIO
+from Bio.Phylo.TreeConstruction import DistanceCalculator, DistanceTreeConstructor
+align = AlignIO.read(filename,'fasta')
+
+comalign=align[:,0:1]
+
+for j in range(align.get_alignment_length()):
+  flag=0
+  for i in align[:,j:(j+1)]:
+    if i.seq == "-":
+      flag=1
+      break
+  if flag == 0:
+    comalign=comalign+align[:,j:(j+1)]
+
+comalign=comalign[:,1:]
+AlignIO.write(comalign, filename+".complete.phylip", "phylip")
+calculator = DistanceCalculator(model)
+distMatrix = calculator.get_distance(comalign)
+
+constructor = DistanceTreeConstructor()
+UPGMATree = constructor.upgma(distMatrix)
+Phylo.draw_ascii(UPGMATree)
+#Phylo.draw(UPGMATree)
+
+import matplotlib
+import matplotlib.pyplot as plt
+from Bio import Phylo
+from io import StringIO
+
+def plot_tree(tree, output_file):
+    matplotlib.rc('font', size=6)
+    # set the size of the figure
+    fig = plt.figure(figsize=(10, 20), dpi=100)
+    # alternatively
+    # fig.set_size_inches(10, 20)
+    axes = fig.add_subplot(1, 1, 1)
+    Phylo.draw(tree, axes=axes)
+    plt.savefig(output_file, dpi=100)
+    return
+
+print("bootstrap: "+numb)
+from Bio.Phylo.Consensus import *
+
+calculator = DistanceCalculator(model)
+constructor = DistanceTreeConstructor(calculator,'upgma')
+trees = bootstrap_trees(comalign, int(numb), constructor)
+tree = list (trees)
+support_tree = get_support(UPGMATree, tree)
+#Phylo.draw(support_tree)
+
+for node in support_tree.get_nonterminals():
+    node.name = None
+
+plot_tree(support_tree, filename+".png")
+
+EOF
+
+echo '
+export PATH="/usr/local/miniconda3/bin:$PATH"
+python run-upgma.py "$1" "$2" "$3"
+' > run-upgma.sh
+
+DO_MAFFT mafft --auto --thread $N_CPU $opt_f "$input_1" > "$input_1".mafft
+DO_TREE bash run-upgma.sh "$input_1".mafft "$opt_d" "$opt_b"
+
+
+post_processing
+
+#<option detail>
+#</option detail>

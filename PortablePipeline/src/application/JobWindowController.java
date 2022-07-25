@@ -422,11 +422,27 @@ public class JobWindowController {
     							c.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
     						}
     					}
-    					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+selectedScript, resultdir);
-    					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/common.sh", resultdir);
-    					mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/pp.py", resultdir);
+
+    					String target;
+    					String link=resultdir;
+    					target=ppSetting.get("scriptfolder")+"/"+selectedScript;
+        				Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
+        				new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
+        				target=ppSetting.get("scriptfolder")+"/common.sh";
+        				Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
+        				new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
+        				target=ppSetting.get("scriptfolder")+"/pp.py";
+        				Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
+        				new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
+    					//シンボリックリンクよりもログのために実体をコピーしておく。
+        				//mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+selectedScript, resultdir);
+    					//mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/common.sh", resultdir);
+    					//mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/pp.py", resultdir);
     					for(String scripti: scriptcontList) {
-    						mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+scripti, resultdir);
+    						//mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+scripti, resultdir);
+    						target=ppSetting.get("scriptfolder")+"/"+scripti;
+            				Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
+            				new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
     					}
 
     					//analysisGrid.getScene().getRoot().applyCss();

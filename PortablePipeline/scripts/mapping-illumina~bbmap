@@ -1,0 +1,240 @@
+#!/bin/bash
+
+explanation='
+BBMap is a splice-aware global aligner for DNA and RNA sequencing reads.
+It can align reads from all major platforms – Illumina, 454, Sanger, Ion Torrent, Pac Bio, and Nanopore.
+'
+inputdef='
+input_1:directory:paired-end or single-end FASTQ(.gz) or FASTA(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz, *.fasta, *.fa, *.fsa, *.fna, *.fasta.gz, *.fa.gz, *.fsa.gz, *.fna.gz
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_i:BBMAP indexing options:k=13
+opt_j:BBMAP mapping options:semiperfectmode=t maxindel=16000 minid=0.76 ambiguous=all requirecorrectstrand=f
+opt_o:BBMAP output options:rpkm covstats
+opt_b:mapped_only_bam (ON/OFF):ON
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -j #opt_j# -o #opt_o# -b #opt_b# #input_1# #input_2#"
+
+export IM_SAMTOOLS="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
+export IM_BBMAP="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+exec > >(tee log.txt) 2>&1
+
+LANG=C
+
+threads=$N_CPU
+three=${threads}
+threads2=`expr ${threads} / 2`
+threads1=`expr ${threads} - 2`
+if [ $threads1 -lt 1 ]; then threads1=1; fi
+memG=`free -g |grep "Mem" |sed -e "s/Mem: *\([0-9]*\) .*/\1/"`
+memG3=`expr ${memG} \* 3 / 4` 
+
+
+echo "
+#####SYSTEM ENVIRONMENT#####
+  threads=${threads}
+  memory=${memG}G
+############################
+"
+
+time0=$(date "+%s")
+echo start at ${time0}
+
+#extract parameters from parameter files
+echo -e "Checking paramter settings...\n"
+indexing_param="$opt_i"
+mapping_param="$opt_j"
+out_files=""; for i in $opt_o; do out_files+=" ${i}=${i}.tsv"; done
+mapped_only_bam="$opt_b"
+
+#create index file
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+ref="$input_2"
+DO_BBMAP bbmap.sh threads=$N_CPU ${indexing_param} ref="${ref}"
+
+#samtools script
+cat << 'EOF' > run-samtools.sh
+#!/bin/bash
+	input="$1"
+	threads1="$2"
+	mapped_only_bam="$3"
+    outbase=`echo "$1"|sed 's/.temp.bam$//'`.bam
+
+	#create mapping summary
+	echo "calulating flagstat..."
+	samtools flagstat "$input" | sed -e "s/([Qm].*//; s/\(+ [0-9]\+ \)[a-z12 ]\+/\1/; 1i${prefix}" | paste <(echo -e "Sample\nin total (QC-passed reads + QC-failed reads)\nprimary\nsecondary\nsupplementary\nduplicates\nprimary duplicates\nmapped\nprimary mapped\npaired in sequencing\nread1\nread2\nproperly paired\nwith itself and mate mapped\nsingletons\nwith mate mapped to a different chr\nwith mate mapped to a different chr (mapQ>=5)") /dev/stdin > "$outbase".summary_flagstat.tsv
+
+	#convert bam file for IGV
+	echo Sorting and indexing bam
+	if [ $mapped_only_bam = "ON" ]; then
+		samtools view -h -G 12 -@ ${threads1} "$input" | samtools sort - -m 100M -@ ${threads1} > "$outbase"
+	else
+		samtools sort "$input" -m 100M -@ ${threads1} > "$outbase"
+	fi
+	rm -f "$input"
+	samtools index "$outbase"
+
+	#counting mapped reads
+	echo "Counting mapped reads..."
+	samtools idxstats "$outbase" |awk -F "\t" -v id="$outbase" 'BEGIN{ print "ID\tlength\t"id } {print $1"\t"$2"\t"$3 }' > "$outbase".mapped_reads.tsv
+EOF
+
+pppair1=()
+pppair2=()
+ppsingle=()
+while IFS= read i; do
+ if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
+  temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
+ else
+  temppair2=`echo "$i"|sed 's/_R1/_R2/'`
+ fi
+ if [ -e "$temppair2" ]; then
+  pppair1+=( "$i" )
+  pppair2+=( "$temppair2" )
+ else
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_1/" |egrep '(_R1.*|_1)[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+
+while IFS= read i; do
+ ppinputcheck=0
+ for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+  if [ "$j" = "$i" ]; then
+   ppinputcheck=1
+   break
+  fi
+ done
+ if [ $ppinputcheck = 0 ];then
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_1/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+
+mkdir -p output
+
+(
+#for single-end reads
+for i in ${ppsingle[@]:-}; do
+ prefix=output/`basename "$i"`
+ local_out_files="${out_files//=/=${prefix}_}"
+ echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in=\"$i\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\""
+done
+
+#for paired-end reads
+for ((i = 0; i < ${#pppair1[@]}; i++)) {
+ prefix=output/`basename "${pppair1[i]}"`
+ local_out_files="${out_files//=/=${prefix}_}"
+ echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in1=\"${pppair1[i]}\" in2=\"${pppair2[i]}\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\""
+}
+) | DOPARALLEL
+
+WAITPARALLEL
+
+
+echo completion at $(date)
+time_fin=$(date "+%s")
+echo -e "Total running time is `echo "scale=2; ($time_fin - $time0)/60" |bc` min"
+
+echo "Run completed!"
+
+
+post_processing
+#<option detail>
+#<opt_i>
+indexing parameters
+k:	Kmer length, range 8-15.  Longer is faster but uses more memory.  Shorter is more sensitive.
+#</opt_i>
+#<opt_j>
+Mapping Parameters:
+local:	Set to true to use local, rather than global, alignments.This will soft-clip ugly ends of poor alignments. [f]
+perfectmode:	Allow only perfect mappings when set to true (very fast). [f]
+semiperfectmode:	'Allow only perfect and semiperfect (perfect except for N''s in the reference) mappings. [f]'
+fast:	This flag is a macro which sets other paramters to run faster, at reduced sensitivity. Bad for RNA-seq. [f]
+slow:	'This flag is a macro which sets other paramters to run  slower, at greater sensitivity. ''vslow'' is even slower.[f]'
+maxindel:	'Don''t look for indels longer than this. Lower is faster. Set to > 100k for RNAseq with long introns like mammals.[ 16000]'
+strictmaxindel:	'When enabled, do not allow indels longer than ''maxindel''. By default these are not sought, but may be found anyway.[ f]'
+tipsearch:	Look this far for read-end deletions with anchors shorter than K, using brute force.[100]
+minid:	Approximate minimum alignment identity to look for.  Higher is faster and less sensitive.[ 0.76]
+minhits:	Minimum number of seed hits required for candidate sites. Higher is faster.[ 1]
+ambiguous:	(ambig) Set behavior on ambiguously-mapped reads (with multiple top-scoring mapping locations). [best]
+	best (use the first best site)
+	toss (consider unmapped)
+	random (select one top-scoring site randomly)
+	all (retain all top-scoring sites)
+samestrandpairs:	(ssp) Specify whether paired reads should map to the same strand or opposite strands.[f]
+requirecorrectstrand:	(rcs) Forbid pairing of reads without correct strand Orientation Set to false for long-mate-pair libraries.[t]
+killbadpairs:	(kbp) If a read pair is mapped with an inappropriate insert size or orientation, the read with the lower mapping quality is marked unmapped.[f]
+pairedonly:	'(po) Treat unpaired reads as unmapped. Thus they will be sent to ''outu'' but not ''outm''.[f]'
+rcomp:	Reverse complement both reads prior to mapping (for LMP outward-facing libraries). [f]
+rcompmate:	Reverse complement read2 prior to mapping. [f]
+pairlen:	Set max allowed distance between paired reads. (insert size)=(pairlen)+(read1 length)+(read2 length)[ 32000]
+rescuedist:	'Don''t try to rescue paired reads if avg. insert size greater than this. Lower is faster [1200]'
+rescuemismatches:	Maximum mismatches allowed in a rescued read. Lower is faster. [32]
+averagepairdist:	(apd) Initial average distance between paired reads. Varies dynamically; does not need to be specified.[100]
+deterministic:	Run in deterministic mode. In this case it is good to set averagepairdist. [f]
+	BBMap is deterministicwithout this flag if using single-ended reads,or run singlethreaded.
+bandwidthratio:	(bwr) If above zero, restrict alignment band to this.  Faster but less accurate.fraction of read length.[0]
+bandwidth:	(bw) Set the bandwidth directly. Faster but less accurate.fraction of read length.[ 0]
+maxsites2:	'Don''t analyze (or print) more than this many alignments  per read.[ 800]'
+ignorefrequentkmers:	(ifk) Discard low-information kmers that occur often. [t]
+excludefraction:	(ef) Fraction of kmers to ignore. For example, 0.03 will ignore the most common 3% of kmers. [0.03]
+greedy:	Use a greedy algorithm to discard the least-useful kmers on a per-read basis. [t]
+kfilter:	If positive, potential mapping sites must have at least this many consecutive exact matches.[ 0]
+
+Quality and Trimming Parameters:
+qin:	Set to 33 or 64 to specify input quality value ASCII offset. 33 is Sanger, 64 is old Solexa.[ auto]
+qout:	Set to 33 or 64 to specify output quality value ASCII  offset (only if output format is fastq). [auto]
+qtrim:	'Quality-trim ends before mapping. Options are: '' f'' (false), ''l'' (left), ''r'' (right), and ''lr'' (both). [f]'
+untrim:	Undo trimming after mapping. Untrimmed bases will be oft-clipped in cigar strings. [f]
+trimq:	Trim regions with average quality below this  [6]
+mintrimlength:	'(mintl) Don''t trim reads to be shorter than this. [60]'
+fakefastaquality:	(ffq) Set to a positive number 1-50 to generate fake quality strings for fasta input reads. [-1]
+ignorebadquality:	(ibq) Keep going, rather than crashing, if a read has out-of-range quality values. [f]
+usequality:	Use quality scores when determining which read kmers to use as seeds.[t]
+minaveragequality:	(maq) Do not map reads with average quality below this. [0]
+maqb:	If positive, calculate maq from this many initial bases. [0]
+
+Post-filtering parameters:
+idfilter:	Independant of minid; sets exact minimum identity allowed for alignments to be printed. Range 0 to 1. [0]
+subfilter:	Ban alignments with more than this many substitutions. [-1]
+insfilter:	Ban alignments with more than this many insertions. [-1]
+delfilter:	Ban alignments with more than this many deletions. [-1]
+indelfilter:	Ban alignments with more than this many indels. [-1]
+editfilter:	Ban alignments with more than this many edits. [-1]
+inslenfilter:	Ban alignments with an insertion longer than this. [-1]
+dellenfilter:	Ban alignments with a deletion longer than this. [-1]
+nfilter:	Ban alignments with more than this many ns. This includes nocall, noref, and off scaffold ends. [-1]
+#</opt_j>
+#<opt_o>
+Additional outputs:	
+covstats:	Per-scaffold coverage info.
+rpkm:	Per-scaffold RPKM/FPKM counts.
+covhist:	Histogram of # occurrences of each depth level.
+basecov:	Coverage per base location.
+bincov:	Print binned coverage per location (one line per X bases).
+scafstats:	Statistics on how many reads mapped to which scaffold.
+refstats:	Statistics on how many reads mapped to which reference
+bhist:	Base composition histogram by position.
+qhist:	Quality histogram by position.
+aqhist:	Histogram of average read quality.
+bqhist:	Quality histogram designed for box plots.
+lhist:	Read length histogram.
+ihist:	Write histogram of insert sizes (for paired reads).
+ehist:	Errors-per-read histogram.
+qahist:	Quality accuracy histogram of error rates versus quality score.
+indelhist:	Indel length histogram.
+mhist:	Histogram of match, sub, del, and ins rates by read location.
+gchist:	Read GC content histogram.
+idhist:	Histogram of read count versus percent identity.
+#</opt_o>
+#</option detail>
+
