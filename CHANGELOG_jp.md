@@ -1,6 +1,8 @@
 next
+
+# 1.1.0 (2022/7/25)
 - WSL Ubuntu 22でdockerが起動しない不具合修正
-- salmon, bbmapを追加
+- salmon, bbmap, metagenome~mapping-to-MAGを追加
 - singularity使用時にフォルダを移動するとエラーになっていた問題修正
 - Terra用にDocker(c2997108/ubuntu:20.04-singularity_pp)の中でchrootで実行する機能を追加(ただし、/procなどをバインドしないため、javaなどは動作しない)
 
