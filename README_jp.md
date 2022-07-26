@@ -231,30 +231,30 @@ sudo usermod -aG docker $USER
 
 WSL2以降が動作するWindows10もしくはWindows11を準備する。基本的にはPowerShellを管理者権限で開き (画面左下のWindowsロゴを右クリック→Windows PowerShell (管理者))、```wsl --install```を実行すればよい。
 
-2. Windowsを再起動
+2．Windowsを再起動
 
-3. 再起動後に下記のような画面が表示されるので、WSLで新しく作るアカウントのユーザ名とパスワードを入力する。パスワードは表示されなくても入力されているので、入力したらEnterを押す。
+3．再起動後に下記のような画面が表示されるので、WSLで新しく作るアカウントのユーザ名とパスワードを入力する。パスワードは表示されなくても入力されているので、入力したらEnterを押す。
 
 ![image](https://user-images.githubusercontent.com/5350508/180928671-036a54ff-1f8a-42ef-8b55-66b26d806cab.png)
 
-4. https://github.com/c2997108/OpenPortablePipeline/releases/download/v1.1.0/PortablePipeline-win-v1.1.0.zip
+4．https://github.com/c2997108/OpenPortablePipeline/releases/download/v1.1.0/PortablePipeline-win-v1.1.0.zip
 からPortable Pipelineをダウンロードして、解凍しておく。
 
 ![image](https://user-images.githubusercontent.com/5350508/180928713-3049cc36-97a7-47f4-9bb8-ec1f45383640.png)
 
-5. 解凍したフォルダの中にある「PortablePipeline(.bat)」をダブルクリックして起動する。すると、「WindowsによってPCが保護されました」と出るので、「詳細情報」をクリックして、
+5．解凍したフォルダの中にある「PortablePipeline(.bat)」をダブルクリックして起動する。すると、「WindowsによってPCが保護されました」と出るので、「詳細情報」をクリックして、
 
 ![image](https://user-images.githubusercontent.com/5350508/180928742-ea3f5a58-61fa-48c1-812c-2b4613bf7b86.png)
 
-6. 「実行」をクリックする。
+6．「実行」をクリックする。
 
 ![image](https://user-images.githubusercontent.com/5350508/180928761-9a2fff7e-7d13-4f47-be03-6dd971dcaad9.png)
 
-7. ユーザアカウント制御画面が表示されるので、「はい（許可する）」をクリックする。
+7．ユーザアカウント制御画面が表示されるので、「はい（許可する）」をクリックする。
 
 ![image](https://user-images.githubusercontent.com/5350508/180928797-c5b7a550-2858-445b-90cd-64e1dde8f4fb.png)
 
-8. Portable Pipelineが起動したら、「Settings」タブを開いて、「Preset:」をWSLにチェックを入れ、先ほど作成したWSLのユーザ名とパスワードを入力する。
+8．Portable Pipelineが起動したら、「Settings」タブを開いて、「Preset:」をWSLにチェックを入れ、先ほど作成したWSLのユーザ名とパスワードを入力する。
 
 ![image](https://user-images.githubusercontent.com/5350508/180928832-fbf022ad-c85e-4cf2-8891-49a458d9b29b.png)
 
