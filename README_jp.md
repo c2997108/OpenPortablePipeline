@@ -268,7 +268,7 @@ https://qiita.com/nakat-t/items/271071eeb0c0c9143396 を参考にvsyscall=emulat
 
 ### WSL番外編2 Dockerの手動インストール
 
-基本的には自動でインストールされるはずだけど、手動でインストールする場合はWSL用のDokcerインストール手順に従う。https://zenn.dev/sprout2000/articles/95b125e3359694 などを参照。
+基本的には自動でインストールされるはずだけど、手動でインストールする場合はWindows用のDocker Desktopではなくて、Ubuntu用の公式の手順でWSLにDokcerをインストールする。
 
 ## Macをサーバとして使用する場合のセットアップ方法
 1．Dockerのインストール
