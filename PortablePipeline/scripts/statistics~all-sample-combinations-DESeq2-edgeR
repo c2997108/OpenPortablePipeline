@@ -29,8 +29,16 @@ p=$opt_f
 sed 's/\r//g' "$input_1" > input.rem.table
 input_1=input.rem.table
 #sample.txt
-cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
-head -n 1 "$input_1"|cut -f 2-|sed 's/\t/\n/g'| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|
+ awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); sub(/[.]f(ast|)q$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
+head -n 1 "$input_1"|cut -f 2-|sed 's/\t/\n/g'| awk -F'\t' '
+  FILENAME==ARGV[1]{cat[$1]=$2}
+  FILENAME==ARGV[2]{
+   if(FNR==1){print "id\tcondition"};
+   a=$1; sub(/[.]gz$/,"",a); sub(/[.]f(ast|)q$/,"",a);
+   if(a in cat){print $1"\t"cat[a]}
+  }
+ ' sample.txt2 /dev/stdin > sample.input.txt
 
 if [ ! -e isoforms.count_table ]; then ln -s "$input_1" isoforms.count_table; fi
 
@@ -136,7 +144,7 @@ awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(FNR==1){print \$0}else{if(
 awk -F'\\t' -v g1=$g1 '\$2==g1{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.x
 awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.y
 
-awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
+awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[\$1]=1}} FILENAME==ARGV[2]{if(FNR==1){for(i=2;i<=NF;i++){if(flag[\$i]==1){flag2[i]=1}}}; ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag2[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
 #DESeq2
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
 #edgeR

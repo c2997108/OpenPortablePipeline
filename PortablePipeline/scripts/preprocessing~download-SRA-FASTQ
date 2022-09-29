@@ -1,0 +1,37 @@
+#!/bin/bash
+
+explanation='
+Download FASTQ files from NCBI SRA
+'
+inputdef='
+input_1:option:SRR list:*
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_r:SRR ID:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -r #opt_r# #input_1#"
+
+export IM_FASTQDUMP="ncbi/sra-tools:3.0.0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+if [ "$input_1" != "" ]; then
+ cat "$input_1"|sed 's/\r$//'|while read i; do echo "$ENV_FASTQDUMP fastq-dump --split-3 --gzip --outdir fastq $i"; done | DOPARALLELONE
+
+ WAITPARALLEL
+fi
+
+if [ "$opt_r" != "" ]; then
+ DO_FASTQDUMP fastq-dump --split-3 --gzip --outdir fastq "$opt_r"
+fi
+
+post_processing
+#<option detail>
+#</option detail>
+

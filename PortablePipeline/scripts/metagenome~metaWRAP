@@ -13,7 +13,7 @@ opt_m:memory limit (GB):64
 opt_b:MetaWRAP binning option:--metabat2 --concoct
 opt_r:MetaWRAP bin_refinement option:-A INITIAL_BINNING/metabat2_bins/ -B INITIAL_BINNING/concoct_bins/ -c 50 -x 10
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -r #opt_r# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -r #opt_r# #input_1# #input_2#"
 
 export IM_METAWRAP="c2997108/centos7:2-metawrap_2"
 export IM_CHECKM="quay.io/biocontainers/checkm-genome:1.1.3--py_1"

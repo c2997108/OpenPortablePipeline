@@ -64,12 +64,12 @@ if [ ! -e "$ref".fai ]; then
  DO_SAMTOOLS samtools faidx $ref
 fi
 
-DO_SEQKIT seqkit stats input_2/*|sed 's%^input_2/%%' > stats.txt
+DO_SEQKIT seqkit stats "$input_2"/*|sed 's%^'"$input_2"'/*%%' > stats.txt
 DO_AWK awk '{gsub(",","",$5); print $1"\t"$5}' stats.txt > stats.sum.txt
 rm -f stats.sum2.txt
 
 (if [ "$input_2" != "" ]; then
- for i in `find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
+ for i in `find "$input_2"/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
   if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
    j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
   elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
@@ -86,7 +86,7 @@ rm -f stats.sum2.txt
   else
    samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
    grep "^$i2"$'\t' stats.sum.txt >> stats.sum2.txt
-   echo "($ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\')|($ENV_AWK awk -v cov=$opt_b -f run.awk) > \'$i2.cnt\'"
+   echo "($ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\')|($ENV_AWK awk -v cov=$opt_b -f run.awk \'$ref.fai\' /dev/stdin) > \'$i2.cnt\'"
   fi
  done
 fi) | DOPARALLEL
@@ -96,8 +96,9 @@ WAITPARALLEL
 cat << 'EOF' > run2.sh
 #!/bin/bash
 export LC_NUMERIC="en_US.UTF-8"
-awk -F'\t' 'FILENAME==ARGV[1]{sum[$1]=$2} FILENAME==ARGV[2]{split($1,arr,"/"); bp[arr[1]]+=$2} FILENAME!=ARGV[1]&&FILENAME!=ARGV[2]{if(FNR==1){name=FILENAME; sub("[.]cnt$","",name); files[name]=1}else{split($1,arr,"/"); cnt[arr[1]][name]+=$3}} END{ORS=""; PROCINFO["sorted_in"]="@ind_str_asc"; print "id"; for(j in files){print "\t"j}; print "\n"; for(i in cnt){print i; for(j in files){if(j in cnt[i]){print "\t"cnt[i][j]/bp[i]*10*1000*1000*1000/sum[j]}else{print "\t0"}}; print "\n"}}' stats.sum2.txt ref.fa.fai *.cnt > all.txt
+awk -F'\t' 'FILENAME==ARGV[1]{sum[$1]=$2} FILENAME==ARGV[2]{split($1,arr,"/"); bp[arr[1]]+=$2} FILENAME!=ARGV[1]&&FILENAME!=ARGV[2]{if(FNR==1){name=FILENAME; sub("[.]cnt$","",name); files[name]=1}else{split($1,arr,"/"); cnt[arr[1]][name]+=$3}} END{ORS=""; PROCINFO["sorted_in"]="@ind_str_asc"; print "id"; for(j in files){print "\t"j}; print "\n"; for(i in cnt){print i; for(j in files){if(j in cnt[i]){if(sum[j]==0){print "\t0"}else{print "\t"cnt[i][j]/bp[i]*10*1000*1000*1000/sum[j]}}else{print "\t0"}}; print "\n"}}' stats.sum2.txt ref.fa.fai *.cnt > all.txt
 awk -F'\t' 'FILENAME==ARGV[1]{sum[$1]=$2} FILENAME==ARGV[2]{split($1,arr,"/"); bp[arr[1]]+=$2} FILENAME!=ARGV[1]&&FILENAME!=ARGV[2]{if(FNR==1){name=FILENAME; sub("[.]cnt$","",name); files[name]=1}else{split($1,arr,"/"); cnt[arr[1]][name]+=$3}} END{ORS=""; PROCINFO["sorted_in"]="@ind_str_asc"; print "id"; for(j in files){printf("\t"j" [%\047dbp]",sum[j])}; print "\n"; for(i in cnt){printf(i" [%\047dbp]",bp[i]); for(j in files){if(j in cnt[i]){printf("\t%\047d",cnt[i][j])}else{print "\t0"}}; print "\n"}}' stats.sum2.txt ref.fa.fai *.cnt > all_raw.txt
+awk -F'\t' 'NR==1{for(i=2;i<=NF;i++){name[i]=$i}} NR>1{for(i=2;i<=NF;i++){gsub(",","",$i); a[i]+=$i}} END{for(i=2;i<=NF;i++){print name[i]"\t"a[i]}}' all_raw.txt |awk 'BEGIN{print "id\tbases\tmapped bases [%]"} {gsub("[^0-9]","",$2); print $1"\t"$2"\t"$3/$2*100}' > map-to-MAG.txt
 EOF
 
 DO_AWK bash run2.sh
