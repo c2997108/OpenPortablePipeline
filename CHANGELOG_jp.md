@@ -1,8 +1,8 @@
 next
 
 # 1.1.1 (2022/9/29)
-- metagenome~PR2_NCBI-16S-mito-plastid_paired-end, metagenome~mapping-to-MAG, metagenome~mapping-to-MAG-with-full-assembly, preprocessing~download-SRA-FASTQを追加。
-- RNA-seq~Trinity-kallisto-sleuth, statistics~all-sample-combinations-DESeq2-edgeRのバグfix
+- ```metagenome~PR2_NCBI-16S-mito-plastid_paired-end, metagenome~mapping-to-MAG, metagenome~mapping-to-MAG-with-full-assembly, preprocessing~download-SRA-FASTQ```を追加。
+- ```RNA-seq~Trinity-kallisto-sleuth, statistics~all-sample-combinations-DESeq2-edgeR```のバグfix
 
 # 1.1.0 (2022/7/25)
 - WSL Ubuntu 22でdockerが起動しない不具合修正
