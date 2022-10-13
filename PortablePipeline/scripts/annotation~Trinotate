@@ -97,7 +97,7 @@ DO_TRINOTATE bash run-kegg.sh
 DO_BLASTN zcat /usr/local/db/nt.2019-06-18/nt.name.gz | (DO_TRINOTATE awk -F'\t' 'FILENAME==ARGV[1]{id[$1]=$2; sim[$1]=$3; len[$1]=$4; eval[$1]=$11; flagname[$2]=1} FILENAME==ARGV[2]{if(flagname[$1]==1){name[$1]=$2}else{delete flagname[$1]}} FILENAME==ARGV[3]{if(FNR==1){print $0"\tNCBI NT top hit\te-value\tsimilarity\thit length"}else{if(name[id[$2]]==""){name[id[$2]]=id[$2]}; print $0"\t"name[id[$2]]"\t"eval[$2]"\t"sim[$2]"\t"len[$2]}}' $fasta.blastn /dev/stdin Trinotate.xls2) > Trinotate.xls3
 
 DO_TRINOTATE awk -F'\t' '{ORS=""; print $2"\t"$1; for(i=3;i<=NF;i++){print "\t"$i}; print "\n"}' Trinotate.xls3 |
- DO_TRINOTATE awk -F'\t' 'NR==1{for(i=2;i<=NF;i++){if($i=="sprot_Top_BLASTP_hit"){n=i}}; OFS="\t"} {if(NR==1){$n="gene_name_from_sprot\t"$n}else{split($n,arr,"_"); $n=arr[1]"\t"$n}; print $0}' > Trinotate.output.txt
+ (DO_TRINOTATE awk -F'\t' 'NR==1{for(i=2;i<=NF;i++){if($i=="sprot_Top_BLASTP_hit"){n=i}}; OFS="\t"} {if(NR==1){$n="gene_name_from_sprot\t"$n}else{split($n,arr,"_"); $n=arr[1]"\t"$n}; print $0}') > Trinotate.output.txt
 
 DO_TRINOTATE rm -rf TMHMM_1
 DO_TRINOTATE rm -f transcriptSuperScaffold.fasta transcriptSuperScaffold.bed tmp.superscaff.rnammer.gff Trinotate.sqlite run-trinotate-import.sh

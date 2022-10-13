@@ -27,10 +27,10 @@ output="`basename ${fasta%.*}`.`basename ${table%.*}`.fasta"
 sed 's/\r//' "$table" > "$table.temp"
 
 DO_BASE /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/fasta_to_tab.pl "$fasta"|
- DO_BASE awk -F'\t' '
+ (DO_BASE awk -F'\t' '
   FILENAME==ARGV[1]{split($1,arr," "); flag[arr[1]]=1}
   FILENAME==ARGV[2]{split($1,arr," "); if(flag[arr[1]]!=1){print ">"$1; print $2}}
- ' "$table.temp" /dev/stdin > "$output"
+ ' "$table.temp" /dev/stdin) > "$output"
 
 
 post_processing
