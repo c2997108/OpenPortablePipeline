@@ -1,5 +1,9 @@
 next
 
+# 1.1.2 (2022/10/13)
+- ver1以降でdockerを使用した際にパイプを使用する場合、パイプの後ろは(DO_XXX XXX)と()で囲む必要があったのだけど、その修正を忘れて```broken pipe```とエラーが出ていた件を修正。修正範囲：```annotation~Trinotate```, ```preprocessing~exclude-specific-entries-in-FASTA```
+
+
 # 1.1.1 (2022/9/29)
 - ```metagenome~PR2_NCBI-16S-mito-plastid_paired-end, metagenome~mapping-to-MAG, metagenome~mapping-to-MAG-with-full-assembly, preprocessing~download-SRA-FASTQ```を追加。
 - ```RNA-seq~Trinity-kallisto-sleuth, statistics~all-sample-combinations-DESeq2-edgeR```のバグfix
