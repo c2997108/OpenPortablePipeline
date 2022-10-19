@@ -1,4 +1,5 @@
-next
+# 1.1.3 (2022/10/19)
+- ```metagenome~PR2_NCBI-16S-mito-plastid_single-end```の追加
 
 # 1.1.2 (2022/10/13)
 - ver1以降でdockerを使用した際にパイプを使用する場合、パイプの後ろは(DO_XXX XXX)と()で囲む必要があったのだけど、その修正を忘れて```broken pipe```とエラーが出ていた件を修正。修正範囲：```annotation~Trinotate```, ```preprocessing~exclude-specific-entries-in-FASTA```
