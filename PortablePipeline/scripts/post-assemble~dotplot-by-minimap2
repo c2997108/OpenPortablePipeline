@@ -11,8 +11,9 @@ optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):64
 opt_l:line width:1
+opt_a:minimap options (Add -P to show all homology):-x asm20
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -a #opt_a# #input_1# #input_2#"
 
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
@@ -33,8 +34,8 @@ q=$input_1
 outbase=`basename $q`-`basename ${db}`
 cpu=$N_CPU
 
-DO_MINIMAP2 minimap2 -x asm20 -t $cpu $db $q > $outbase.for.paf
-DO_MINIMAP2 minimap2 -x asm20 -t $cpu $q $db|awk -F'\t' '{print $6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11}' > $outbase.rev.paf
+DO_MINIMAP2 minimap2 $opt_a -t $cpu $db $q > $outbase.for.paf
+DO_MINIMAP2 minimap2 $opt_a -t $cpu $q $db|awk -F'\t' '{print $6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11}' > $outbase.rev.paf
 cat $outbase.for.paf $outbase.rev.paf|cut -f 1-11|awk 'a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]==0{a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]=1; print $0}' > $outbase.paf
 
 ln -sf $db $outbase.db.fa

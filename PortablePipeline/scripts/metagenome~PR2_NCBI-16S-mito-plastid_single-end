@@ -85,10 +85,10 @@ EOS
 
 sed 's/zcat/cat/g' run-gz.sh > run.sh
 
-(for i in `find $input_1/|egrep "(_R1.*|_1)[.]f(ast|)q$"||true`; do
+(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
  echo $ENV_PR2 bash run.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
 done
-for i in `find $input_1/|egrep "(_R1.*|_1)[.]f(ast|)q[.]gz$"||true`; do
+for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
  echo $ENV_PR2 bash run-gz.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
 done)|DOPARALLEL
 
