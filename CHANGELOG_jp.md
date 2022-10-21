@@ -1,3 +1,7 @@
+次回予告
+
+- ```Comparative-genomics~make-align-for-mauve```の追加
+
 # 1.1.3 (2022/10/19)
 - ```metagenome~PR2_NCBI-16S-mito-plastid_single-end```の追加
 
