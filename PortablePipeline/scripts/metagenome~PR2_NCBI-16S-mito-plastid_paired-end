@@ -135,7 +135,7 @@ echo "##filtering"
 cat $j.ssu.all.blast|awk -F'\t' '$3>'$bitscore'{if(a[$1]==1){if($3>=topbit*'$top'){print $0}}else{a[$1]=1; topbit=$3; print $0}}' > $j.ssu.blast.filtered
 
 echo "##determine LCA"
-awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$4} FILENAME==ARGV[2]{print name[$2]"\t"$0}' $ref.name $j.ssu.blast.filtered > $j.ssu.blast.filtered.name
+awk -F'\t' 'FILENAME==ARGV[1]{name[$2]=$4} FILENAME==ARGV[2]{split($2,arr,"[.]"); print name[arr[1]]"\t"$0}' $ref.name $j.ssu.blast.filtered > $j.ssu.blast.filtered.name
 
 awk -F'\t' '
 function searchLCA(data,  i, j, res, res2, str, n, stopflag){
