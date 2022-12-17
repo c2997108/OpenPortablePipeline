@@ -8,6 +8,20 @@
 - ```metagenome~silva_SSU+LSU-paired-end```でFASTQが.gz圧縮されているときにペアエンドを正しく取得できていない不具合を修正。
 - DO_XXXの時に()で囲まなくて良いように関数化を行った。
 - CUIにて、pp -sでsingularityを使用、pp -gでSGEを使用する機能を追加
+- 並列実行時にxargsのオプションに`-0`を追加することで、「'」、「"」、「\」をエスケープなしで処理できるように変更。修正したスクリプトの一覧は下記になる。
+```
+mapping-illumina~bwa_mem
+post-assemble~coverage-length-graph
+WGS~genotyping-by-GATK
+WGS~genotyping-by-mpileup
+metagenome~mapping-to-MAG
+RNA-seq~DEGanalysis
+statistics~all-sample-combinations-DESeq2-edgeR
+metagenome~clustering_pfam-annotation
+
+Hi-C~SALSA
+metagenome~mapping-to-MAG-with-full-assembly
+```
 
 # 1.1.3 (2022/10/19)
 - ```metagenome~PR2_NCBI-16S-mito-plastid_single-end```の追加
