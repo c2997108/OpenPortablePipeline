@@ -56,6 +56,14 @@ DIR_WORK="."
 #本当はPWDをrealpathに変換してから-v -wをしたほうがよいかも
 #CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
 CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-docker-list; docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
+function FUNC_RUN_DOCKER () {
+ PP_RUN_IMAGE="$1"
+ shift
+ PP_RUN_DOCKER_CMD=("${@}")
+ PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM
+ echo $PPDOCNAME >> "$workdir"/pp-docker-list
+ docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
+}
 #if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
 # CON_SING="singularity exec $PPSINGBINDS "
 #else
@@ -180,7 +188,12 @@ fi
 
 for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do export ENV_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
 shopt -s expand_aliases
-for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
+#Docker使用時に$CONの中に;が入っていてパイプが途中で切れてしまうので、その対策
+if [ "$CON" = "$CON_DOCKER" ]; then
+ for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="FUNC_RUN_DOCKER "$(eval "echo \$IM_`echo $i`")" "; done
+else
+ for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
+fi
 #for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do
 # BASH_ALIASES[$i]=`alias|grep "^alias DO_$i="|sed "s/^alias DO_$i=//; s/^'//; s/'$//"`;
 #done #for bash ver.3
@@ -201,9 +214,9 @@ parallel_setup(){
    if [ -e "$workdir/qsub.log" ]; then rm "$workdir/qsub.log"; fi
    if [ -e "$workdir/qsub.log2" ]; then rm "$workdir/qsub.log2"; fi
   fi
-  alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias DOPARALLELONE='xargs -0 -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
-  alias DOPARALLEL='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias DOPARALLEL='xargs -0 -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
  elif [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
   grep "^#" "$workdir"/wrapper.sh > $workdir/qsub.sh
@@ -217,14 +230,14 @@ parallel_setup(){
    if [ -e "$workdir/qsub.log" ]; then rm "$workdir/qsub.log"; fi
    if [ -e "$workdir/qsub.log2" ]; then rm "$workdir/qsub.log2"; fi
   fi
-  alias DOPARALLELONE='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias DOPARALLELONE='xargs -0 -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
-  alias DOPARALLEL='xargs -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
+  alias DOPARALLEL='xargs -0 -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
  else
-  alias DOPARALLELONE='xargs -I {} -P $N_CPU bash -c "{}"'
+  alias DOPARALLELONE='xargs -0 -I {} -P $N_CPU bash -c "{}"'
   alias WAITPARALLELONE=''
-  alias DOPARALLEL='xargs -I {} -P 1 bash -c "{}"'
+  alias DOPARALLEL='xargs -0 -I {} -P 1 bash -c "{}"'
   alias WAITPARALLEL=''
  fi
 }
@@ -295,6 +308,19 @@ done
 #input file realpath check
 echo "Checking the realpath of input files."
 depth_max=10
+PPLINK_SEARCH_HIST=()
+function is_go_to_next_path(){
+    local j="$1"
+    local vis=1
+    local i
+    for i in "${PPLINK_SEARCH_HIST[@]}" ; do
+     if [ "$i" = "$j" ]; then
+      vis=0
+     fi
+    done
+    echo $vis
+}
+
 function find_link_path_recursive () {
  # 明示的にローカル変数を使う
  local _count=${1}
@@ -312,9 +338,13 @@ function find_link_path_recursive () {
     #echo find_link_path1 $((${_count}+1)) "$PPINDIRTMP"
     find_link_path $((${_count}+1)) "$PPINDIRTMP"
    fi
+   local j
    for j in `find "$PPINDIRTMP"/|tail -n+2`; do
     #echo ${_count} "$j"
-    find_link_path_recursive $((${_count}+1)) "$j"
+    if [ `is_go_to_next_path "$j"` = 1 ]; then
+     PPLINK_SEARCH_HIST+=("$j")
+     find_link_path_recursive $((${_count}+1)) "$j"
+    fi
    done
   else
    if [ -L "$PPINDIRTMP" ]; then
@@ -324,6 +354,7 @@ function find_link_path_recursive () {
   fi
  fi
 }
+
 function find_link_path () {
  local _count=${1}
  if [ ${_count} -ge $((${depth_max}-1)) ]; then
@@ -335,14 +366,25 @@ function find_link_path () {
    if [ "$_is_abs" = 0 ]; then
     _file=`dirname "$2"`/"$_file"
    fi
-   local _dir=`dirname "$_file"`
-   PPINDIRS+=(`realpath "$_dir"`)
-   #echo "$_file"
+   local _dir=$(realpath -s `dirname "$_file"`)
+   PPINDIRS+=("$_dir")
    _file=`realpath -s "$_file"` #if文の判定式の中で``にするだけだとスペースがきちんと展開されない
    #echo "$_file"
+   #echo "$_dir"
    if [ -L "$_file" ]; then
     #echo "in find_link_path: " $_count "$_file"
-    find_link_path_recursive $_count "$_file"
+    if [ `is_go_to_next_path "$_file"` = 1 ]; then
+     PPLINK_SEARCH_HIST+=("$_file")
+     find_link_path_recursive $_count "$_file"
+    fi
+   fi
+   #一つ上のフォルダまではシンボリックリンクかどうか調べておく
+   if [ -L "$_dir" ]; then
+    #echo "in find_link_path: " $_count "$_dir"
+    if [ `is_go_to_next_path "$_dir"` = 1 ]; then
+     PPLINK_SEARCH_HIST+=("$_dir")
+     find_link_path_recursive $_count "$_dir"
+    fi
    fi
   fi
  fi

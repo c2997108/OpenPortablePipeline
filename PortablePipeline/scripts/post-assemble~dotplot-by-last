@@ -1,0 +1,250 @@
+#!/bin/bash
+
+explanation='
+compare large genomes by dot plot using last
+'
+inputdef='
+input_1::FASTA (x axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2::FASTA (y axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_l:line width:1
+opt_a:lastal options:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -a #opt_a# #input_1# #input_2#"
+
+export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_LAST="quay.io/biocontainers/last:1418--h5b5514e_0"
+export IM_IMAGEMAGICK="c2997108/centos6:2-imagemagick"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+
+db=$input_2
+q=$input_1
+outbase=`basename $q`-`basename ${db}`
+cpu=$N_CPU
+
+DO_LAST lastdb -P$cpu -uNEAR -R01 $outbase.lastdb $db
+awk '{if($0~"^>"){n++; if(n>'$cpu'){n=1}}; print $0 > "'$outbase'.split."n".fa"}' $q
+
+for i in `ls $outbase.split.*.fa|sed 's/'"$outbase"'.split.//; s/.fa$//'`; do
+ (
+  (DO_LAST lastal $opt_a -P$cpu $outbase.lastdb $outbase.split.$i.fa) | (DO_LAST last-split -m1e-6) > $outbase.split.$i.maf
+  DO_LAST maf-convert tab $outbase.split.$i.maf  >  $outbase.split.$i.maf.tab
+ ) &
+done
+wait
+(for i in `ls $outbase.split.*.fa|sed 's/'"$outbase"'.split.//; s/.fa$//'`; do
+ cat $outbase.split.$i.maf.tab
+done) > $outbase.maf.tab
+
+ln -sf $db $outbase.db.fa
+ln -sf $q $outbase.q.fa
+DO_SAMTOOLS samtools faidx $outbase.db.fa
+DO_SAMTOOLS samtools faidx $outbase.q.fa
+
+in=$outbase.maf.tab
+fafai1=$outbase.db.fa.fai
+fafai2=$outbase.q.fa.fai
+
+
+DO_AWK awk -F'\t' '
+ FILENAME==ARGV[1]{if($0!~"^#" && $6>=1*1000 && $11>=1*1000){if($10=="+"){aln[$2":"$7]["+"]+=$4}else if($10=="-"){aln[$2":"$7]["-"]+=$4}; aln3[$2":"$7]+=$4}}
+ FILENAME==ARGV[2] && $0!~"^#"{if($6>=1*1000 && $11>=1*1000){if(aln[$2":"$7]["+"]>=aln[$2":"$7]["-"]){print aln3[$2":"$7]"\t+\t"$0}else{print aln3[$2":"$7]"\t-\t"$0}}}
+' $in ./$in|sort -k1,1gr -k6,6g > $in.da
+DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{a[$4][$9]+=$6; b[$9][$4]+=$11; d[$4][$9][length(d[$4][$9])]=$0}
+ FILENAME==ARGV[2]{
+  if(n==0){
+   n++; for(i in a){
+    k=0;for(j in a[i]){
+     if(a[i][j]>k){
+      k=a[i][j]; max1[i]=j;
+     }
+    };tempavg=0; tempn=0; for(j in d[i][max1[i]]){
+     split(d[i][max1[i]][j],arr,"\t");
+     if(arr[12]=="+"){tempavg=(tempavg*tempn+(arr[10]+arr[11]/2)*arr[11])/(tempn+arr[11])}else{tempavg=(tempavg*tempn+(arr[13]-arr[10]-arr[11]/2)*arr[11])/(tempn+arr[11])};
+     tempn+=arr[6];
+    }; avg1[i]=tempavg; fmax1[max1[i]][i]=1;
+   }; for(i in b){
+    k=0;for(j in b[i]){
+     if(b[i][j]>k){
+      k=b[i][j]; max2[i]=j;
+     }
+    };tempavg=0; tempn=0; for(j in d[max2[i]][i]){
+     split(d[max2[i]][i][j],arr,"\t");
+     tempavg=(tempavg*tempn+(arr[5]+arr[6]/2)*arr[6])/(tempn+arr[6])
+    }; avg2[i]=tempavg; fmax2[max2[i]][i]=1;
+   }
+  };
+  if(check1[$4]=="" && check2[$9]==""){
+   check1[$4]="+"; check2[$9]=$2;
+   delete(dafter); delete(dbefore); delete(eafter); delete(ebefore);
+   if($4 in fmax2){
+   for(m in fmax2[$4]){
+    if(max2[m]==$4 && check2[m]==""){
+     split(d[max2[m]][m][0] ,arr,"\t");
+     if(arr[1]>arr[13]*0.1){
+      check2[m]=arr[2];
+      if(avg2[m]<($5+$6/2)){dbefore[m]=sprintf("%12d%s%s", avg2[m], SUBSEP, m)}else{dafter[m]=sprintf("%12d%s%s", avg2[m], SUBSEP, m)}
+     }
+    }
+   }};
+   if($9 in fmax1){
+   for(m in fmax1[$9]){
+    if(max1[m]==$9 && check1[m]==""){
+     split(d[m][max1[m]][0],arr,"\t");
+     if(arr[1]>arr[8]*0.1){
+      if($2=="+"){check1[m]=arr[2]}else{if(arr[2]=="+"){check1[m]="-"}else{check1[m]="+"}};
+      if($12=="+"){tempavg=$10+$11/2}else{tempavg=$13-$10-$11/2}
+      if(avg1[m]<tempavg){ebefore[m]=sprintf("%12d%s%s", avg1[m], SUBSEP, m)}else{eafter[m]=sprintf("%12d%s%s", avg1[m], SUBSEP, m)}
+     }
+    }
+   }};
+   nb=asort(dbefore); na=asort(dafter);
+   nd=asort(ebefore); ne=asort(eafter);
+   for(m=1;m<=nb;m++){
+    split(dbefore[m], arr_tmp, SUBSEP); print "info:"arr_tmp[1]"\t"check1[$4]"\t"check2[arr_tmp[2]]"\t"d[$4][arr_tmp[2]][0]
+   };
+   if(check2[$9]=="+"){
+    for(m=1;m<=nd;m++){
+     split(ebefore[m], arr_tmp, SUBSEP); print "info:"arr_tmp[1]"\t"check1[arr_tmp[2]]"\t"check2[$9]"\t"d[arr_tmp[2]][$9][0]
+    }
+   }else{
+    for(m=ne;m>=1;m--){
+     split(eafter[m], arr_tmp, SUBSEP); print "info:"arr_tmp[1]"\t"check1[arr_tmp[2]]"\t"check2[$9]"\t"d[arr_tmp[2]][$9][0]
+    }
+   };
+   print "main:\t"check1[$4]"\t"check2[$9]"\t"$0;
+   for(m=1;m<=na;m++){
+    split(dafter[m], arr_tmp, SUBSEP); print "info:"arr_tmp[1]"\t"check1[$4]"\t"check2[arr_tmp[2]]"\t"d[$4][arr_tmp[2]][0]
+   };
+   if(check2[$9]=="+"){
+    for(m=1;m<=ne;m++){
+     split(eafter[m], arr_tmp, SUBSEP); print "info:"arr_tmp[1]"\t"check1[arr_tmp[2]]"\t"check2[$9]"\t"d[arr_tmp[2]][$9][0]
+    }
+   }else{
+    for(m=nd;m>=1;m--){
+     split(ebefore[m], arr_tmp, SUBSEP); print "info:"arr_tmp[1]"\t"check1[arr_tmp[2]]"\t"check2[$9]"\t"d[arr_tmp[2]][$9][0]
+    }
+   };
+  }
+ }' $in.da ./$in.da > $in.da3
+DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{if($7 in a){}else{a[$7][1]=tota*1; a[$7][2]=$11; a[$7][3]=$10; a[$7][4]=$2; tota+=$11;
+      if($2=="+"){print $7"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"}else{print ".\t"tota > "'$in'.xp.txt"; print $7"\t"tota > "'$in'.xm.txt"}};
+     if($12 in b){}else{b[$12][1]=totb*1; b[$12][2]=$16; b[$12][3]=$15; b[$12][4]=$3; totb+=$16;
+      if($3=="+"){print $12"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}else{print ".\t"totb > "'$in'.yp.txt"; print $12"\t"totb > "'$in'.ym.txt"}}}
+    FILENAME==ARGV[2]{if($4 in a){}else{a[$4][1]=tota*1; a[$4][2]=$8; a[$4][3]="+"; a[$4][4]="+"; tota+=$8; print $4"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"};
+     if($9 in b){}else{b[$9][1]=totb*1; b[$9][2]=$13; b[$9][3]=$12; b[$9][4]=$2; totb+=$13;
+      if($2=="+"){print $9"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}else{print ".\t"totb > "'$in'.yp.txt"; print $9"\t"totb > "'$in'.ym.txt"}};
+     if($12=="+"){ystart=$10; ywidth=$11; ylen=$13}else{ystart=$13-$10-$11; ywidth=$11; ylen=$13};
+     if(a[$4][4]=="+"){x1=a[$4][1]+$5; x2=a[$4][1]+$5+$6}else{x1=a[$4][1]+$8-$5; x2=a[$4][1]+$8-$5-$6};
+     if((b[$9][4]=="+" && $12=="+") || (b[$9][4]=="-" && $12=="-")){y1=b[$9][1]+$10; y2=b[$9][1]+$10+$11}else{y1=b[$9][1]+$13-$10; y2=b[$9][1]+$13-$10-$11}; print x1"\t"x2"\t"y1"\t"y2}
+    FILENAME==ARGV[3]{if($1 in a){}else{tota+=$2; print $1"\t"tota > "'$in'.xp.txt"}}
+    FILENAME==ARGV[4]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'$in'.yp.txt"}}' $in.da3 $in.da $fafai1 $fafai2 > $in.da4
+
+cat << EOF > run-R.R
+xp=read.table("$in.xp.txt")
+xm=read.table("$in.xm.txt")
+yp=read.table("$in.yp.txt")
+ym=read.table("$in.ym.txt")
+if(nrow(xp)==1){xp2=0}else{xp2=c(0,xp[1:(nrow(xp)-1),2])}
+if(nrow(xm)==1){xm2=0}else{xm2=c(0,xm[1:(nrow(xm)-1),2])}
+if(nrow(yp)==1){yp2=0}else{yp2=c(0,yp[1:(nrow(yp)-1),2])}
+if(nrow(ym)==1){ym2=0}else{ym2=c(0,ym[1:(nrow(ym)-1),2])}
+#png("$in.png",width=4000,height=4000)
+#library("Cairo")
+#CairoPNG("$in.png",width=4000,height=4000)
+pdf("$in.pdf",width=30,height=30)
+b=read.table("$in.da4")
+par(mar=c(10,10,4,4))
+plot(c(0,max(xp[,2])),c(0,max(yp[,2])),col="white",xaxt="n",yaxt="n", xlab="", ylab="")
+axis(1,xp[,2],lab=F)
+axis(2,yp[,2],lab=F)
+for(i in 1:dim(xp)[1]){abline(v=xp[i,2], col='gray', lty=2)}
+abline(v=0, col='gray', lty=2)
+#abline(v=max(b[,1:2]), col='gray', lty=2)
+for(i in 1:dim(yp)[1]){abline(h=yp[i,2], col='gray', lty=2)}
+abline(h=0, col='gray', lty=2)
+#abline(h=max(b[,3:4]), col='gray', lty=2)
+for(i in 1:dim(b)[1]){if((b[i,2]-b[i,1])/1.0*(b[i,4]-b[i,3])/1.0>0){par(col="red")}else{par(col="blue")}; lines(c(b[i,1],b[i,2]),c(b[i,3],b[i,4]),lwd=$opt_l)}
+par(xpd=TRUE, col="red")
+text(xp[,2]-(xp[,2]-xp2)/2,par("usr")[3]-1.5,xp[,1],adj=c(1,1),srt=45)
+text(par("usr")[1]-1.5,yp[,2]-(yp[,2]-yp2)/2,yp[,1],adj=c(1,1),srt=45)
+par(xpd=TRUE, col="blue")
+text(xm[,2]-(xm[,2]-xm2)/2,par("usr")[3]-1.5,xm[,1],adj=c(1,1),srt=45)
+text(par("usr")[1]-1.5,ym[,2]-(ym[,2]-ym2)/2,ym[,1],adj=c(1,1),srt=45)
+dev.off()
+EOF
+
+DO_R R --vanilla < run-R.R
+DO_IMAGEMAGICK convert -density 300 $in.pdf $in.png
+
+
+
+
+post_processing
+#<option detail>
+#<opt_a>
+E-value options (default settings):
+-D: query letters per random alignment (1e+06)
+-E: maximum expected alignments per square giga (1e+18/D/refSize/numOfStrands)
+
+Score options (default settings):
+-r: match score   (2 if -M, else  6 if 0<Q<5, else 1 if DNA)
+-q: mismatch cost (3 if -M, else 18 if 0<Q<5, else 1 if DNA)
+-p: match/mismatch score matrix (protein-protein: BL62, DNA-protein: BL80)
+-a: gap existence cost (DNA: 7, protein: 11, 0<Q<5: 21)
+-b: gap extension cost (DNA: 1, protein:  2, 0<Q<5:  9)
+-A: insertion existence cost (a)
+-B: insertion extension cost (b)
+-c: unaligned residue pair cost (off)
+-F: frameshift cost (off)
+-x: maximum score drop for gapped alignments (max[y, e-1])
+-y: maximum score drop for gapless alignments (t*10)
+-z: maximum score drop for final gapped alignments (x)
+-d: minimum score for gapless alignments (min[e, t*ln(1000*refSize/n)])
+-e: minimum score for gapped alignments
+
+Initial-match options (default settings):
+-m: maximum initial matches per query position (10)
+-l: minimum length for initial matches (1)
+-L: maximum length for initial matches (infinity)
+-k: use initial matches starting at every k-th position in each query (1)
+-W: use "minimum" positions in sliding windows of W consecutive positions
+
+Miscellaneous options (default settings):
+-s: strand: 0=reverse, 1=forward, 2=both (2 for DNA, 1 for protein)
+-S: score matrix applies to forward strand of: 0=reference, 1=query (0)
+-K: omit alignments whose query range lies in >= K others with > score (off)
+-C: omit gapless alignments in >= C others with > score-per-length (off)
+-P: number of parallel threads (1)
+-i: query batch size (8 KiB, unless there is > 1 thread or lastdb volume)
+-M: find minimum-difference alignments (faster but cruder)
+-T: type of alignment: 0=local, 1=overlap (0)
+-n: maximum gapless alignments per query position (infinity if m=0, else m)
+-N: stop after the first N alignments per query strand
+-R: repeat-marking options (the same as was used for lastdb)
+-u: mask lowercase during extensions: 0=never, 1=gapless,
+    2=gapless+postmask, 3=always (2 if lastdb -c and Q<5, else 0)
+-w: suppress repeats inside exact matches, offset by <= this distance (1000)
+-G: genetic code file
+-t: 'temperature' for calculating probabilities (1/lambda)
+-g: 'gamma' parameter for gamma-centroid and LAMA (1)
+-j: output type: 0=match counts, 1=gapless, 2=redundant gapped, 3=gapped,
+                 4=column ambiguity estimates, 5=gamma-centroid, 6=LAMA,
+                 7=expected counts (3)
+-Q: input format: 0=fasta, 1=fastq-sanger, 2=fastq-solexa, 3=fastq-illumina,
+                  4=prb, 5=PSSM (0)
+#</opt_a>
+#</option detail>
+

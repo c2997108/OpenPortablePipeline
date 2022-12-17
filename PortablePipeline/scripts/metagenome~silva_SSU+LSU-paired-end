@@ -109,11 +109,16 @@ echo "##count reads"
 n0=`expr $(zcat $i|wc -l) / 4`
 
 echo "##convert fastq to fasta"
-j=${i%.*}.fasta
+if [ `echo $i|egrep "[.]gz$"|wc -l || true` = 1 ];then
+ j=${i%.*}
+ j=${j%.*}.fasta
+else
+ j=${i%.*}.fasta
+fi
 zcat $i|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j
 
-if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
- i2=`echo $i|sed 's/_1[.]f\(ast\|\)q$/_2.f\1q/'`;
+if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+ i2=`echo $i|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$/_2.f\1q\2/'`;
 else
  i2=`echo $i|sed 's/_R1/_R2/'`
 fi

@@ -57,7 +57,7 @@ for i in `find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
  fi
  outbase=output.bwa/`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
  samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
- echo "$ENV_BWA bwa mem $opt_b -t $N_CPU -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$i2\' |( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o \'$outbase\'.bam); $ENV_SAMTOOLS samtools index \'$outbase\'.bam; $ENV_GATK gatk --java-options \'-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1\' HaplotypeCaller -R \'$ref\' -I \'$outbase\'.bam -O \'$outbase\'.g.vcf.gz -ERC GVCF"
+ echo "$ENV_BWA bwa mem $opt_b -t $N_CPU -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$i2' |( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o '$outbase'.bam); $ENV_SAMTOOLS samtools index '$outbase'.bam; $ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' HaplotypeCaller -R '$ref' -I '$outbase'.bam -O '$outbase'.g.vcf.gz -ERC GVCF"
 done | DOPARALLEL
 
 WAITPARALLEL
@@ -68,7 +68,7 @@ paste gvcf.list.txt2 gvcf.list.txt > gvcf.list.txt3
 mkdir -p output.gatk
 for i in `cat $ref.fai |cut -f 1`; do
  if [ -e output.gatk/genomicsdb.$i ]; then DO_GATK rm -rf output.gatk/genomicsdb.$i; fi
- echo "$ENV_GATK gatk --java-options \'-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1\' GenomicsDBImport --genomicsdb-workspace-path output.gatk/genomicsdb.$i --batch-size 5 -L $i --sample-name-map gvcf.list.txt3 --reader-threads 1; $ENV_GATK gatk --java-options \'-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1\' GenotypeGVCFs $opt_g -R $ref -O output.gatk/out.$i.vcf.gz -V gendb://output.gatk/genomicsdb.$i -L $i"
+ echo "$ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' GenomicsDBImport --genomicsdb-workspace-path output.gatk/genomicsdb.$i --batch-size 5 -L $i --sample-name-map gvcf.list.txt3 --reader-threads 1; $ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' GenotypeGVCFs $opt_g -R $ref -O output.gatk/out.$i.vcf.gz -V gendb://output.gatk/genomicsdb.$i -L $i"
 done | DOPARALLEL
 
 WAITPARALLEL

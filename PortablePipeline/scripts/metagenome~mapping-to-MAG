@@ -12,7 +12,7 @@ opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_b:alignment coverage threshold:0.8
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_b# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2#"
 
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h91753b0_3"
 export IM_AWK="centos:7"
@@ -82,11 +82,11 @@ rm -f stats.sum2.txt
    j2=`basename $j`
    samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
    awk -F'\t' 'FILENAME==ARGV[1]{a=$2} FILENAME==ARGV[2]{print $1"\t"$2+a}' <(grep "^$j2"$'\t' stats.sum.txt) <(grep "^$i2"$'\t' stats.sum.txt) >> stats.sum2.txt
-   echo "($ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$j\')|($ENV_AWK awk -v cov=$opt_b -f run.awk \'$ref.fai\' /dev/stdin) > \'$i2.cnt\'"
+   echo "($ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$j')|($ENV_AWK awk -v cov=$opt_b -f run.awk '$ref.fai' /dev/stdin) > '$i2.cnt'"
   else
    samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
    grep "^$i2"$'\t' stats.sum.txt >> stats.sum2.txt
-   echo "($ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\')|($ENV_AWK awk -v cov=$opt_b -f run.awk \'$ref.fai\' /dev/stdin) > \'$i2.cnt\'"
+   echo "($ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i')|($ENV_AWK awk -v cov=$opt_b -f run.awk '$ref.fai' /dev/stdin) > '$i2.cnt'"
   fi
  done
 fi) | DOPARALLEL

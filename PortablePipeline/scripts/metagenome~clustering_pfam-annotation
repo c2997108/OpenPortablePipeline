@@ -45,10 +45,10 @@ if [ "$input_2" = "" ] && [ "$input_3" = "" ]; then echo No input FASTQ; exit 1;
   i2=`basename $i`
   if [ -e "$j" ]; then
    samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' \'$j\' > \'$i2.sam\'"
+   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$j' > '$i2.sam'"
   else
    samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' > \'$i2.sam\'"
+   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' > '$i2.sam'"
   fi
  done
 fi
@@ -56,7 +56,7 @@ if [ "$input_3" != "" ]; then
  for i in `find $input_3/ |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
   i2=`basename $i`
   samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-  echo "$ENV_BWA bwa mem -t $N_CPU -M -R \'@RG\\\tID:$samplename\\\tSM:$samplename\\\tLB:library\' \'$ref\' \'$i\' > \'$i2.sam\'"
+  echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' > '$i2.sam'"
  done
 fi
 ) | DOPARALLEL
@@ -79,7 +79,7 @@ samtools index "$outname".clean.bam
 EOF
 
 for i in *.sam; do
- echo "$ENV_SAMTOOLS bash run-count.sh \'$i\' \'$ref\' \'$N_CPU\'"
+ echo "$ENV_SAMTOOLS bash run-count.sh '$i' '$ref' '$N_CPU'"
 done | DOPARALLEL
 WAITPARALLEL
 

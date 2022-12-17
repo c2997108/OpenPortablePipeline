@@ -1,0 +1,121 @@
+#!/bin/bash
+
+explanation='
+Make an alignment file for Mauve.
+If you finish this pipeline, you can use a mauve-align file and output_for_mauve for chromosome names.
+You can see chromosome names if you check "View -> Style -> Annotated features -> Always show" on Mauve.
+'
+inputdef='
+input_1:directory:reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_a:minimap2 options:-x asm20
+opt_b:progressiveMauve options (if you want to more alignments, add --weight=10):
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -b #opt_b# #input_1#"
+
+export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
+export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
+export IM_EMBOSS="quay.io/biocontainers/emboss:6.6.0--h8719169_4"
+export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.16--h84994c4_0"
+export IM_BASE="c2997108/centos7:metacor7-mauve"
+export IM_MAUVE="c2997108/centos7:metacor7-mauve"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+mkdir -p reformat_fasta
+(for i in `find $input_1/|egrep "[.](fa|fasta|fsa|fna)$"||true`; do
+ echo $ENV_EXONERATE fastareformat "$i" "|"sed 's/\r//g' ">" reformat_fasta/`basename "$i"`
+done
+for i in `find $input_1/|egrep "[.](fa|fasta|fsa|fna)[.]gz$"||true`; do
+ DO_BASE gzip -dc "$i" > reformat_fasta/`basename "$i" .gz`.temp.fasta
+ echo $ENV_EXONERATE fastareformat reformat_fasta/`basename "$i" .gz`.temp.fasta "|"sed 's/\r//g' ">" reformat_fasta/`basename "$i" .gz`";"rm -f reformat_fasta/`basename "$i" .gz`.temp.fasta
+done)|DOPARALLELONE
+
+WAITPARALLEL
+
+for i in `find reformat_fasta|egrep "[.](fa|fasta|fsa|fna)$"||true`; do
+ echo "$i"
+done|awk '{if(old!=""){print old"\t"$1}else{print $1}; old=$1}' > list.txt
+
+(for i in `find reformat_fasta|egrep "[.](fa|fasta|fsa|fna)$"||true`; do
+ echo $ENV_SAMTOOLS samtools faidx "$i"
+done)|DOPARALLELONE
+
+WAITPARALLEL
+
+mkdir -p output_for_mauve
+i=`head -n 1 list.txt`
+cat "$i".fai|awk -F'\t' '{print $1"\t1"}' > `basename "$i"`.txt
+DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=length(x);i>0;i--){switch(substr(x,i,1)){case "A":b=b"T";break; case "C":b=b"G";break; case "G":b=b"C";break; case "T":b=b"A";break; case "a":b=b"t";break; case "c":b=b"g";break; case "g":b=b"c";break; case "t":b=b"a";break; default:b=b"N";break}}; return b} BEGIN{print ">'`basename $i`'"; ORS=""} FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2} FILENAME==ARGV[2]{if($2>0){print seq[$1]}else{print revcomp(seq[$1])}} END{print "\n"}' /dev/stdin `basename "$i"`.txt > `basename "$i"`.txt2
+DO_EMBOSS seqret -sequence `basename "$i"`.txt2 -outseq `basename "$i"`.txt2.gb -osformat genbank
+awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai `basename "$i"`.txt `basename "$i"`.txt2.gb > output_for_mauve/`basename "$i"`.gb
+
+tail -n+2 list.txt |while read k; do
+ i=`echo "$k"|cut -f 2`
+ j=`echo "$k"|cut -f 1`
+ DO_MINIMAP2 minimap2 $opt_a -t $N_CPU "$j" "$i" > `basename "$i"`_`basename "$j"`.paf
+ cat `basename "$i"`_`basename "$j"`.paf|awk -F'\t' '{a[$1][$6][$5]+=$10; len[$1]=$2; len2[$6]=$7; a[$1][$6]["mid"]+=($9-$8+1)*($8+$9)/2; a[$1][$6]["n"]+=($9-$8+1)} END{for(i in a){for(j in a[i]){str="1"; if(a[i][j]["-"]>a[i][j]["+"]){str="-1"}; print i"\t"j"\t"a[i][j]["+"]+a[i][j]["-"]"\t"len[i]"\t"a[i][j]["+"]+0"\t"a[i][j]["-"]+0"\t"a[i][j]["mid"]/a[i][j]["n"]/len2[j]"\t"str}}}'|sort -k1,1 -k3,3gr -t$'\t'|awk 'a[$1]==0{a[$1]=1; print $0}'|sort -k2,2 -k7,7n -t$'\t' > `basename "$i"`.txt0
+ DO_BASE awk -F'\t' 'FILENAME==ARGV[1]{n[$2]++; data[$2][n[$2]]["id"]=$1; data[$2][n[$2]]["orient"]=$8} FILENAME==ARGV[2]{if($1 in data){if($2>0){for(i=1; i<=length(data[$1]); i++){print data[$1][i]["id"]"\t"data[$1][i]["orient"]*$2; flag[data[$1][i]["id"]]=1}}else{for(i=length(data[$1]); i>=1; i--){print data[$1][i]["id"]"\t"data[$1][i]["orient"]*$2; flag[data[$1][i]["id"]]=1}}}} FILENAME==ARGV[3]&&flag[$1]!=1{print $1"\t1"}'  `basename "$i"`.txt0 `basename "$j"`.txt "$i".fai > `basename "$i"`.txt
+ DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=length(x);i>0;i--){switch(substr(x,i,1)){case "A":b=b"T";break; case "C":b=b"G";break; case "G":b=b"C";break; case "T":b=b"A";break; case "a":b=b"t";break; case "c":b=b"g";break; case "g":b=b"c";break; case "t":b=b"a";break; default:b=b"N";break}}; return b} BEGIN{print ">'`basename $i`'"; ORS=""} FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2} FILENAME==ARGV[2]{if($2>0){print seq[$1]}else{print revcomp(seq[$1])}} END{print "\n"}' /dev/stdin `basename "$i"`.txt > `basename "$i"`.txt2
+ DO_EMBOSS seqret -sequence `basename "$i"`.txt2 -outseq `basename "$i"`.txt2.gb -osformat genbank
+ awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai `basename "$i"`.txt `basename "$i"`.txt2.gb > output_for_mauve/`basename "$i"`.gb
+done
+
+DO_MAUVE /usr/local/mauve_snapshot_2015-02-13/linux-x64/progressiveMauve $opt_b --output=mauve-align --output-guide-tree=mauve-align.guide_tree --backbone-output=mauve-align.backbone output_for_mauve/*.gb
+
+post_processing
+
+#<option detail>
+#<opt_a>
+Options:
+        --island-gap-size=<number> Alignment gaps above this size in nucleotides are considered to be islands [20]
+        --profile=<file> (Not yet implemented) Read an existing sequence alignment in XMFA format and align it to other sequences or alignments
+        --apply-backbone=<file> Read an existing sequence alignment in XMFA format and apply backbone statistics to it
+        --disable-backbone Disable backbone detection
+        --mums Find MUMs only, do not attempt to determine locally collinear blocks (LCBs)
+        --seed-weight=<number> Use the specified seed weight for calculating initial anchors
+        --output=<file> Output file name.  Prints to screen by default
+        --backbone-output=<file> Backbone output file name (optional).
+        --match-input=<file> Use specified match file instead of searching for matches
+        --input-id-matrix=<file> An identity matrix describing similarity among all pairs of input sequences/alignments
+        --max-gapped-aligner-length=<number> Maximum number of base pairs to attempt aligning with the gapped aligner
+        --input-guide-tree=<file> A phylogenetic guide tree in NEWICK format that describes the order in which sequences will be aligned
+        --output-guide-tree=<file> Write out the guide tree used for alignment to a file
+        --version Display software version information
+        --debug Run in debug mode (perform internal consistency checks--very slow)
+        --scratch-path-1=<path> Designate a path that can be used for temporary data storage.  Two or more paths should be specified.
+        --scratch-path-2=<path> Designate a path that can be used for temporary data storage.  Two or more paths should be specified.
+        --collinear Assume that input sequences are collinear--they have no rearrangements
+        --scoring-scheme=<ancestral|sp_ancestral|sp> Selects the anchoring score function.  Default is extant sum-of-pairs (sp).
+        --no-weight-scaling Don't scale LCB weights by conservation distance and breakpoint distance
+        --max-breakpoint-distance-scale=<number [0,1]> Set the maximum weight scaling by breakpoint distance.  Defaults to 0.5
+        --conservation-distance-scale=<number [0,1]> Scale conservation distances by this amount.  Defaults to 0.5
+        --muscle-args=<arguments in quotes> Additional command-line options for MUSCLE.  Any quotes should be escaped with a backslash
+        --skip-refinement Do not perform iterative refinement
+        --skip-gapped-alignment Do not perform gapped alignment
+        --bp-dist-estimate-min-score=<number> Minimum LCB score for estimating pairwise breakpoint distance
+        --mem-clean Set this to true when debugging memory allocations
+        --gap-open=<number> Gap open penalty
+        --repeat-penalty=<negative|zero> Sets whether the repeat scores go negative or go to zero for highly repetitive sequences.  Default is negative.
+        --gap-extend=<number> Gap extend penalty
+        --substitution-matrix=<file> Nucleotide substitution matrix in NCBI format
+        --weight=<number> Minimum pairwise LCB score
+        --min-scaled-penalty=<number> Minimum breakpoint penalty after scaling the penalty by expected divergence
+        --hmm-p-go-homologous=<number> Probability of transitioning from the unrelated to the homologous state [0.00001]
+        --hmm-p-go-unrelated=<number> Probability of transitioning from the homologous to the unrelated state [0.000000001]
+        --hmm-identity=<number> Expected level of sequence identity among pairs of sequences, ranging between 0 and 1 [0.7]
+        --seed-family Use a family of spaced seeds to improve sensitivity
+        --solid-seeds Use solid seeds. Do not permit substitutions in anchor matches.
+        --coding-seeds Use coding pattern seeds. Useful to generate matches coding regions with 3rd codon position degeneracy.
+        --disable-cache Disable recursive anchor search cacheing to workaround a crash bug
+        --no-recursion Disable recursive anchor search
+
+#</opt_a>
+#</option detail>

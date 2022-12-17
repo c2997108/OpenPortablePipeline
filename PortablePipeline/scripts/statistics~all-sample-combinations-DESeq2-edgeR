@@ -26,7 +26,7 @@ set -o pipefail
 
 p=$opt_f
 
-sed 's/\r//g' "$input_1" > input.rem.table
+sed 's/\r//g; s/ (counts)//g' "$input_1" > input.rem.table
 input_1=input.rem.table
 #sample.txt
 cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|
@@ -146,9 +146,9 @@ awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.inp
 
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[\$1]=1}} FILENAME==ARGV[2]{if(FNR==1){for(i=2;i<=NF;i++){if(flag[\$i]==1){flag2[i]=1}}}; ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag2[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
 #DESeq2
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$annfile'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
 #edgeR
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "\\'$annfile\\'" "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$annfile'" "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
 
 EOF
 

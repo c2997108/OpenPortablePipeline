@@ -1,0 +1,133 @@
+#!/bin/bash
+
+explanation='
+Taxonomic classifications by bacterial 10 single copy core genes
+'
+inputdef='
+input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_b:blast option:
+opt_d:bit score threshold:100
+opt_t:minimum identity:90
+opt_g:read number for normalization:10000
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# #input_1#"
+
+export IM_BLAST="c2997108/biocontainers:blast-2.13.0_core10_2"
+export IM_BASE="c2997108/centos7:3-java"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+cat << 'EOS' > run-gz.sh
+i=$1
+minB="$2"
+minI="$3"
+blastop="$5"
+cpu="$4"
+ref=/usr/local/db/all.uscg10.fa
+
+set -ex
+
+echo "##convert fastq to fasta"
+j=${i%.*}.fasta
+zcat $i|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j
+
+echo "##blast"
+blastn -db $ref -query $j -outfmt 6 -out $j.core10.blast -num_threads $cpu
+echo "blast status: " $?
+rm $j
+
+echo "##filtering"
+awk -F'\t' -v minB="$minB" -v minI="$minI" '$12>minB&&$3>minI&&$1!=old{old=$1; split($2,arr,"^"); print arr[1]}' $j.core10.blast|
+ sort|uniq -c|sort -nr|awk '{print $2"\t"$1}' > $j.core10.blast.cnt
+EOS
+
+sed 's/zcat/cat/g' run-gz.sh > run.sh
+
+(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
+ echo $ENV_BLAST bash run.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
+done
+for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
+ echo $ENV_BLAST bash run-gz.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
+done)|DOPARALLEL
+
+WAITPARALLEL
+
+cd "$input_1"
+awk -F'\t' '{print FILENAME"\t"$0}' *.fasta.core10.blast.cnt|
+ awk -F'\t' '
+  FILENAME==ARGV[1]{o[NR]=$1}
+  FILENAME==ARGV[2]{data[$2][$1]=$3}
+  END{ORS=""; print "id";
+   for(j=1;j<=length(o);j++){print "\t"o[j]};
+   print "\n";
+   for(i in data){print i; for(j=1;j<=length(o);j++){print "\t"data[i][o[j]]+0}; print "\n"}
+  }' <(ls *.fasta.core10.blast.cnt|sort -V) /dev/stdin |sed 's/.fasta.core10.blast.cnt//g' > ../all.txt
+cd ..
+awk -F'\t' -v tot=$opt_g '
+ FILENAME==ARGV[1]{for(i=2;i<=NF;i++){cnt[i]+=$i}}
+ FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; print $0}else{for(i=2;i<=NF;i++){if(cnt[i]==0){$i=0}else{$i=int($i*tot/cnt[i]+0.5)}}; print $0}}
+' <(tail -n+2 all.txt) all.txt | awk -F'\t' '
+  {if(FNR>1){for(i=2;i<=NF;i++){cnt[$1]+=$i}; data[$1]=$0}else{data[$1]=$0}}
+  END{print data["id"]; PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print data[i]}}
+ ' > all.norm.sort.txt
+DO_BLAST awk -F'\t' 'BEGIN{b["id"]="tax path"} FILENAME==ARGV[1]{a[$1]=$2} FILENAME==ARGV[2]{b[$1]=a[$2]} FILENAME==ARGV[3]{print $0"\t"b[$1]}' /usr/local/db/names.dmp.sname.path /usr/local/db/ac2tax.txt all.norm.sort.txt > all.norm.sort.ann.txt
+awk -F'\t' '
+ {if(FNR==1){h=$0}else{for(i=2;i<NF;i++){if($NF==""){$NF="NA"}; cnt[$NF][i]+=$i; totalcnt[$NF]+=$i}}}
+ END{
+  ORS=""; split(h,arr,"\t"); print arr[1]; for(i=2;i<length(arr);i++){print "\t"arr[i]}; print "\n";
+  PROCINFO["sorted_in"]="@val_num_desc";
+  for(i in totalcnt){print i; for(j=2;j<NF;j++){print "\t"cnt[i][j]+0}; print "\n"}
+ }' all.norm.sort.ann.txt |sed 's/;unclassified[^\t]*//; s/;environmental samples[^\t]*//; s/^root;cellular organisms;//' > all.norm.sort.ann.sum.txt
+
+mkdir -p krona_input
+cd krona_input
+awk -F'\t' 'NR==1{for(i=2;i<=NF;i++){name[i]=$i}} NR>1{gsub(";","\t",$1); for(i=2;i<=NF;i++){if($i!=0){print $i"\t"$1 > name[i]".cnt"}}}' ../all.norm.sort.ann.sum.txt
+ktImportText -o core10abs.html `ls *.cnt|sort -V`
+mv core10abs.html ..
+cd ..
+
+DO_BASE java -Xmx1G -jar /usr/local/bin/excel2.jar all.norm.sort.ann.sum.txt all.norm.sort.ann.sum.xlsx
+
+rm -rf krona_input
+
+post_processing
+#<option detail>
+#<opt_b>
+USAGE
+  blastn [-h] [-help] [-import_search_strategy filename]
+    [-export_search_strategy filename] [-task task_name] [-db database_name]
+    [-dbsize num_letters] [-gilist filename] [-seqidlist filename]
+    [-negative_gilist filename] [-entrez_query entrez_query]
+    [-db_soft_mask filtering_algorithm] [-db_hard_mask filtering_algorithm]
+    [-subject subject_input_file] [-subject_loc range] [-query input_file]
+    [-out output_file] [-evalue evalue] [-word_size int_value]
+    [-gapopen open_penalty] [-gapextend extend_penalty]
+    [-perc_identity float_value] [-qcov_hsp_perc float_value]
+    [-max_hsps int_value] [-xdrop_ungap float_value] [-xdrop_gap float_value]
+    [-xdrop_gap_final float_value] [-searchsp int_value]
+    [-sum_stats bool_value] [-penalty penalty] [-reward reward] [-no_greedy]
+    [-min_raw_gapped_score int_value] [-template_type type]
+    [-template_length int_value] [-dust DUST_options]
+    [-filtering_db filtering_database]
+    [-window_masker_taxid window_masker_taxid]
+    [-window_masker_db window_masker_db] [-soft_masking soft_masking]
+    [-ungapped] [-culling_limit int_value] [-best_hit_overhang float_value]
+    [-best_hit_score_edge float_value] [-window_size int_value]
+    [-off_diagonal_range int_value] [-use_index boolean] [-index_name string]
+    [-lcase_masking] [-query_loc range] [-strand strand] [-parse_deflines]
+    [-outfmt format] [-show_gis] [-num_descriptions int_value]
+    [-num_alignments int_value] [-line_length line_length] [-html]
+    [-max_target_seqs num_sequences] [-num_threads int_value] [-remote]
+    [-version]
+
+#</opt_b>
+#</option detail>
+

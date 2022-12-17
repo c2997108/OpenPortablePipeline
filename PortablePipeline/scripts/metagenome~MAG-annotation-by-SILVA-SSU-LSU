@@ -1,0 +1,132 @@
+#!/bin/bash
+
+explanation='
+MAG annotation by bacterial 16S and 23S rRNA
+'
+inputdef='
+input_1:directory:FASTA files:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_b:blast option:
+opt_d:bit score threshold:500
+opt_t:Score from top of BLAST hits used in LCA:0.98
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# #input_1#"
+
+export IM_BLAST="c2997108/biocontainers:blast-2.13.0_silva138.1"
+export IM_BASE="c2997108/centos7:3-java"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+
+mkdir -p output_blast
+
+(for i in `ls "$input_1"/*|grep -E "[.](fa|fasta|fsa|fna)$"`; do
+ echo $ENV_BLAST blastn -db /usr/local/db/SILVA_138.1_LSU-SSURef_NR99_tax_silva.fasta -query $i -outfmt 6 -num_threads $N_CPU -out output_blast/`basename $i`.blastn $opt_b
+done
+for i in `ls "$input_1"/*|grep -E "[.](fa|fasta|fsa|fna)[.]gz$"`; do
+ i2=`basename "$i"|sed 's/[.]gz$//'`; DO_BASE gzip -dc "$i" > "output_blast/$i2"
+ echo $ENV_BLAST blastn -db /usr/local/db/SILVA_138.1_LSU-SSURef_NR99_tax_silva.fasta -query "output_blast/$i2" -outfmt 6 -num_threads $N_CPU -out output_blast/"$i2".blastn $opt_b
+done)|DOPARALLEL
+
+WAITPARALLEL
+
+cd output_blast
+
+for i in *.blastn; do
+ DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]{path[$1]=$2} FILENAME==ARGV[2] && $12>'"$opt_d"'{if($1!=old){if(NR>1){for(i in d){print "'"$i"'\t"d[i]"\t"1/length(d)"\t"path[d[i]]}}; old=$1; olds=$12; delete d; d[FNR]=$2}else if($1==old&&$12>=olds*'"$opt_t"'){d[FNR]=$2}} END{for(i in d){print "'"$i"'\t"d[i]"\t"1/length(d)"\t"path[d[i]]}}' /usr/local/db/SILVA_138.1_LSU-SSURef_NR99_tax_silva.fasta.name $i
+done > all.path
+
+mv all.path ..
+cd ..
+awk -F'\t' '
+function s(e){
+   compath=""; skip=0;
+   for(j=1;j<=100;j++){
+    if(j>1){if(temppath==""){break}; if(compath==""){compath=temppath}else{compath=compath";"temppath}};
+    if(skip==1){break};
+    temppath="";
+    for(i=nstart;i<e;i++){
+     split(data[i][4],arr,";");
+     if(temppath==""&&arr[j]!=""){temppath=arr[j]}else if(temppath!=""&&arr[j]!=""&&temppath!=arr[j]){temppath=""; skip=1; break}
+    }
+   };
+   for(i=nstart;i<e;i++){data[i][5]=compath}
+}
+function s2(e){
+   s(e);
+   compath=""; skip=0;
+   for(j=1;j<=100;j++){
+    if(j>1){if(temppath==""){break}; if(compath==""){compath=temppath}else{compath=compath";"temppath}};
+    if(skip==1){break};
+    temppath="";
+    delete tempnode;
+    for(i=nstart;i<e;i++){
+     split(data[i][4],arr,";");
+     tempnode[arr[j]]+=data[i][3];
+    }
+    max=0;
+    PROCINFO["sorted_in"]="@val_num_desc";
+    for(i in tempnode){
+     if(i!=""){
+      if(max==0){max=tempnode[i]; temppath=i}else if(tempnode[i]==max){temppath=""; skip=1; break}else{break}
+     }
+    }
+   };
+   for(i=nstart;i<e;i++){print data[i][1]"\t"data[i][2]"\t"data[i][3]"\t"data[i][5]"\t"compath"\t"data[i][4]}
+}
+{
+ if(old!=$1){
+  if(NR>1){
+   s2(NR)
+  };
+  old=$1; delete data; nstart=NR
+ };
+ data[NR][1]=$1; data[NR][2]=$2; data[NR][3]=$3; data[NR][4]=$4
+}
+END{
+ s2(NR+1)
+}' all.path > all.path.txt
+
+(echo -e "id\tCommon taxonomy path\tDominant taxonomy path"; cut -f 1,4,5 all.path.txt|sed 's/.blastn\t/\t/'|uniq|sort -V) > all.path.name
+
+post_processing
+#<option detail>
+#<opt_b>
+USAGE
+  blastn [-h] [-help] [-import_search_strategy filename]
+    [-export_search_strategy filename] [-task task_name] [-db database_name]
+    [-dbsize num_letters] [-gilist filename] [-seqidlist filename]
+    [-negative_gilist filename] [-entrez_query entrez_query]
+    [-db_soft_mask filtering_algorithm] [-db_hard_mask filtering_algorithm]
+    [-subject subject_input_file] [-subject_loc range] [-query input_file]
+    [-out output_file] [-evalue evalue] [-word_size int_value]
+    [-gapopen open_penalty] [-gapextend extend_penalty]
+    [-perc_identity float_value] [-qcov_hsp_perc float_value]
+    [-max_hsps int_value] [-xdrop_ungap float_value] [-xdrop_gap float_value]
+    [-xdrop_gap_final float_value] [-searchsp int_value]
+    [-sum_stats bool_value] [-penalty penalty] [-reward reward] [-no_greedy]
+    [-min_raw_gapped_score int_value] [-template_type type]
+    [-template_length int_value] [-dust DUST_options]
+    [-filtering_db filtering_database]
+    [-window_masker_taxid window_masker_taxid]
+    [-window_masker_db window_masker_db] [-soft_masking soft_masking]
+    [-ungapped] [-culling_limit int_value] [-best_hit_overhang float_value]
+    [-best_hit_score_edge float_value] [-window_size int_value]
+    [-off_diagonal_range int_value] [-use_index boolean] [-index_name string]
+    [-lcase_masking] [-query_loc range] [-strand strand] [-parse_deflines]
+    [-outfmt format] [-show_gis] [-num_descriptions int_value]
+    [-num_alignments int_value] [-line_length line_length] [-html]
+    [-max_target_seqs num_sequences] [-num_threads int_value] [-remote]
+    [-version]
+
+#</opt_b>
+#</option detail>
+

@@ -4,36 +4,20 @@ import signal
 import os
 import subprocess
 import sys
-#import psutil
 import re
-#import time
 
 # This script will work with python 2.7 or later, 3.x is OK. Python 2.6 can not stop the running command with signal.
 
 def handler(signum, frame):
     #print(os.getpid())
     print("signal={}".format(signum))
-    #args = ['pgrep', '-P', str(os.getpid())]
     args = ['pstree', '-pla', str(os.getpid())]
     args2 = ['pstree', '-la', str(os.getpid())]
 
-    #target_pid=int(os.getpid())
-    #p = psutil.Process(target_pid)
-    #pid_list=[pc.pid for pc in p.children(recursive=True)] 
-    #for pid in pid_list:
-    #    psutil.Process(pid).terminate ()
-    #    print("terminate child process {}" .format(pid))
-
     try:
-        #subprocess.check_call(args)
         o = subprocess.check_output(args)
-        #subprocess.check_call(args2)
         o2 = subprocess.check_output(args2)
         print(o)
-        #print(o2)
-#        print(o.decode().strip().split('\n')) # ['hello.py', 'hello2.py']
-#        for i in o.decode().strip().split('\n'):
-#            os.kill(int(i), signal.SIGKILL)
         #for singularity
         for i in o.decode().strip().split('\n'):
             m = re.match(r'.*,([0-9]+)[^0-9]*', i)
@@ -43,7 +27,6 @@ def handler(signum, frame):
                     os.kill(int(m.group(1)), signal.SIGKILL)
             except:
                 1
-                #print("e:")
         #for docker on tty
         for i in o2.decode().strip().split('\n'):
             m = re.match(r'.*docker run --name ([^ ]+)', i)
@@ -52,7 +35,6 @@ def handler(signum, frame):
                 proc = subprocess.Popen(["docker", "stop", "-t", "10", m.group(1)])
             except:
                 1
-                #print("e:")
         #for docker on sge or tty
         try:
             with open("pp-docker-list", "r") as tf:
@@ -87,8 +69,16 @@ except:
 
 try:
     argv2 = sys.argv[1:]
+    my_env = os.environ.copy()
+    while argv2[0] == "-s" or argv2[0] == "-g":
+      if argv2[0] == "-s":
+        my_env["PP_USE_SING"]="y"
+        argv2 = argv2[1:]
+      if argv2[0] == "-g":
+        my_env["RUNPARALLEL"]="#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\nsource ~/.bashrc\necho \"$*\"\neval \"$*\""
+        argv2 = argv2[1:]
     argv2[0]=os.path.dirname(os.path.realpath(__file__))+"/"+argv2[0]
     #print(argv2)
-    res = subprocess.check_call(argv2)
+    res = subprocess.check_call(argv2, env=my_env)
 except:
     print("pp runtime error.")
