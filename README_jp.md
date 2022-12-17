@@ -150,7 +150,7 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 - headをパイプの途中で使うと、パイプの前の段が途中で強制終了となりpipefailが生じるので途中では使わないのと、grepはヒット件数が0だとエラーになるので、|| trueなどをつけて対策すること。
 - 「|」(パイプ)の後ろで、DO_なりENV_を使うときは、ver1以降では(DO_xxx  < /dev/stdin), "("$ENV_xxx < /dev/stdin")"などというように括弧で囲むこと。
 - dockerを使う場合は途中でキャンセル処理はSGEなしの場合のみ完全対応。SGEを使うとqsubで投げたjobは削除するが、投げた先のサーバの中のdockerは停止されないので、docker stopを実行しないといけないが現在は対応していない。singularityの場合はSGEでもSGEがプロセスを停止させてくれるはず。
-- xargsの仕様として、「'」や「"」はエスケープ処理しておかないと消える。```echo 'set -eux; echo \"a   a\"'|xargs -I{} bash -c "{}"```
+- <del>xargsの仕様として、「'」や「"」はエスケープ処理しておかないと消える。```echo 'set -eux; echo \"a   a\"'|xargs -I{} bash -c "{}"```</del>->v1.2.0でxargs -0とすることで影響なくなった。
 - DOPARALLELの中で子スクリプトを呼び出す場合、bashコマンドの前にN_SCRIPT=$N_SCRIPTを付けて、子スクリプトであることを伝える必要がある。
 
 ### コマンドライン実行時の注意
