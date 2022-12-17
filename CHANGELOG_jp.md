@@ -1,5 +1,6 @@
 次回予告
 
+# 1.2.0 (2022/12/18)
 - ```Comparative-genomics~make-align-for-mauve```の追加
 - ```post-assemble~dotplot-by-last```の追加
 - ```metagenome~Taxonomic-classifications-by-10core-genes```の追加
