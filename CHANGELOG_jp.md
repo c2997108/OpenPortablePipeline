@@ -7,6 +7,7 @@
 - ```metagenome~MAG-annotation-by-10core-genes```の追加
 - ```metagenome~MAG-annotation-by-SILVA-SSU-LSU```の追加
 - ```metagenome~silva_SSU+LSU-paired-end```でFASTQが.gz圧縮されているときにペアエンドを正しく取得できていない不具合を修正。
+- ```RNA-seq~Trinity-kallisto-sleuth```でsorted.bamを拾っていなかったバグを修正
 - DO_XXXの時に()で囲まなくて良いように関数化を行った。
 - CUIにて、pp -sでsingularityを使用、pp -gでSGEを使用する機能を追加
 - 並列実行時にxargsのオプションに`-d'\n'`を追加することで、「'」、「"」、「\」をエスケープなしで処理できるように変更。修正したスクリプトの一覧は下記になる。
