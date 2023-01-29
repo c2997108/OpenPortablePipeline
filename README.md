@@ -18,24 +18,22 @@ PortablePipeline is a software that gives Windows and Mac users the ability to c
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
-
-https://github.com/c2997108/OpenPortablePipeline/releases
-
+https://github.com/c2997108/OpenPortablePipeline/releases  
 Win: PortablePipeline-win-vXXX.zip  
 Mac: PortablePipeline-mac-vXXX.tar.gz  
 
 2. In the unzipped file, double-click "PortablePipeline.bat" on Windows or "PortablePipeline.command" on Mac to launch it.
 Windows users need administrator privileges to create the junction file, so they will be asked if they can run it as an administrator, and then press OK. Mac users only need to allow it to run the first time by clicking "System Preferences" in OS System menu → "Security & Privacy" → "General" tab → "Open Anyway".
 
-3.Once the software is running, go to the "Settings" tab and choose whether you want to connect to a Linux server (Select "direct"), a supercomputer (Select "ddbj" or "shirokane"), Windows (Select "WSL") or Mac (Select "Mac"), and if you want to connect to a server, enter the required account information. Be sure to click "Save" after changing the setting.
+3. Once the software is running, go to the "Settings" tab and choose whether you want to connect to a Linux server (Select "direct"), a supercomputer (Select "ddbj" or "shirokane"), Windows (Select "WSL") or Mac (Select "Mac"), and if you want to connect to a server, enter the required account information. Be sure to click "Save" after changing the setting.
 
-4.Select the "Analysis Scripts" tab, select the script you want to analyze, and you'll see a screen where you can enter an input file and options. The input file is selected by clicking a button labeled "input_1", etc., changing options that need to be changed, and then pressing the "Run" button at the bottom of the screen.
+4. Select the "Analysis Scripts" tab, select the script you want to analyze, and you'll see a screen where you can enter an input file and options. The input file is selected by clicking a button labeled "input_1", etc., changing options that need to be changed, and then pressing the "Run" button at the bottom of the screen.
 
-5.After the "Run" button is pressed, the data is transferred to the server, which may take some time. The progress should be displayed in a separate command prompt or terminal that shows the status of the data transfer. When the status of "Running" changes to "Job List", you may exit this software. If it's up, it goes to the server every 30 seconds to check on progress.
+5. After the "Run" button is pressed, the data is transferred to the server, which may take some time. The progress should be displayed in a separate command prompt or terminal that shows the status of the data transfer. When the status of "Running" changes to "Job List", you may exit this software. If it's up, it goes to the server every 30 seconds to check on progress.
 
 ## Linux Server Setup Instructions
 ### for CentOS 7
-CentOS has a basic SSH server installed, so all you need to do is install Docker. Docker installation instructions change a lot, so it's best to check out the [official site](https://docs.docker.com/install/linux/docker-ce/centos/), but for example, you can install it as follows.
+SSH server is installed on CentOS, so Docker and Python3 have to be installed. Docker installation instructions change a lot, so it's best to check out the [official site](https://docs.docker.com/install/linux/docker-ce/centos/), but for example, you can install it as follows.
 ```
 sudo yum install -y yum-utils device-mapper-persistent-data lvm2
 sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
@@ -51,10 +49,18 @@ sudo groupadd docker
 sudo usermod -aG docker $USER
 ```
 
+Python3 installation instructions:
+```
+sudo yum install -y https://repo.ius.io/ius-release-el7.rpm
+sudo yum install -y python36u python36u-libs python36u-devel python36u-pip
+```
+
+
 ## WSL Server Setup Instructions
+Make sure virtual machine support is enabled in the BIOS to use Hyper-V. Verified that the version of Windows 10 is 21H2 or later. If the conditions are met, WSL installation, Ubuntu installation, and Docker installation will be performed automatically when the analysis is run from the GUI.
 1．Install Windows Subsystem for Linux (WSL).
 
-Verified that the version of Windows 10 is 1803 (Spring 2018), 1809 (Fall 2018), or 1903 (Spring 2019). Open PowerShell with administrator privileges to enable WSL. (Right-click the Windows logo in the lower-left corner of the screen → Windows PowerShell (Administrator))
+Open PowerShell with administrator privileges to enable WSL. (Right-click the Windows logo in the lower-left corner of the screen → Windows PowerShell (Administrator))
 
 Paste and run the following command to enable WSL functionality:.
 ````
