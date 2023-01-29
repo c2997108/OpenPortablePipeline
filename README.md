@@ -3,7 +3,7 @@
 PortablePipeline is a software that gives Windows and Mac users the ability to conduct NGS analysis through a graphical interface, on either a local computer, remote server. It supports SGE as a grid engine and can execute jobs on a supercomputer such as SHIROKANE and NIG in Japan. Registered scripts can also be easily called from the command-line interface.
 ![pp](https://user-images.githubusercontent.com/5350508/69688721-35e88f00-110a-11ea-8260-520f7554935f.png)
 
-## Required System Requirements
+## System Requirements
 ### Client (If you want to use GUI)
 - Windows 10/11 or Mac OSX (It's OK if Java 8 works.)
 - Storage: It depends on a lot of analytics, but 1TB over is recommended.
