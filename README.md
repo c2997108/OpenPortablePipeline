@@ -1,16 +1,16 @@
 # PortablePipeline
 
-PortablePipeline is software that allows Windows and Mac users to perform NGS analysis in a GUI on a local or remote server or supercomputer. It supports SGE as a grid engine and can execute jobs on SHIROKANE supercomputer and NIG supercomputer in Japan. Scripts can also be easily called from the CUI.
+PortablePipeline is a software that gives Windows and Mac users the ability to conduct NGS analysis through a graphical interface, on either a local computer, remote server. It supports SGE as a grid engine and can execute jobs on a supercomputer such as SHIROKANE and NIG in Japan. Registered scripts can also be easily called from the command-line interface.
 ![pp](https://user-images.githubusercontent.com/5350508/69688721-35e88f00-110a-11ea-8260-520f7554935f.png)
 
 ## Required System Requirements
 ### Clients (Terminal that performs GUI operations)
-- Windows 10 or Mac OSX (It's OK if Java 8 works.)
+- Windows 10/11 or Mac OSX (It's OK if Java 8 works.)
 - Storage: It depends on a lot of analytics, but 1TB over is recommended.
 
 ### Servers (computer that performs data analysis)
 - Tested with 64 GB of memory. Depending on the data, less may work and more may be needed.
-- Linux (CentOS6, CentOS7, Ubuntu 16, Ubuntu 18) with Docker or Singularity installed and an SSH server : [Linux Server Setup Instructions](#linux-server-setup-instructions), or Ubuntu with Windows Subsystem for Linux on Windows 10 : [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac : [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
+- Linux (CentOS7 or later, Ubuntu 16 or later) with Docker or Singularity installed and an SSH server : [Linux Server Setup Instructions](#linux-server-setup-instructions), or Ubuntu with Windows Subsystem for Linux on Windows 10/11 : [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac : [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
