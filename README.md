@@ -74,7 +74,7 @@ Open "Microsoft Store" from the Start menu by left-clicking the Windows logo in 
 
 Left-click on the Windows logo at the bottom left of the screen and start Ubuntu from the Start menu. When you first start it up, the account creation screen will appear and you will be prompted to enter your user name and password.
 
-## Mac Server Setup Instructions
+## (Deprecated) Mac Server Setup Instructions
 1．Installing Docker
 
 Make sure the OS version is OS X Sierra 10.12 or later. Download Docker Desktop for Mac from [official site] (https://download.docker.com/mac/stable/Docker.dmg), double-click the dmg file and follow the instructions to complete the installation.
