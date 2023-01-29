@@ -4,13 +4,16 @@ PortablePipeline is a software that gives Windows and Mac users the ability to c
 ![pp](https://user-images.githubusercontent.com/5350508/69688721-35e88f00-110a-11ea-8260-520f7554935f.png)
 
 ## Required System Requirements
-### Clients (Terminal that performs GUI operations)
+### Client (Terminal that performs GUI operations)
 - Windows 10/11 or Mac OSX (It's OK if Java 8 works.)
 - Storage: It depends on a lot of analytics, but 1TB over is recommended.
 
-### Servers (computer that performs data analysis)
+### Server (Computer that performs data analysis)
 - Tested with 64 GB of memory. Depending on the data, less may work and more may be needed.
-- Linux (CentOS7 or later, Ubuntu 16 or later) with Docker or Singularity installed and an SSH server : [Linux Server Setup Instructions](#linux-server-setup-instructions), or Ubuntu with Windows Subsystem for Linux on Windows 10/11 : [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions), or Mac OSX with homebrew coreutils and Docker Desktop for Mac : [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
+- Operating system
+   - (Recommended) Linux (CentOS7 or later, Ubuntu 16 or later) with Docker or Singularity, Python3 and SSH server : [Linux Server Setup Instructions](#linux-server-setup-instructions)
+   - Ubuntu with Windows Subsystem for Linux on Windows 10/11 : [WSL Server Setup Instructions](#WSL-Server-Setup-Instructions)
+   - (Deprecated) Mac OSX (intel) with homebrew coreutils and Docker Desktop for Mac : [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
 
 ## How to use
 1. Download and extract the latest PortablePipeline release.  
