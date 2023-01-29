@@ -17,6 +17,7 @@ PortablePipeline is a software that gives Windows and Mac users the ability to c
    - (Deprecated) Mac OSX (intel) with homebrew coreutils and Docker Desktop for Mac : [Mac Server Setup Instructions](#Mac-Server-Setup-Instructions).
 
 ## How to use
+### For GUI users
 1. Download and extract the latest PortablePipeline release.  
 https://github.com/c2997108/OpenPortablePipeline/releases  
 Win: PortablePipeline-win-vXXX.zip  
@@ -31,8 +32,24 @@ Windows users need administrator privileges to create the junction file, so they
 
 5. After the "Run" button is pressed, the data is transferred to the server, which may take some time. The progress should be displayed in a separate command prompt or terminal that shows the status of the data transfer. When the status of "Running" changes to "Job List", you may exit this software. If it's up, it goes to the server every 30 seconds to check on progress.
 
+### For command line users
+1. Download PortablePipeline script files.  
+```
+git clone https://github.com/c2997108/OpenPortablePipeline.git
+```
+
+2. Move script files to a location registered in PATH such as /usr/local/bin.  
+```
+sudo mv OpenPortablePipeline/PortablePipeline/scripts/* /usr/local/bin
+```
+
+3. Let's run the RNA-seq pipeline as a test.  
+```
+
+```
+
 ## Linux Server Setup Instructions
-### for CentOS 7
+### For CentOS 7
 SSH server is installed on CentOS, so Docker and Python3 have to be installed. Docker installation instructions change a lot, so it's best to check out the [official site](https://docs.docker.com/install/linux/docker-ce/centos/), but for example, you can install it as follows.
 ```
 sudo yum install -y yum-utils device-mapper-persistent-data lvm2
