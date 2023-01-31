@@ -43,10 +43,22 @@ git clone https://github.com/c2997108/OpenPortablePipeline.git
 sudo mv OpenPortablePipeline/PortablePipeline/scripts/* /usr/local/bin
 ```
 
-3. Let's run the RNA-seq pipeline as a test.  
+3. Let's run the dot plot pipeline as a test.  
+```
+# Download E. coli reference genomes.
+curl -OJX GET "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome/accession/GCF_000750555.1/download?include_annotation_type=GENOME_FASTA,GENOME_GFF,RNA_FASTA,CDS_FASTA,PROT_FASTA,SEQUENCE_REPORT&filename=GCF_000750555.1.zip" -H "Accept: application/zip"
+curl -OJX GET "https://api.ncbi.nlm.nih.gov/datasets/v2alpha/genome/accession/GCF_000827105.1/download?include_annotation_type=GENOME_FASTA,GENOME_GFF,RNA_FASTA,CDS_FASTA,PROT_FASTA,SEQUENCE_REPORT&filename=GCF_000827105.1.zip" -H "Accept: application/zip"
+unzip -n GCF_000750555.1.zip
+unzip -n GCF_000827105.1.zip
+
+# Run Portable Pipeline.
+pp post-assemble~dotplot-by-minimap2 ncbi_dataset/data/GCF_000827105.1/GCF_000827105.1_ASM82710v1_genomic.fna ncbi_dataset/data/GCF_000750555.1/GCF_000750555.1_ASM75055v1_genomic.fna
 ```
 
-```
+You will get the following output.
+
+<img src="https://user-images.githubusercontent.com/5350508/215627447-dff7adef-cdc1-42c4-b534-e6558ce39029.png" width="300">
+
 
 ## Linux Server Setup Instructions
 ### For CentOS 7
