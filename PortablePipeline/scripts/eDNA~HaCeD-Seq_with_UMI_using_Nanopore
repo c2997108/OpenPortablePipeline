@@ -20,6 +20,7 @@ opt_e:Length of foward UMI:13
 opt_q:Length of reverse UMI:13
 opt_a:Minimum length of D-loop:600
 opt_b:Maximum length of D-loop:1600
+opt_d:Minimum UMI count:5
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -r #opt_r# -g #opt_g# -s #opt_s# -e #opt_e# -q #opt_q# #input_1#"
 
@@ -205,7 +206,7 @@ cat umi-find/*.fasta.blastn.tsv2 > all.fasta.blastn.tsv2
 sort -k2,2 -t$'\t' all.fasta.blastn.tsv2 > all.fasta.blastn.tsv2.sort
 
 mkdir -p umi-all
-cat all.fasta.blastn.tsv2 |(DO_BASE awk '{cnt[$2]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}'|awk 'FILENAME==ARGV[1] && $2>=5{a[$1]=$2} FILENAME==ARGV[2]  && a[$2]>0{print ">"$1"\n"$3 > "umi-all/umi-"$2".fa"}' /dev/stdin all.fasta.blastn.tsv2.sort)
+cat all.fasta.blastn.tsv2 |(DO_BASE awk -v opt_d="$opt_d" '{cnt[$2]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}'|awk 'FILENAME==ARGV[1] && $2>=opt_d{a[$1]=$2} FILENAME==ARGV[2]  && a[$2]>0{print ">"$1"\n"$3 > "umi-all/umi-"$2".fa"}' /dev/stdin all.fasta.blastn.tsv2.sort)
 cd umi-all
 wc -l umi-*-*.fa|awk '{print $2"\t"$1/2}' > count.umi
 mkdir -p ../umi-correct

@@ -93,7 +93,7 @@ for i in $r1 $r1gz; do
  fi
  #Mapping and quantification by kallisto
  #echo "#run kallisto quant of $i"
- echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i` -t 1 --pseudobam $i $j; $ENV_SAMTOOLS samtools sort -@ 1 -o kallisto.output/`basename $i`/pseudoalignments.sorted.bam kallisto.output/`basename $i`/pseudoalignments.bam; $ENV_KALLISTO rm -f kallisto.output/`basename $i`/pseudoalignments.sorted.bam; $ENV_KALLISTO mv kallisto.output/`basename $i`/pseudoalignments.bam output_bam/`basename $i`.bam; $ENV_SAMTOOLS samtools index output_bam/`basename $i`.bam; cd kallisto.output; tar zvcf `basename $i`.kallisto.tar.gz `basename $i`"
+ echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i` -t 1 --pseudobam $i $j; $ENV_SAMTOOLS samtools sort -@ 1 -o kallisto.output/`basename $i`/pseudoalignments.sorted.bam kallisto.output/`basename $i`/pseudoalignments.bam; $ENV_KALLISTO rm -f kallisto.output/`basename $i`/pseudoalignments.bam; $ENV_KALLISTO mv kallisto.output/`basename $i`/pseudoalignments.sorted.bam output_bam/`basename $i`.bam; $ENV_SAMTOOLS samtools index output_bam/`basename $i`.bam; cd kallisto.output; tar zvcf `basename $i`.kallisto.tar.gz `basename $i`"
 done|DOPARALLELONE
 
 WAITPARALLEL

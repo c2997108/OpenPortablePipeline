@@ -1,0 +1,281 @@
+#!/bin/bash
+
+explanation='
+BBMap SNP call pipeline from WGS or RNA-seq data
+'
+inputdef='
+input_1:directory:paired-end or single-end FASTQ(.gz) or FASTA(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz, *.fasta, *.fa, *.fsa, *.fna, *.fasta.gz, *.fa.gz, *.fsa.gz, *.fna.gz
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_i:BBMAP indexing options:
+opt_j:BBMAP mapping options:maxindel=100000 maxsites2=10000
+opt_b:mapped_only_bam (ON/OFF):ON
+opt_v:callvariants.sh options:ploidy=2
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -j #opt_j# -v #opt_v# -b #opt_b# #input_1# #input_2#"
+
+export IM_SAMTOOLS="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
+export IM_BBMAP="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
+export IM_PICARD="quay.io/biocontainers/picard:2.18.27--0"
+export IM_GATK="broadinstitute/gatk:4.3.0.0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+time0=$(date "+%s")
+echo start at ${time0}
+
+bash "$scriptdir"/mapping-illumina~bbmap -c "$opt_c" -m "$opt_m" -i "$opt_i" -j "$opt_j" -b "$opt_b" -o " " "$input_1" "$input_2"
+
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+
+#prepare FASTA index
+ref="$input_2"
+refbase=`echo $ref|sed 's/[.]\(fa\|fasta\|fsa\|fna\)$//'`
+DO_SAMTOOLS samtools faidx $ref
+rm -f $refbase.dict
+DO_PICARD picard -Xmx${N_MEM_M}M CreateSequenceDictionary R=$ref O=$refbase.dict
+
+cat << 'EOF' > run-awk-replace.sh
+awk -F'\t' '
+ {
+  if($0!~"^@"&&$6~"D"){
+   OFS="\t"; a=$6; gsub(/[0-9]+[IMX=]/,"",a); split(a,arr,"D");
+   for(i in arr){if(arr[i]>1000){sub(arr[i]"D",arr[i]"N",$6)}}
+  };
+  print $0
+ }'|awk -F'\t' '{if($0!~"^@"&&$5<=3){OFS="\t"; $5=0}; print $0}'
+EOF
+
+mkdir -p output.temp output2
+ls output/*.bam|while read i; do
+ j=`basename $i .bam`
+ echo -n "$ENV_PICARD picard -Xmx${N_MEM_M}M AddOrReplaceReadGroups I=\"$i\" O=output.temp/\"${j}\"_addrg.bam SO=coordinate RGID=\"$j\" RGLB=library RGPL=Illumina RGPU=Illumina RGSM=\"$j\"; "
+ echo -n "($ENV_SAMTOOLS samtools view -h output.temp/\"${j}\"_addrg.bam)|bash run-awk-replace.sh|($ENV_SAMTOOLS samtools view -Sb -o output.temp/\"${j}\"_addrg_repN.bam); "
+ echo -n "$ENV_SAMTOOLS samtools index output.temp/\"${j}\"_addrg_repN.bam; "
+ echo "$ENV_GATK gatk --java-options -Xmx${N_MEM_M}M SplitNCigarReads -R \"$ref\" -I output.temp/\"${j}\"_addrg_repN.bam -O output2/\"$j\".bam"
+done | DOPARALLEL
+
+WAITPARALLEL
+
+rm -f output/*.bam output/*.bai
+rm -rf output.temp
+
+inputbams=""
+multiflag=""
+for i in `ls output2/*.bam`; do
+ if [ "$inputbams" = "" ]; then
+  inputbams="$i"
+ else
+  multiflag="multisample=t"
+  inputbams+=",$i"
+ fi
+done
+DO_BBMAP callvariants.sh -Xmx${N_MEM_M}M in="$inputbams" ref="$ref" vcf=output.vcf $multiflag $opt_v
+
+echo completion at $(date)
+time_fin=$(date "+%s")
+echo -e "Total running time is `echo "scale=2; ($time_fin - $time0)/60" |bc` min"
+
+echo "Run completed!"
+
+
+post_processing
+
+#<option detail>
+#<opt_i>
+indexing parameters
+k:	Kmer length, range 8-15.  Longer is faster but uses more memory.  Shorter is more sensitive.
+#</opt_i>
+#<opt_j>
+Mapping Parameters:
+local:	Set to true to use local, rather than global, alignments.This will soft-clip ugly ends of poor alignments. [f]
+perfectmode:	Allow only perfect mappings when set to true (very fast). [f]
+semiperfectmode:	'Allow only perfect and semiperfect (perfect except for N''s in the reference) mappings. [f]'
+fast:	This flag is a macro which sets other paramters to run faster, at reduced sensitivity. Bad for RNA-seq. [f]
+slow:	'This flag is a macro which sets other paramters to run  slower, at greater sensitivity. ''vslow'' is even slower.[f]'
+maxindel:	'Don''t look for indels longer than this. Lower is faster. Set to > 100k for RNAseq with long introns like mammals.[ 16000]'
+strictmaxindel:	'When enabled, do not allow indels longer than ''maxindel''. By default these are not sought, but may be found anyway.[ f]'
+tipsearch:	Look this far for read-end deletions with anchors shorter than K, using brute force.[100]
+minid:	Approximate minimum alignment identity to look for.  Higher is faster and less sensitive.[ 0.76]
+minhits:	Minimum number of seed hits required for candidate sites. Higher is faster.[ 1]
+ambiguous:	(ambig) Set behavior on ambiguously-mapped reads (with multiple top-scoring mapping locations). [best]
+	best (use the first best site)
+	toss (consider unmapped)
+	random (select one top-scoring site randomly)
+	all (retain all top-scoring sites)
+samestrandpairs:	(ssp) Specify whether paired reads should map to the same strand or opposite strands.[f]
+requirecorrectstrand:	(rcs) Forbid pairing of reads without correct strand Orientation Set to false for long-mate-pair libraries.[t]
+killbadpairs:	(kbp) If a read pair is mapped with an inappropriate insert size or orientation, the read with the lower mapping quality is marked unmapped.[f]
+pairedonly:	'(po) Treat unpaired reads as unmapped. Thus they will be sent to ''outu'' but not ''outm''.[f]'
+rcomp:	Reverse complement both reads prior to mapping (for LMP outward-facing libraries). [f]
+rcompmate:	Reverse complement read2 prior to mapping. [f]
+pairlen:	Set max allowed distance between paired reads. (insert size)=(pairlen)+(read1 length)+(read2 length)[ 32000]
+rescuedist:	'Don''t try to rescue paired reads if avg. insert size greater than this. Lower is faster [1200]'
+rescuemismatches:	Maximum mismatches allowed in a rescued read. Lower is faster. [32]
+averagepairdist:	(apd) Initial average distance between paired reads. Varies dynamically; does not need to be specified.[100]
+deterministic:	Run in deterministic mode. In this case it is good to set averagepairdist. [f]
+	BBMap is deterministicwithout this flag if using single-ended reads,or run singlethreaded.
+bandwidthratio:	(bwr) If above zero, restrict alignment band to this.  Faster but less accurate.fraction of read length.[0]
+bandwidth:	(bw) Set the bandwidth directly. Faster but less accurate.fraction of read length.[ 0]
+maxsites2:	'Don''t analyze (or print) more than this many alignments  per read.[ 800]'
+ignorefrequentkmers:	(ifk) Discard low-information kmers that occur often. [t]
+excludefraction:	(ef) Fraction of kmers to ignore. For example, 0.03 will ignore the most common 3% of kmers. [0.03]
+greedy:	Use a greedy algorithm to discard the least-useful kmers on a per-read basis. [t]
+kfilter:	If positive, potential mapping sites must have at least this many consecutive exact matches.[ 0]
+
+Quality and Trimming Parameters:
+qin:	Set to 33 or 64 to specify input quality value ASCII offset. 33 is Sanger, 64 is old Solexa.[ auto]
+qout:	Set to 33 or 64 to specify output quality value ASCII  offset (only if output format is fastq). [auto]
+qtrim:	'Quality-trim ends before mapping. Options are: '' f'' (false), ''l'' (left), ''r'' (right), and ''lr'' (both). [f]'
+untrim:	Undo trimming after mapping. Untrimmed bases will be oft-clipped in cigar strings. [f]
+trimq:	Trim regions with average quality below this  [6]
+mintrimlength:	'(mintl) Don''t trim reads to be shorter than this. [60]'
+fakefastaquality:	(ffq) Set to a positive number 1-50 to generate fake quality strings for fasta input reads. [-1]
+ignorebadquality:	(ibq) Keep going, rather than crashing, if a read has out-of-range quality values. [f]
+usequality:	Use quality scores when determining which read kmers to use as seeds.[t]
+minaveragequality:	(maq) Do not map reads with average quality below this. [0]
+maqb:	If positive, calculate maq from this many initial bases. [0]
+
+Post-filtering parameters:
+idfilter:	Independant of minid; sets exact minimum identity allowed for alignments to be printed. Range 0 to 1. [0]
+subfilter:	Ban alignments with more than this many substitutions. [-1]
+insfilter:	Ban alignments with more than this many insertions. [-1]
+delfilter:	Ban alignments with more than this many deletions. [-1]
+indelfilter:	Ban alignments with more than this many indels. [-1]
+editfilter:	Ban alignments with more than this many edits. [-1]
+inslenfilter:	Ban alignments with an insertion longer than this. [-1]
+dellenfilter:	Ban alignments with a deletion longer than this. [-1]
+nfilter:	Ban alignments with more than this many ns. This includes nocall, noref, and off scaffold ends. [-1]
+#</opt_j>
+#<opt_v>
+I/O parameters:
+outgff=<file>   Output variant list in gff format.
+vcfin=<file>    Force calls at these locations, even if allele count is 0.
+shist=<file>    (scorehist) Output for variant score histogram.
+zhist=<file>    (zygosityhist) Output for zygosity histogram.
+qhist=<file>    (qualityhist) Output for variant base quality histogram.
+overwrite=f     (ow) Set to false to force the program to abort rather than
+                overwrite an existing file.
+extended=t      Print additional variant statistics columns.
+sample=         Optional comma-delimited list of sample names.
+vcf0=           Optional comma-delimited list of per-sample outputs.
+                Only used in multisample mode.
+bgzip=t         Use bgzip for gzip compression.
+samstreamer=t   (ss) Load reads multithreaded to increase speed.
+                Disable to reduce the number of threads used.  The number of
+                streamer threads can be set with e.g. 'ss=4'; default is 6.
+streamermf=8    (ssmf) Allow multiple sam files to be read simultaneously.
+                Set ssmf=X to specify the maximum number or ssmf=f
+                to disable.
+
+Processing Parameters:
+prefilter=f     Use a Bloom filter to exclude variants seen fewer than
+                minreads times.  Doubles the runtime but greatly reduces
+                memory usage.  The results are identical.
+coverage=t      (cc) Calculate coverage, to better call variants.
+ploidy=1        Set the organism's ploidy.
+rarity=1.0      Penalize the quality of variants with allele fraction
+                lower than this.  For example, if you are interested in
+                4% frequency variants, you could set both rarity and
+                minallelefraction to 0.04.  This is affected by ploidy -
+                a variant with frequency indicating at least one copy
+                is never penalized.
+covpenalty=0.8  (lowcoveragepenalty) A lower penalty will increase the
+                scores of low-coverage variants, and is useful for
+                low-coverage datasets.
+useidentity=t   Include average read identity in score calculation.
+usepairing=t    Include pairing rate in score calculation.
+usebias=t       Include strand bias in score calculation.
+useedist=t      Include read-end distance in score calculation.
+homopolymer=t   Penalize scores of substitutions matching adjacent bases.
+nscan=t         Consider the distance of a variant from contig ends when
+                calculating strand bias.
+callsub=t       Call substitutions.
+calldel=t       Call deletions.
+callins=t       Call insertions.
+calljunct=f     Call junctions (in development).
+nopassdot=f     Use . as genotype for variations failing the filter.
+
+Coverage Parameters (these mainly affect speed and memory use):
+32bit=f         Set to true to allow coverage tracking over depth 65535,
+                which increases memory use.  Variant calls are impacted
+                where coverage exceeds the maximum.
+atomic=auto     Increases multithreaded speed; forces 32bit to true.
+                Defaults to true if there are more than 8 threads.
+strandedcov=f   (stranded) Tracks per-strand ref coverage to print the MCOV
+                and DP4 fields.  Requires more memory when enabled.  Strand
+                of variant reads is tracked regardless of this flag.
+
+Trimming Parameters:
+border=5        Trim at least this many bases on both ends of reads.
+qtrim=r         Quality-trim reads on this end
+                   r: right, l: left, rl: both, f: don't quality-trim.
+trimq=10        Quality-trim bases below this score.
+
+Realignment Parameters:
+realign=f       Realign all reads with more than a couple mismatches.
+                Decreases speed.  Recommended for aligners other than BBMap.
+unclip=f        Convert clip symbols from exceeding the ends of the
+                realignment zone into matches and substitutitions.
+repadding=70    Pad alignment by this much on each end.  Typically,
+                longer is more accurate for long indels, but greatly
+                reduces speed.
+rerows=602      Use this many rows maximum for realignment.  Reads longer
+                than this cannot be realigned.
+recols=2000     Reads may not be aligned to reference seqments longer
+                than this.  Needs to be at least read length plus
+                max deletion length plus twice padding.
+msa=            Select the aligner.  Options:
+                   MultiStateAligner11ts:     Default.
+                   MultiStateAligner9PacBio:  Use for PacBio reads, or for
+                   Illumina reads mapped to PacBio/Nanopore reads.
+
+Sam-filtering Parameters:
+minpos=         Ignore alignments not overlapping this range.
+maxpos=         Ignore alignments not overlapping this range.
+minreadmapq=4   Ignore alignments with lower mapq.
+contigs=        Comma-delimited list of contig names to include. These
+                should have no spaces, or underscores instead of spaces.
+secondary=f     Include secondary alignments.
+supplimentary=f Include supplimentary alignments.
+duplicate=f     Include reads flagged as duplicates.
+invert=f        Invert sam filters.
+
+Variant-Calling Cutoffs:
+minreads=2              (minad) Ignore variants seen in fewer reads.
+maxreads=BIG            (maxad) Ignore variants seen in more reads.
+mincov=0                Ignore variants in lower-coverage locations.
+maxcov=BIG              Ignore variants in higher-coverage locations.
+minqualitymax=15        Ignore variants with lower max base quality.
+minedistmax=20          Ignore variants with lower max distance from read ends.
+minmapqmax=0            Ignore variants with lower max mapq.
+minidmax=0              Ignore variants with lower max read identity.
+minpairingrate=0.1      Ignore variants with lower pairing rate.
+minstrandratio=0.1      Ignore variants with lower plus/minus strand ratio.
+minquality=12.0         Ignore variants with lower average base quality.
+minedist=10.0           Ignore variants with lower average distance from ends.
+minavgmapq=0.0          Ignore variants with lower average mapq.
+minallelefraction=0.1   Ignore variants with lower allele fraction.  This
+                        should be adjusted for high ploidies.
+minid=0                 Ignore variants with lower average read identity.
+minscore=20.0           Ignore variants with lower Phred-scaled score.
+clearfilters            Clear all filters.  Filter flags placed after
+                        the clearfilters flag will still be applied.
+
+There are additionally max filters for score, quality, mapq, allelefraction,
+and identity.
+
+Other Parameters:
+minvarcopies=0          If set to 0, a genotype (vcf GT field) of 0 or 0/0
+                        will be called if observed allele frequency suggests
+                        this is a minor allele.  If set to 1, GT field will
+                        contain at least one 1.
+#</opt_v>
+#</option detail>
+

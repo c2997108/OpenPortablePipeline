@@ -68,6 +68,7 @@ cat << 'EOF' > run-samtools.sh
 	input="$1"
 	threads1="$2"
 	mapped_only_bam="$3"
+    N_MEM_M1="$4"
     outbase=`echo "$1"|sed 's/.temp.bam$//'`.bam
 
 	#create mapping summary
@@ -77,9 +78,9 @@ cat << 'EOF' > run-samtools.sh
 	#convert bam file for IGV
 	echo Sorting and indexing bam
 	if [ $mapped_only_bam = "ON" ]; then
-		samtools view -h -G 12 -@ ${threads1} "$input" | samtools sort - -m 100M -@ ${threads1} > "$outbase"
+		samtools view -h -G 12 -@ ${threads1} "$input" | samtools sort - -m ${N_MEM_M1}M -@ ${threads1} > "$outbase"
 	else
-		samtools sort "$input" -m 100M -@ ${threads1} > "$outbase"
+		samtools sort "$input" -m ${N_MEM_M1}M -@ ${threads1} > "$outbase"
 	fi
 	rm -f "$input"
 	samtools index "$outbase"
@@ -126,14 +127,14 @@ mkdir -p output
 for i in ${ppsingle[@]:-}; do
  prefix=output/`basename "$i"`
  local_out_files="${out_files//=/=${prefix}_}"
- echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in=\"$i\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\""
+ echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in=\"$i\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
 done
 
 #for paired-end reads
 for ((i = 0; i < ${#pppair1[@]}; i++)) {
  prefix=output/`basename "${pppair1[i]}"`
  local_out_files="${out_files//=/=${prefix}_}"
- echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in1=\"${pppair1[i]}\" in2=\"${pppair2[i]}\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\""
+ echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in1=\"${pppair1[i]}\" in2=\"${pppair2[i]}\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
 }
 ) | DOPARALLEL
 
