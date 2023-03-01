@@ -1,4 +1,11 @@
 次回予告
+なし
+
+# 1.2.1 (2023/3/1)
+- ```RNA-seq~SNPcall-bbmap-callvariants```の追加
+- ```mapping-illumina~bbmap```のsamtools sort時のメモリー量変更
+- ```Hi-C~SALSA```でhicファイルを生成するjuicerのバージョンをアップデート
+- ```metagenome~PR2_NCBI-16S-mito-plastid_paired-end```ペアエンドを使っていなかったバグ修正
 
 # 1.2.0 (2022/12/18)
 - ```Comparative-genomics~make-align-for-mauve```の追加
