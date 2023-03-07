@@ -77,6 +77,24 @@ for i in `ls output2/*.bam`; do
  fi
 done
 DO_BBMAP callvariants.sh -Xmx${N_MEM_M}M in="$inputbams" ref="$ref" vcf=output.vcf $multiflag $opt_v
+awk -F'\t' '
+ function s(j){if(j==1){return "\t"}else{return ":"}}
+ {
+  if($0~"^#"){print $0; OFS="\t"}
+  else{
+   split($9,arr,":"); dp=-1; gt=-1;
+   for(i in arr){if(arr[i]=="DP"){dp=i}else if(arr[i]=="GT"){gt=i}};
+   if(dp>0&&gt>0){
+    ORS=""; print $1; for(i=2;i<=9;i++){print "\t"$i};
+    for(i=10;i<=NF;i++){
+     split($i,arr,":");
+     if(arr[dp]==0){
+      for(j=1;j<gt;j++){print s(j)""arr[j]}; gsub("0",".",arr[gt]); print s(gt)""arr[gt]; for(j=gt+1;j<=length(arr);j++){print ":"arr[j]}
+     }else{print "\t"$i}
+    }; ORS="\n"; print ""
+   }else{print $0}
+  }
+ }' output.vcf > output.conv.vcf
 
 echo completion at $(date)
 time_fin=$(date "+%s")

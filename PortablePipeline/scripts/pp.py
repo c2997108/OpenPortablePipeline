@@ -47,6 +47,26 @@ def handler(signum, frame):
                     1
         except:
             1
+        #for podman on tty
+        for i in o2.decode().strip().split('\n'):
+            m = re.match(r'.*podman run --name ([^ ]+)', i)
+            try:
+                print("podman stop "+m.group(1))
+                proc = subprocess.Popen(["podman", "stop", "-t", "10", m.group(1)])
+            except:
+                1
+        #for podman on sge or tty
+        try:
+            with open("pp-podman-list", "r") as tf:
+                lines = tf.read().split('\n')
+            for i in lines:
+                try:
+                    print("podman stop "+i)
+                    proc = subprocess.Popen(["podman", "stop", "-t", "10", i])
+                except:
+                    1
+        except:
+            1
     except TypeError as e:
         print('catch TypeError:', e)
     sys.exit()

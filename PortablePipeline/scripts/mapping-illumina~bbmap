@@ -33,8 +33,13 @@ LANG=C
 
 threads=$N_CPU
 three=${threads}
-threads2=`expr ${threads} / 2`
-threads1=`expr ${threads} - 2`
+if [ "$threads" -lt 3 ]; then
+ threads2=1
+ threads1=1
+else
+ threads2=`expr ${threads} / 2`
+ threads1=`expr ${threads} - 2`
+fi
 if [ $threads1 -lt 1 ]; then threads1=1; fi
 memG=`free -g |grep "Mem" |sed -e "s/Mem: *\([0-9]*\) .*/\1/"`
 memG3=`expr ${memG} \* 3 / 4` 

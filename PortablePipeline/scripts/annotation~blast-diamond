@@ -1,0 +1,567 @@
+#!/bin/bash
+
+explanation='
+Add annotation of reference cDNAs/Proteins with blastn/blastx/diamond
+'
+inputdef='
+input_1::an input cDNA file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2:directory:reference cDNA files for blastn:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:directory:reference protein files for blastx:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
+input_4:directory:reference protein files for diamond:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_a:blastn options:
+opt_b:blastx options:
+opt_d:diamond options:--sensitive
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -b #opt_b# -d #opt_d# #input_1# #input_2# #input_3# #input_4#"
+
+export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
+export IM_BASE="c2997108/centos7:3-java"
+export IM_BLAST="ncbi/blast:2.13.0"
+export IM_DIAMOND="quay.io/biocontainers/diamond:2.1.4--hb97b32f_0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+(find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]gz$"||true)|while read i; do
+ echo "$ENV_BASE gzip -dc \"$i\" > "`echo "$i"|sed 's/[.]gz$//'`
+done | DOPARALLELONE
+WAITPARALLEL
+
+(find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)$"||true)|while read i; do
+ echo "$ENV_EXONERATE fastareformat \"$i\" |sed 's/\\r//g' > \"$i\".formatted.txt"
+done | DOPARALLELONE
+WAITPARALLEL
+
+input=`echo "$input_1"|sed 's/[.]gz$//'`.formatted.txt
+
+(
+(find "$input_2"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
+ echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype nucl; $ENV_BLAST blastn -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore stitle\" -out \"$input.blastn."`basename $i`".tsv\" $opt_a"
+done
+(find "$input_3"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
+ echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype prot; $ENV_BLAST blastx -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore stitle\" -out \"$input.blastx."`basename $i`".tsv\" $opt_b"
+done
+(find "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
+ echo "$ENV_DIAMOND diamond makedb --in \"$i\" -d \"$i\"; $ENV_DIAMOND diamond blastx -d \"$i\" -q \"$input\" --threads $N_CPU --outfmt 6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore salltitles -o \"$input.diamond."`basename $i`".tsv\" $opt_d"
+done
+) | DOPARALLEL
+WAITPARALLEL
+
+for i in "$input".*.tsv; do awk -F'\t' -v name=`basename $i|sed 's/.*[.]formatted[.]txt[.]\(.*\)[.]formatted[.]txt[.]tsv$/\1/'` 'BEGIN{print "qseqid\t"name":sseqid\tqlen\tslen\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tqframe\tevalue\tbitscore\tstitle"} {if($1!=old){print $0; old=$1}}' "$i" > "$i".txt; done
+
+DO_BASE merge_table.pl -k "$input".*.tsv.txt > result.txt
+DO_BASE java -Xmx1G -jar /usr/local/bin/excel2.jar result.txt result.xlsx
+
+post_processing
+
+#<option detail>
+#<opt_a>
+ *** Input query options
+ -query_loc <String>
+   Location on the query sequence in 1-based offsets (Format: start-stop)
+ -strand <String, `both', `minus', `plus'>
+   Query strand(s) to search against database/subject
+   Default = `both'
+
+ *** General search options
+ -task <String, Permissible values: 'blastn' 'blastn-short' 'dc-megablast'
+                'megablast' 'rmblastn' >
+   Task to execute
+   Default = `megablast'
+ -evalue <Real>
+   Expectation value (E) threshold for saving hits
+   Default = `10'
+ -word_size <Integer, >=4>
+   Word size for wordfinder algorithm (length of best perfect match)
+ -gapopen <Integer>
+   Cost to open a gap
+ -gapextend <Integer>
+   Cost to extend a gap
+ -penalty <Integer, <=0>
+   Penalty for a nucleotide mismatch
+ -reward <Integer, >=0>
+   Reward for a nucleotide match
+ -use_index <Boolean>
+   Use MegaBLAST database index
+   Default = `false'
+ -index_name <String>
+   MegaBLAST database index name (deprecated; use only for old style indices)
+
+ *** BLAST-2-Sequences options
+ -subject <File_In>
+   Subject sequence(s) to search
+    * Incompatible with:  db, gilist, seqidlist, negative_gilist,
+   negative_seqidlist, taxids, taxidlist, negative_taxids, negative_taxidlist,
+   db_soft_mask, db_hard_mask
+ -subject_loc <String>
+   Location on the subject sequence in 1-based offsets (Format: start-stop)
+    * Incompatible with:  db, gilist, seqidlist, negative_gilist,
+   negative_seqidlist, taxids, taxidlist, negative_taxids, negative_taxidlist,
+   db_soft_mask, db_hard_mask, remote
+
+ *** Query filtering options
+ -dust <String>
+   Filter query sequence with DUST (Format: 'yes', 'level window linker', or
+   'no' to disable)
+   Default = `20 64 1'
+ -filtering_db <String>
+   BLAST database containing filtering elements (i.e.: repeats)
+ -window_masker_taxid <Integer>
+   Enable WindowMasker filtering using a Taxonomic ID
+ -window_masker_db <String>
+   Enable WindowMasker filtering using this repeats database.
+ -soft_masking <Boolean>
+   Apply filtering locations as soft masks
+   Default = `true'
+ -lcase_masking
+   Use lower case filtering in query and subject sequence(s)?
+
+ *** Restrict search or results
+ -gilist <String>
+   Restrict search of database to list of GIs
+    * Incompatible with:  seqidlist, taxids, taxidlist, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -seqidlist <String>
+   Restrict search of database to list of SeqIDs
+    * Incompatible with:  gilist, taxids, taxidlist, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_gilist <String>
+   Restrict search of database to everything except the specified GIs
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_seqidlist <String>
+   Restrict search of database to everything except the specified SeqIDs
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_gilist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -taxids <String>
+   Restrict search of database to include only the specified taxonomy IDs
+   (multiple IDs delimited by ',')
+    * Incompatible with:  gilist, seqidlist, taxidlist, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_taxids <String>
+   Restrict search of database to everything except the specified taxonomy IDs
+   (multiple IDs delimited by ',')
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_gilist, negative_seqidlist, negative_taxidlist, remote, subject,
+   subject_loc
+ -taxidlist <String>
+   Restrict search of database to include only the specified taxonomy IDs
+    * Incompatible with:  gilist, seqidlist, taxids, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_taxidlist <String>
+   Restrict search of database to everything except the specified taxonomy IDs
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_gilist, negative_seqidlist, negative_taxids, remote, subject,
+   subject_loc
+ -entrez_query <String>
+   Restrict search with the given Entrez query
+    * Requires:  remote
+ -db_soft_mask <String>
+   Filtering algorithm ID to apply to the BLAST database as soft masking
+    * Incompatible with:  db_hard_mask, subject, subject_loc
+ -db_hard_mask <String>
+   Filtering algorithm ID to apply to the BLAST database as hard masking
+    * Incompatible with:  db_soft_mask, subject, subject_loc
+ -perc_identity <Real, 0..100>
+   Percent identity
+ -qcov_hsp_perc <Real, 0..100>
+   Percent query coverage per hsp
+ -max_hsps <Integer, >=1>
+   Set maximum number of HSPs per subject sequence to save for each query
+ -culling_limit <Integer, >=0>
+   If the query range of a hit is enveloped by that of at least this many
+   higher-scoring hits, delete the hit
+    * Incompatible with:  best_hit_overhang, best_hit_score_edge
+ -best_hit_overhang <Real, (>0 and <0.5)>
+   Best Hit algorithm overhang value (recommended value: 0.1)
+    * Incompatible with:  culling_limit
+ -best_hit_score_edge <Real, (>0 and <0.5)>
+   Best Hit algorithm score edge value (recommended value: 0.1)
+    * Incompatible with:  culling_limit
+ -subject_besthit
+   Turn on best hit per subject sequence
+ -max_target_seqs <Integer, >=1>
+   Maximum number of aligned sequences to keep
+   (value of 5 or more is recommended)
+   Default = `500'
+    * Incompatible with:  num_descriptions, num_alignments
+
+ *** Discontiguous MegaBLAST options
+ -template_type <String, `coding', `coding_and_optimal', `optimal'>
+   Discontiguous MegaBLAST template type
+    * Requires:  template_length
+ -template_length <Integer, Permissible values: '16' '18' '21' >
+   Discontiguous MegaBLAST template length
+    * Requires:  template_type
+
+ *** Statistical options
+ -dbsize <Int8>
+   Effective length of the database
+ -searchsp <Int8, >=0>
+   Effective length of the search space
+ -sum_stats <Boolean>
+   Use sum statistics
+
+ *** Search strategy options
+ -import_search_strategy <File_In>
+   Search strategy to use
+    * Incompatible with:  export_search_strategy
+ -export_search_strategy <File_Out>
+   File name to record the search strategy used
+    * Incompatible with:  import_search_strategy
+
+ *** Extension options
+ -xdrop_ungap <Real>
+   X-dropoff value (in bits) for ungapped extensions
+ -xdrop_gap <Real>
+   X-dropoff value (in bits) for preliminary gapped extensions
+ -xdrop_gap_final <Real>
+   X-dropoff value (in bits) for final gapped alignment
+ -no_greedy
+   Use non-greedy dynamic programming extension
+ -min_raw_gapped_score <Integer>
+   Minimum raw gapped score to keep an alignment in the preliminary gapped and
+   traceback stages
+ -ungapped
+   Perform ungapped alignment only?
+ -window_size <Integer, >=0>
+   Multiple hits window size, use 0 to specify 1-hit algorithm
+ -off_diagonal_range <Integer, >=0>
+   Number of off-diagonals to search for the 2nd hit, use 0 to turn off
+   Default = `0'
+
+ *** Miscellaneous options
+ -parse_deflines
+   Should the query and subject defline(s) be parsed?
+ -num_threads <Integer, >=1>
+   Number of threads (CPUs) to use in the BLAST search
+   Default = `1'
+    * Incompatible with:  remote
+ -mt_mode <Integer, (>=0 and =<1)>
+   Multi-thread mode to use in BLAST search:
+    0 (auto) split by database
+    1 split by queries
+   Default = `0'
+    * Requires:  num_threads
+#</opt_a>
+#<opt_b>
+ *** Input query options
+ -query_loc <String>
+   Location on the query sequence in 1-based offsets (Format: start-stop)
+ -strand <String, `both', `minus', `plus'>
+   Query strand(s) to search against database/subject
+   Default = `both'
+
+ *** General search options
+ -task <String, Permissible values: 'blastn' 'blastn-short' 'dc-megablast'
+                'megablast' 'rmblastn' >
+   Task to execute
+   Default = `megablast'
+ -evalue <Real>
+   Expectation value (E) threshold for saving hits
+   Default = `10'
+ -word_size <Integer, >=4>
+   Word size for wordfinder algorithm (length of best perfect match)
+ -gapopen <Integer>
+   Cost to open a gap
+ -gapextend <Integer>
+   Cost to extend a gap
+ -penalty <Integer, <=0>
+   Penalty for a nucleotide mismatch
+ -reward <Integer, >=0>
+   Reward for a nucleotide match
+ -use_index <Boolean>
+   Use MegaBLAST database index
+   Default = `false'
+ -index_name <String>
+   MegaBLAST database index name (deprecated; use only for old style indices)
+
+ *** BLAST-2-Sequences options
+ -subject <File_In>
+   Subject sequence(s) to search
+    * Incompatible with:  db, gilist, seqidlist, negative_gilist,
+   negative_seqidlist, taxids, taxidlist, negative_taxids, negative_taxidlist,
+   db_soft_mask, db_hard_mask
+ -subject_loc <String>
+   Location on the subject sequence in 1-based offsets (Format: start-stop)
+    * Incompatible with:  db, gilist, seqidlist, negative_gilist,
+   negative_seqidlist, taxids, taxidlist, negative_taxids, negative_taxidlist,
+   db_soft_mask, db_hard_mask, remote
+
+ *** Query filtering options
+ -dust <String>
+   Filter query sequence with DUST (Format: 'yes', 'level window linker', or
+   'no' to disable)
+   Default = `20 64 1'
+ -filtering_db <String>
+   BLAST database containing filtering elements (i.e.: repeats)
+ -window_masker_taxid <Integer>
+   Enable WindowMasker filtering using a Taxonomic ID
+ -window_masker_db <String>
+   Enable WindowMasker filtering using this repeats database.
+ -soft_masking <Boolean>
+   Apply filtering locations as soft masks
+   Default = `true'
+ -lcase_masking
+   Use lower case filtering in query and subject sequence(s)?
+
+ *** Restrict search or results
+ -gilist <String>
+   Restrict search of database to list of GIs
+    * Incompatible with:  seqidlist, taxids, taxidlist, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -seqidlist <String>
+   Restrict search of database to list of SeqIDs
+    * Incompatible with:  gilist, taxids, taxidlist, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_gilist <String>
+   Restrict search of database to everything except the specified GIs
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_seqidlist <String>
+   Restrict search of database to everything except the specified SeqIDs
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_gilist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -taxids <String>
+   Restrict search of database to include only the specified taxonomy IDs
+   (multiple IDs delimited by ',')
+    * Incompatible with:  gilist, seqidlist, taxidlist, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_taxids <String>
+   Restrict search of database to everything except the specified taxonomy IDs
+   (multiple IDs delimited by ',')
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_gilist, negative_seqidlist, negative_taxidlist, remote, subject,
+   subject_loc
+ -taxidlist <String>
+   Restrict search of database to include only the specified taxonomy IDs
+    * Incompatible with:  gilist, seqidlist, taxids, negative_gilist,
+   negative_seqidlist, negative_taxids, negative_taxidlist, remote, subject,
+   subject_loc
+ -negative_taxidlist <String>
+   Restrict search of database to everything except the specified taxonomy IDs
+    * Incompatible with:  gilist, seqidlist, taxids, taxidlist,
+   negative_gilist, negative_seqidlist, negative_taxids, remote, subject,
+   subject_loc
+ -entrez_query <String>
+   Restrict search with the given Entrez query
+    * Requires:  remote
+ -db_soft_mask <String>
+   Filtering algorithm ID to apply to the BLAST database as soft masking
+    * Incompatible with:  db_hard_mask, subject, subject_loc
+ -db_hard_mask <String>
+   Filtering algorithm ID to apply to the BLAST database as hard masking
+    * Incompatible with:  db_soft_mask, subject, subject_loc
+ -perc_identity <Real, 0..100>
+   Percent identity
+ -qcov_hsp_perc <Real, 0..100>
+   Percent query coverage per hsp
+ -max_hsps <Integer, >=1>
+   Set maximum number of HSPs per subject sequence to save for each query
+ -culling_limit <Integer, >=0>
+   If the query range of a hit is enveloped by that of at least this many
+   higher-scoring hits, delete the hit
+    * Incompatible with:  best_hit_overhang, best_hit_score_edge
+ -best_hit_overhang <Real, (>0 and <0.5)>
+   Best Hit algorithm overhang value (recommended value: 0.1)
+    * Incompatible with:  culling_limit
+ -best_hit_score_edge <Real, (>0 and <0.5)>
+   Best Hit algorithm score edge value (recommended value: 0.1)
+    * Incompatible with:  culling_limit
+ -subject_besthit
+   Turn on best hit per subject sequence
+ -max_target_seqs <Integer, >=1>
+   Maximum number of aligned sequences to keep
+   (value of 5 or more is recommended)
+   Default = `500'
+    * Incompatible with:  num_descriptions, num_alignments
+
+ *** Discontiguous MegaBLAST options
+ -template_type <String, `coding', `coding_and_optimal', `optimal'>
+   Discontiguous MegaBLAST template type
+    * Requires:  template_length
+ -template_length <Integer, Permissible values: '16' '18' '21' >
+   Discontiguous MegaBLAST template length
+    * Requires:  template_type
+
+ *** Statistical options
+ -dbsize <Int8>
+   Effective length of the database
+ -searchsp <Int8, >=0>
+   Effective length of the search space
+ -sum_stats <Boolean>
+   Use sum statistics
+
+ *** Search strategy options
+ -import_search_strategy <File_In>
+   Search strategy to use
+    * Incompatible with:  export_search_strategy
+ -export_search_strategy <File_Out>
+   File name to record the search strategy used
+    * Incompatible with:  import_search_strategy
+
+ *** Extension options
+ -xdrop_ungap <Real>
+   X-dropoff value (in bits) for ungapped extensions
+ -xdrop_gap <Real>
+   X-dropoff value (in bits) for preliminary gapped extensions
+ -xdrop_gap_final <Real>
+   X-dropoff value (in bits) for final gapped alignment
+ -no_greedy
+   Use non-greedy dynamic programming extension
+ -min_raw_gapped_score <Integer>
+   Minimum raw gapped score to keep an alignment in the preliminary gapped and
+   traceback stages
+ -ungapped
+   Perform ungapped alignment only?
+ -window_size <Integer, >=0>
+   Multiple hits window size, use 0 to specify 1-hit algorithm
+ -off_diagonal_range <Integer, >=0>
+   Number of off-diagonals to search for the 2nd hit, use 0 to turn off
+   Default = `0'
+
+ *** Miscellaneous options
+ -parse_deflines
+   Should the query and subject defline(s) be parsed?
+ -num_threads <Integer, >=1>
+   Number of threads (CPUs) to use in the BLAST search
+   Default = `1'
+    * Incompatible with:  remote
+ -mt_mode <Integer, (>=0 and =<1)>
+   Multi-thread mode to use in BLAST search:
+    0 (auto) split by database
+    1 split by queries
+   Default = `0'
+    * Requires:  num_threads
+#</opt_b>
+#<opt_d>
+General options:
+--verbose (-v)           verbose console output
+--log                    enable debug log
+--quiet                  disable console output
+--header                 Use header lines in tabular output format (0/simple/verbose).
+
+Aligner/Clustering options:
+--evalue (-e)            maximum e-value to report alignments (default=0.001)
+--tmpdir (-t)            directory for temporary files
+--comp-based-stats       composition based statistics mode (0-4)
+--masking                masking algorithm (none, seg, tantan=default)
+--soft-masking           soft masking
+--motif-masking          softmask abundant motifs (0/1)
+--approx-id              minimum approx. identity% to report an alignment/to cluster sequences
+--ext                    Extension mode (banded-fast/banded-slow/full)
+--memory-limit (-M)      Memory limit in GB (default = 16G)
+
+Aligner options:
+--strand                 query strands to search (both/minus/plus)
+--un                     file for unaligned queries
+--al                     file or aligned queries
+--unfmt                  format of unaligned query file (fasta/fastq)
+--alfmt                  format of aligned query file (fasta/fastq)
+--unal                   report unaligned queries (0=no, 1=yes)
+--max-target-seqs (-k)   maximum number of target sequences to report alignments for (default=25)
+--top                    report alignments within this percentage range of top alignment score (overrides --max-target-seqs)
+--max-hsps               maximum number of HSPs per target sequence to report for each query (default=1)
+--range-culling          restrict hit culling to overlapping query ranges
+--compress               compression for output files (0=none, 1=gzip, zstd)
+--min-score              minimum bit score to report alignments (overrides e-value setting)
+--id                     minimum identity% to report an alignment
+--query-cover            minimum query cover% to report an alignment
+--subject-cover          minimum subject cover% to report an alignment
+--faster                 enable faster mode
+--fast                   enable fast mode
+--mid-sensitive          enable mid-sensitive mode
+--sensitive              enable sensitive mode)
+--more-sensitive         enable more sensitive mode
+--very-sensitive         enable very sensitive mode
+--ultra-sensitive        enable ultra sensitive mode
+--swipe                  exhaustive alignment against all database sequences
+--iterate                iterated search with increasing sensitivity
+--global-ranking (-g)    number of targets for global ranking
+--block-size (-b)        sequence block size in billions of letters (default=2.0)
+--index-chunks (-c)      number of chunks for index processing (default=4)
+--parallel-tmpdir        directory for temporary files used by multiprocessing
+--gapopen                gap open penalty
+--gapextend              gap extension penalty
+--matrix                 score matrix for protein alignment (default=BLOSUM62)
+--custom-matrix          file containing custom scoring matrix
+--frameshift (-F)        frame shift penalty (default=disabled)
+--long-reads             short for --range-culling --top 10 -F 15
+--query-gencode          genetic code to use to translate query (see user manual)
+--salltitles             include full subject titles in DAA file
+--sallseqid              include all subject ids in DAA file
+--no-self-hits           suppress reporting of identical self hits
+--taxonlist              restrict search to list of taxon ids (comma-separated)
+--taxon-exclude          exclude list of taxon ids (comma-separated)
+--seqidlist              filter the database by list of accessions
+--skip-missing-seqids    ignore accessions missing in the database
+
+Clustering options:
+--member-cover           Minimum coverage% of the cluster member sequence (default=80.0)
+--cluster-steps          Clustering steps
+--centroid-out           Output file for centroids (greedy vertex cover workflow)
+
+Cluster input options:
+--clusters               Clustering input file mapping sequences to centroids
+--edges                  Input file for greedy vertex cover
+--edge-format            Edge format for greedy vertex cover (default/triplet)
+
+Advanced options:
+--algo                   Seed search algorithm (0=double-indexed/1=query-indexed/ctg=contiguous-seed)
+--bin                    number of query bins for seed search
+--min-orf (-l)           ignore translated sequences without an open reading frame of at least this length
+--seed-cut               cutoff for seed complexity
+--freq-masking           mask seeds based on frequency
+--freq-sd                number of standard deviations for ignoring frequent seeds
+--id2                    minimum number of identities for stage 1 hit
+--linsearch              only consider seed hits against longest target for identical seeds
+--lin-stage1             only consider seed hits against longest query for identical seeds
+--xdrop (-x)             xdrop for ungapped alignment
+--gapped-filter-evalue   E-value threshold for gapped filter (auto)
+--band                   band for dynamic programming computation
+--shapes (-s)            number of seed shapes (default=all available)
+--shape-mask             seed shapes
+--multiprocessing        enable distributed-memory parallel processing
+--mp-init                initialize multiprocessing run
+--mp-recover             enable continuation of interrupted multiprocessing run
+--mp-query-chunk         process only a single query chunk as specified
+--ext-chunk-size         chunk size for adaptive ranking (default=auto)
+--no-ranking             disable ranking heuristic
+--culling-overlap        minimum range overlap with higher scoring hit to delete a hit (default=50%)
+--taxon-k                maximum number of targets to report per species
+--range-cover            percentage of query range to be covered for range culling (default=50%)
+--dbsize                 effective database size (in letters)
+--no-auto-append         disable auto appending of DAA and DMND file extensions
+--xml-blord-format       Use gnl|BL_ORD_ID| style format in XML output
+--stop-match-score       Set the match score of stop codons against each other.
+--tantan-minMaskProb     minimum repeat probability for masking (default=0.9)
+--file-buffer-size       file buffer size in bytes (default=67108864)
+--no-unlink              Do not unlink temporary files.
+--target-indexed         Enable target-indexed mode
+--ignore-warnings        Ignore warnings
+
+View options:
+--daa (-a)               DIAMOND alignment archive (DAA) file
+--forwardonly            only show alignments of forward strand
+
+Getseq options:
+--seq                    Space-separated list of sequence numbers to display.
+#</opt_d>
+#</option detail>

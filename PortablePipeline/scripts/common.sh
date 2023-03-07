@@ -28,10 +28,9 @@ onerror()
 
 
     if [ "$N_SCRIPT" = 1 ]; then
-#     if [ "$CON" = "$CON_DOCKER" ]; then
-#      eval $CON $IM_CENTOS6 chmod -R a=rXw $workdir
-#     fi
-     echo $status > $workdir/fin_status
+     rm -f "$workdir"/pp-singularity-flag
+     if [ "${PP_USE_PARALLEL:-}" = "y" ]; then rm -f "$workdir"/wrapper.sh; fi
+     echo $status > "$workdir"/fin_status
     fi
 
 }
@@ -55,6 +54,7 @@ DIR_WORK="."
 
 #本当はPWDをrealpathに変換してから-v -wをしたほうがよいかも
 #CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
+#CON_DOCKERはENV_XXXのほうで使用され、FUNC_RUN_DOCKERのほうはDO_XXXのほうで使用される
 CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-docker-list; docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
 function FUNC_RUN_DOCKER () {
  PP_RUN_IMAGE="$1"
@@ -63,6 +63,17 @@ function FUNC_RUN_DOCKER () {
  PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM
  echo $PPDOCNAME >> "$workdir"/pp-docker-list
  docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
+}
+CON_PODMAN='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-podman-list; podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
+function FUNC_RUN_PODMAN () {
+ PP_RUN_IMAGE="$1"
+ shift
+ PP_RUN_DOCKER_CMD=("${@}")
+ PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM
+ echo $PPDOCNAME >> "$workdir"/pp-podman-list
+ #PODMANのほうは、dockerhubからのイメージにdocker.io/とつける必要がある
+ PP_RUN_IMAGE=`echo "$PP_RUN_IMAGE"|awk -F'/' '{if(NF==2){$0="docker.io/"$0}; print $0}'`
+ podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
 }
 #if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
 # CON_SING="singularity exec $PPSINGBINDS "
@@ -79,7 +90,7 @@ DIR_WORK="`readlink -f "$DIR_WORK" || echo $DIR_WORK`"
 DIR_CUR="$PWD"
 if [ `echo "$DIR_IMG"|grep " "|wc -l` = 1 -o `echo "$DIR_WORK"|grep " "|wc -l` = 1 -o `echo "$DIR_CUR"|grep " "|wc -l` = 1 ]; then
  echo Current, Work and Image directory should not contain space character in absolute path;
- echo 1 > $workdir/fin_status;
+ echo 1 > "$workdir"/fin_status;
  exit 1;
 fi
 DIR_SRC="$(dirname "`readlink -f "$0" || echo "$0"`")"
@@ -97,8 +108,8 @@ IMS=$((eval "cat $0 $SCRIPT0"|grep "^export IM_"|cut -f 2 -d =|sed 's/"//g';
        set |grep ^IM_|cut -f 2 -d =)|sort|uniq)
 echo $IMS
 
-if [ "$PP_USE_SING" = "y" ]; then touch pp-singularity-flag; else rm -f pp-singularity-flag; fi
-if [ ! -e pp-singularity-flag -a `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
+if [ "$PP_USE_SING" = "y" ]; then touch "$workdir"/pp-singularity-flag; else rm -f "$workdir"/pp-singularity-flag; fi
+if [ ! -e "$workdir"/pp-singularity-flag -a `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
  echo using docker;
  CON="$CON_DOCKER";
 
@@ -107,6 +118,20 @@ if [ ! -e pp-singularity-flag -a `docker images 2> /dev/null |head -n 1|grep "^R
   if [ `echo "$TEMPDOCIMG"|grep "^$i$"|wc -l` = 0 ]; then
    set -ex
    docker pull $i
+   set +ex
+  fi
+ done
+elif [ ! -e "$workdir"/pp-singularity-flag -a `podman images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 ]; then
+ echo using podman;
+ CON="$CON_PODMAN";
+
+ TEMPDOCIMG=`podman images|awk '{print $1":"$2}'|tail -n+2`
+ for i in $IMS; do
+  #PODMANのほうは、dockerhubからのイメージにdocker.io/とつける必要がある。centos:7などの省略系のイメージは完全には名前が一致しないので再度pullしてしまう
+  i=`echo "$i"|awk -F'/' '{if(NF==2){$0="docker.io/"$0}; print $0}'`
+  if [ `echo "$TEMPDOCIMG"|grep "^$i$"|wc -l` = 0 ]; then
+   set -ex
+   podman pull $i
    set +ex
   fi
  done
@@ -175,12 +200,12 @@ EOF
 
   else
    echo docker, singularity or chroot should be available;
-   echo 1 > $workdir/fin_status;
+   echo 1 > "$workdir"/fin_status;
    exit 1;
   fi
  else
   echo docker or singularity should be installed;
-  echo 1 > $workdir/fin_status;
+  echo 1 > "$workdir"/fin_status;
   exit 1;
  fi
 fi
@@ -191,6 +216,8 @@ shopt -s expand_aliases
 #Docker使用時に$CONの中に;が入っていてパイプが途中で切れてしまうので、その対策
 if [ "$CON" = "$CON_DOCKER" ]; then
  for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="FUNC_RUN_DOCKER "$(eval "echo \$IM_`echo $i`")" "; done
+elif [ "$CON" = "$CON_PODMAN" ]; then
+ for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="FUNC_RUN_PODMAN "$(eval "echo \$IM_`echo $i`")" "; done
 else
  for i in `set |grep ^IM_|cut -f 1 -d =|sed 's/^IM_//'`; do alias DO_$i="$CON"$(eval "echo \$IM_`echo $i`")" "; done
 fi
@@ -204,11 +231,14 @@ parallel_setup(){
  #RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\n#$ -l mem_req=N_MEM_GG,s_vmem=N_MEM_GG\nsource ~/.bashrc\necho "$*"\neval "$*"'`
  #RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\nsource ~/.bashrc\necho "$*"\neval "$*"'`
  #if [ -v RUNPARALLEL ]; then
+ if [ "${PP_USE_PARALLEL:-}" = "y" ]; then
+  RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\n#$ -l mem_req=N_MEM_GG,s_vmem=N_MEM_GG\nsource ~/.bashrc\necho "$*"\neval "$*"'`
+ fi
  if [ "${RUNPARALLEL:-}" != "" ]; then
-  echo "$RUNPARALLEL"|sed 's/N_CPU/'$N_CPU'/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > $workdir/qsub.sh
-  echo "$RUNPARALLEL"|sed 's/N_CPU/1/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > $workdir/qsubone.sh
-  cp $workdir/qsub.sh "$workdir"/wrapper.sh
-  chmod 755 $workdir/qsub.sh $workdir/qsubone.sh
+  echo "$RUNPARALLEL"|sed 's/N_CPU/'$N_CPU'/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > "$workdir"/qsub.sh
+  echo "$RUNPARALLEL"|sed 's/N_CPU/1/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > "$workdir"/qsubone.sh
+  cp "$workdir"/qsub.sh "$workdir"/wrapper.sh
+  chmod 755 "$workdir"/qsub.sh "$workdir"/qsubone.sh
   if [ "$N_SCRIPT" = 1 ]; then
    if [ -e "$workdir/fin" ]; then rm "$workdir/fin"; fi
    if [ -e "$workdir/qsub.log" ]; then rm "$workdir/qsub.log"; fi
@@ -219,12 +249,12 @@ parallel_setup(){
   alias DOPARALLEL='xargs -d'"'"'\n'"'"' -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
   alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
  elif [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
-  grep "^#" "$workdir"/wrapper.sh > $workdir/qsub.sh
-  grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > $workdir/qsubone.sh
-  echo "#$ -pe def_slot 1" >> $workdir/qsubone.sh
-  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> $workdir/qsub.sh
-  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> $workdir/qsubone.sh
-  chmod 755 $workdir/qsub.sh $workdir/qsubone.sh
+  grep "^#" "$workdir"/wrapper.sh > "$workdir"/qsub.sh
+  grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > "$workdir"/qsubone.sh
+  echo "#$ -pe def_slot 1" >> "$workdir"/qsubone.sh
+  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> "$workdir"/qsub.sh
+  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> "$workdir"/qsubone.sh
+  chmod 755 "$workdir"/qsub.sh "$workdir"/qsubone.sh
   if [ "$N_SCRIPT" = 1 ]; then
    if [ -e "$workdir/fin" ]; then rm "$workdir/fin"; fi
    if [ -e "$workdir/qsub.log" ]; then rm "$workdir/qsub.log"; fi
@@ -465,7 +495,7 @@ N_MEM_G1=`expr $N_MEM_G / $N_CPU`
 N_SCRIPT=`expr ${N_SCRIPT:-0} + 1`
 export N_SCRIPT
 
-workdir=$PWD
+workdir="$PWD"
 scriptdir=$(dirname `readlink -f "$0" || echo "$0"`)
 export IM_CENTOS6=centos:centos6
 begintrap
@@ -480,10 +510,9 @@ fi
 
 post_processing(){
  if [ "$N_SCRIPT" = 1 ]; then
-#  if [ "$CON" = "$CON_DOCKER" ]; then
-#   DO_CENTOS6 chmod -R a=rXw .
-#  fi
-  echo 0 > $workdir/fin_status
+  rm -f "$workdir"/pp-singularity-flag
+  if [ "${PP_USE_PARALLEL:-}" = "y" ]; then rm -f "$workdir"/wrapper.sh; fi
+  echo 0 > "$workdir"/fin_status
  fi
  exit
 }
