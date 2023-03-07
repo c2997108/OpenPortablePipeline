@@ -1,6 +1,10 @@
 次回予告
 なし
 
+# 1.2.2 (2023/3/8)
+- podmanに対応
+- ```annotation~blast-diamond```の追加
+
 # 1.2.1 (2023/3/1)
 - ```RNA-seq~SNPcall-bbmap-callvariants```の追加
 - ```mapping-illumina~bbmap```のsamtools sort時のメモリー量変更
