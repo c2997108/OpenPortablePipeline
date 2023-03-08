@@ -5,9 +5,9 @@ Add annotation of reference cDNAs/Proteins with blastn/blastx/diamond
 '
 inputdef='
 input_1::an input cDNA file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_2:directory:reference cDNA files for blastn:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_3:directory:reference protein files for blastx:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
-input_4:directory:reference protein files for diamond:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
+input_2:directory option:reference cDNA files for blastn:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:directory option:reference protein files for blastx:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
+input_4:directory option:reference protein files for diamond:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -16,7 +16,7 @@ opt_a:blastn options:
 opt_b:blastx options:
 opt_d:diamond options:--sensitive
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -b #opt_b# -d #opt_d# #input_1# #input_2# #input_3# #input_4#"
+runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -b #opt_b# -d #opt_d# -x #input_2# -y #input_3# -z #input_4# #input_1#"
 
 export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
 export IM_BASE="c2997108/centos7:3-java"
@@ -32,6 +32,11 @@ set -o pipefail
  echo "$ENV_BASE gzip -dc \"$i\" > "`echo "$i"|sed 's/[.]gz$//'`
 done | DOPARALLELONE
 WAITPARALLEL
+
+if [ `(find "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)$"||true)|while read i; do echo $i; done | wc -l` = 0 ];then
+ echo One of input_2, input_3 or input_4 is required.
+ post_processing
+fi
 
 (find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)$"||true)|while read i; do
  echo "$ENV_EXONERATE fastareformat \"$i\" |sed 's/\\r//g' > \"$i\".formatted.txt"
