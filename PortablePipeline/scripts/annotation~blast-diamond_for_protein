@@ -1,12 +1,12 @@
 #!/bin/bash
 
 explanation='
-Add annotation of reference cDNAs/Proteins with blastn/blastx/diamond
+Add annotation of reference cDNAs/Proteins with tblastn/blastp/diamond
 '
 inputdef='
-input_1::an input cDNA file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_2:directory option:reference cDNA files for blastn:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_3:directory option:reference protein files for blastx:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
+input_1::an input cDNA file:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
+input_2:directory option:reference cDNA files for tblastn:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:directory option:reference protein files for blastp:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
 input_4:directory option:reference protein files for diamond:*.fa,*.fasta,*.faa,*.fa.gz,*.fasta.gz,*.faa.gz
 '
 optiondef='
@@ -22,6 +22,7 @@ export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
 export IM_BASE="c2997108/centos7:3-java"
 export IM_BLAST="ncbi/blast:2.13.0"
 export IM_DIAMOND="quay.io/biocontainers/diamond:2.1.4--hb97b32f_0"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -47,20 +48,22 @@ input=`echo "$input_1"|sed 's/[.]gz$//'`.formatted.txt
 
 (
 (find "$input_2"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
- echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype nucl; $ENV_BLAST blastn -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore stitle\" -out \"$input.blastn."`basename $i`".tsv\" $opt_a"
+ echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype nucl; $ENV_BLAST tblastn -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send sframe evalue bitscore stitle\" -out \"$input.tblastn."`basename $i`".tsv\" $opt_a"
 done
 (find "$input_3"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
- echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype prot; $ENV_BLAST blastx -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore stitle\" -out \"$input.blastx."`basename $i`".tsv\" $opt_b"
+ echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype prot; $ENV_BLAST blastp -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send sframe evalue bitscore stitle\" -out \"$input.blastp."`basename $i`".tsv\" $opt_b"
 done
 (find "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
- echo "$ENV_DIAMOND diamond makedb --in \"$i\" -d \"$i\"; $ENV_DIAMOND diamond blastx -d \"$i\" -q \"$input\" --threads $N_CPU --outfmt 6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore salltitles -o \"$input.diamond."`basename $i`".tsv\" $opt_d"
+ echo "$ENV_DIAMOND diamond makedb --in \"$i\" -d \"$i\"; $ENV_DIAMOND diamond blastp -d \"$i\" -q \"$input\" --threads $N_CPU --outfmt 6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore salltitles -o \"$input.diamond."`basename $i`".tsv\" $opt_d"
 done
 ) | DOPARALLEL
 WAITPARALLEL
 
-for i in "$input".*.tsv; do awk -F'\t' -v name=`basename $i|sed 's/.*[.]formatted[.]txt[.]\(.*\)[.]formatted[.]txt[.]tsv$/\1/'` 'BEGIN{print "qseqid\t"name":sseqid\tqlen\tslen\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tqframe\tevalue\tbitscore\tstitle"} {if($1!=old){print $0; old=$1}}' "$i" > "$i".txt; done
+for i in "$input".*.tsv; do awk -F'\t' -v name=`basename $i|sed 's/.*[.]formatted[.]txt[.]\(.*\)[.]formatted[.]txt[.]tsv$/\1/'` 'BEGIN{print "qseqid\t"name":sseqid\tqlen\tslen\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tsframe\tevalue\tbitscore\tstitle"} {if($1!=old){print $0; old=$1}}' "$i" > "$i".txt; done
 
-DO_BASE merge_table.pl -k "$input".*.tsv.txt > result.txt
+DO_SAMTOOLS samtools faidx "$input"
+awk -F'\t' 'BEGIN{print "qseqid\tlength"} {print $1"\t"$2}' "$input".fai > "$input".fai.tsv
+DO_BASE merge_table.pl -k "$input".fai.tsv "$input".*.tsv.txt > result.txt
 DO_BASE java -Xmx1G -jar /usr/local/bin/excel2.jar result.txt result.xlsx
 
 post_processing
