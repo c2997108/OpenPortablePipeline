@@ -1,5 +1,6 @@
 次回予告
 - ```post-assemble~dotplot-by-minimap2```のコンティグの向きを決めるときに、ヒットしている位置の重心の位置ではなくて、単純に＋－それぞれにヒットした長さの合計で向きを決めるように変更。
+- ```SNPcall~bcftools-mpileup```, ```WGS~genotyping-by-mpileup```の並列性の改善
 
 # 1.2.2 (2023/3/8)
 - podmanに対応
