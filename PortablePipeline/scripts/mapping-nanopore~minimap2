@@ -4,31 +4,38 @@ explanation='
 Minimap mapping for single-end read.
 '
 inputdef='
-input_1::FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
-input_2::FASTA:*.fa,*.fasta,*.fna
+input_1::FASTA/FASTQ:*.fasta,*.fa,*.fna,*.fsa,*.fastq,*.fq,*.fastq.gz,*.fq.gz,*.fasta.gz,*.fa.gz,*.fna.gz,*.fsa.gz
+input_2::FASTA:*.fa,*.fasta,*.fna,*.fsa
 '
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
-opt_f:minimap2 option:-x map-ont
+opt_f:minimap2 option (For mapping transcripts, "-x splice" is recommended):-x map-ont
+opt_g:Convert BAM to GTF (y|n):n
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -g #opt_g# #input_1# #input_2#"
 
-export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.16--h84994c4_0"
+export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.24--h7132678_1"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
+export IM_BEDTOOLS="biocontainers/bedtools:v2.28.0_cv2"
+export IM_KENT="c2997108/centos7:1-kentUtils"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail
 
-
-
 fq="$input_1"
 ref="$input_2"
 DO_MINIMAP2 minimap2 -t $N_CPU -a $opt_f "$ref" "$fq" | (DO_SAMTOOLS samtools sort -@ $N_CPU -o output.bam)
 DO_SAMTOOLS samtools index output.bam
 DO_SAMTOOLS samtools faidx "$ref"
+
+if [ "$opt_g" = "y" ]; then
+ DO_BEDTOOLS bedtools bamtobed -bed12 -i output.bam > output.bed
+ DO_KENT bedToGenePred output.bed output.genepred
+ DO_KENT genePredToGtf "file" output.genepred output.gtf
+fi
 
 post_processing
 #<option detail>

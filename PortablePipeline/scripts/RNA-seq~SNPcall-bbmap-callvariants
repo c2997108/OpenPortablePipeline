@@ -11,7 +11,8 @@ optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_i:BBMAP indexing options:
-opt_j:BBMAP mapping options:maxindel=100000 maxsites2=10000
+opt_d:Maximum deletion size (Deletions above the threshold will be splitted into separated reads so that callvariants.sh does not mistakenly call the mutations):10
+opt_j:BBMAP mapping options:maxindel=100000 maxsites2=10000 local=t
 opt_b:mapped_only_bam (ON/OFF):ON
 opt_v:callvariants.sh options:ploidy=2
 '
@@ -39,26 +40,28 @@ ref="$input_2"
 refbase=`echo $ref|sed 's/[.]\(fa\|fasta\|fsa\|fna\)$//'`
 DO_SAMTOOLS samtools faidx $ref
 rm -f $refbase.dict
-DO_PICARD picard -Xmx${N_MEM_M}M CreateSequenceDictionary R=$ref O=$refbase.dict
+JAVAMEM=$((${N_MEM_M} * 70 / 100))
+DO_PICARD picard -Xmx${JAVAMEM}M CreateSequenceDictionary R=$ref O=$refbase.dict
 
 cat << 'EOF' > run-awk-replace.sh
 awk -F'\t' '
  {
   if($0!~"^@"&&$6~"D"){
-   OFS="\t"; a=$6; gsub(/[0-9]+[IMX=]/,"",a); split(a,arr,"D");
-   for(i in arr){if(arr[i]>1000){sub(arr[i]"D",arr[i]"N",$6)}}
+   OFS="\t"; a=$6; gsub(/[0-9]+[SHNIMX=]/,"",a); split(a,arr,"D");
+   for(i in arr){if(arr[i]>opt_d){sub(arr[i]"D",arr[i]"N",$6)}}
   };
   print $0
  }'|awk -F'\t' '{if($0!~"^@"&&$5<=3){OFS="\t"; $5=0}; print $0}'
 EOF
+sed -i "s/opt_d/$opt_d/" run-awk-replace.sh
 
 mkdir -p output.temp output2
 ls output/*.bam|while read i; do
  j=`basename $i .bam`
- echo -n "$ENV_PICARD picard -Xmx${N_MEM_M}M AddOrReplaceReadGroups I=\"$i\" O=output.temp/\"${j}\"_addrg.bam SO=coordinate RGID=\"$j\" RGLB=library RGPL=Illumina RGPU=Illumina RGSM=\"$j\"; "
+ echo -n "$ENV_PICARD picard -Xmx${JAVAMEM}M AddOrReplaceReadGroups I=\"$i\" O=output.temp/\"${j}\"_addrg.bam SO=coordinate RGID=\"$j\" RGLB=library RGPL=Illumina RGPU=Illumina RGSM=\"$j\"; "
  echo -n "($ENV_SAMTOOLS samtools view -h output.temp/\"${j}\"_addrg.bam)|bash run-awk-replace.sh|($ENV_SAMTOOLS samtools view -Sb -o output.temp/\"${j}\"_addrg_repN.bam); "
  echo -n "$ENV_SAMTOOLS samtools index output.temp/\"${j}\"_addrg_repN.bam; "
- echo "$ENV_GATK gatk --java-options -Xmx${N_MEM_M}M SplitNCigarReads -R \"$ref\" -I output.temp/\"${j}\"_addrg_repN.bam -O output2/\"$j\".bam"
+ echo "$ENV_GATK gatk --java-options -Xmx${JAVAMEM}M SplitNCigarReads -R \"$ref\" -I output.temp/\"${j}\"_addrg_repN.bam -O output2/\"$j\".bam"
 done | DOPARALLEL
 
 WAITPARALLEL
@@ -68,15 +71,11 @@ rm -rf output.temp
 
 inputbams=""
 multiflag=""
-for i in `ls output2/*.bam`; do
- if [ "$inputbams" = "" ]; then
-  inputbams="$i"
- else
-  multiflag="multisample=t"
-  inputbams+=",$i"
- fi
-done
-DO_BBMAP callvariants.sh -Xmx${N_MEM_M}M in="$inputbams" ref="$ref" vcf=output.vcf $multiflag $opt_v
+ls output2/*.bam > input.list
+if [ `cat input.list|wc -l` -gt 1 ];then
+ multiflag="multisample=t"
+fi
+DO_BBMAP callvariants.sh -Xmx${JAVAMEM}M list=input.list ref="$ref" vcf=output.vcf overwrite=true $multiflag $opt_v
 awk -F'\t' '
  function s(j){if(j==1){return "\t"}else{return ":"}}
  {

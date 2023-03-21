@@ -30,7 +30,31 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$
 DO_SAMTOOLS samtools faidx "$input_2"
 ref="$input_2"
 
-DO_BCF bcftools mpileup -Ou $opt_g -f "${ref}" "$input_1"/*.bam | (DO_BCF bcftools call $opt_b -o output.vcf)
+#DO_BCF bcftools mpileup -Ou $opt_g -f "${ref}" "$input_1"/*.bam | (DO_BCF bcftools call $opt_b -o output.vcf)
+
+mkdir -p output.mpileup
+
+awk -F'\t' '{for(i=1;i<int($2/1000/1000)+1;i++){print $1":"1+(i-1)*1000*1000"-"i*1000*1000"\t"1000*1000}; print $1":"1+(i-1)*1000*1000"-"$2"\t"$2-1+(i-1)*1000*1000}' "$ref".fai |awk -F'\t' '{cnt+=$2; if(str==""){str=$1}else{str=str","$1}; if(cnt>=1000*1000){print str; str=""; cnt=0}} END{if(str!=""){print str}}' > temp.region.list
+n=`cat temp.region.list|wc -l`
+
+cat << EOF > run-mpileup-split.sh
+#!/bin/bash
+j=\$1
+i=\`head -n \$j temp.region.list|tail -n 1\`
+bcftools mpileup -Ou $opt_g -r "\$i" -f "${ref}" "${input_1}"/*.bam | bcftools call $opt_b -o output.mpileup/out.\$j.vcf
+EOF
+
+j=0
+for i in `seq 1 $n`; do
+ j=`expr $j + 1`
+ echo "$ENV_BCF bash run-mpileup-split.sh $j"
+done | DOPARALLELONE
+
+WAITPARALLEL
+
+(DO_BASE cat output.mpileup/out.1.vcf;
+ for i in `ls output.mpileup/out.*.vcf|grep -v output.mpileup/out.1.vcf|sort -V`; do DO_BASE cat $i|grep -v "^#" ||true; done
+) > output.vcf
 
 
 post_processing

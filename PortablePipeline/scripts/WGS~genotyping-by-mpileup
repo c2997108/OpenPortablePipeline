@@ -64,7 +64,7 @@ for i in `seq 1 $n`; do
  j=`expr $j + 1`
 # echo "$ENV_BCF bcftools mpileup -Ou $opt_g -r '$i' -f '${ref}' output.bwa/*.bam |( $ENV_BCF bcftools call $opt_i -o output.mpileup/out.'$j'.vcf)"
  echo "$ENV_BCF bash run-mpileup-split.sh $j"
-done | DOPARALLEL
+done | DOPARALLELONE
 
 WAITPARALLEL
 

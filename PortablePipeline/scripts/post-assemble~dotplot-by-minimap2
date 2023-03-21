@@ -47,14 +47,20 @@ in=$outbase.paf
 fafai1=$outbase.db.fa.fai
 fafai2=$outbase.q.fa.fai
 DO_AWK awk -F'\t' '
-  function abs(x){if(x<0){return -x}else{return x}}
-  function calcarea(x1, x2, y1, y2, m1, m2){return x2*y1-x1*y2+(x2*(x2+1)-x1*(x1+1))*((y2-y1)/(x2-x1)-m2/m1)/2}
+  #function abs(x){if(x<0){return -x}else{return x}}
+  #function calcarea(x1, x2, y1, y2, m1, m2){return x2*y1-x1*y2+(x2*(x2+1)-x1*(x1+1))*((y2-y1)/(x2-x1)-m2/m1)/2}
   FILENAME==ARGV[1]{if($11>=1*1000){
-   if($5=="+"){aln[$1":"$6]["+"]+=abs(calcarea($3,$4,$8,$9,$2,$7)); aln[$1":"$6]["-"]+=abs(calcarea($3,$4,$7-$8,$7-$9,$2,$7))}
-   else{aln[$1":"$6]["+"]+=abs(calcarea($3,$4,$9,$8,$2,$7)); aln[$1":"$6]["-"]+=abs(calcarea($3,$4,$7-$9,$7-$8,$2,$7))}
+   cntalign[$1":"$6][$5]+=$11;
+   #if($5=="+"){aln[$1":"$6]["+"]+=abs(calcarea($3,$4,$8,$9,$2,$7)); aln[$1":"$6]["-"]+=abs(calcarea($3,$4,$7-$8,$7-$9,$2,$7))}
+   #else{aln[$1":"$6]["+"]+=abs(calcarea($3,$4,$9,$8,$2,$7)); aln[$1":"$6]["-"]+=abs(calcarea($3,$4,$7-$9,$7-$8,$2,$7))}
    aln3[$1":"$6]+=$11
   }}
-  FILENAME==ARGV[2]{if($11>=1*1000){if(aln[$1":"$6]["+"]<=aln[$1":"$6]["-"]){print aln3[$1":"$6]"\t+\t"$0}else{print aln3[$1":"$6]"\t-\t"$0}}}
+  FILENAME==ARGV[2]{
+   if($11>=1*1000){
+    #if(aln[$1":"$6]["+"]<=aln[$1":"$6]["-"]){print aln3[$1":"$6]"\t+\t"$0}else{print aln3[$1":"$6]"\t-\t"$0}
+    if(cntalign[$1":"$6]["+"]>=cntalign[$1":"$6]["-"]){print aln3[$1":"$6]"\t+\t"$0}else{print aln3[$1":"$6]"\t-\t"$0}
+   }
+  }
  ' $in ./$in|sort -k1,1gr -k6,6g > $in.da
 
 DO_AWK awk -F'\t' '

@@ -65,7 +65,8 @@ mapped_only_bam="$opt_b"
 #create index file
 if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 ref="$input_2"
-DO_BBMAP bbmap.sh threads=$N_CPU ${indexing_param} ref="${ref}"
+JAVAMEM=$((${N_MEM_M} - 2000))
+DO_BBMAP bbmap.sh -Xmx${JAVAMEM}M threads=$N_CPU ${indexing_param} ref="${ref}"
 
 #samtools script
 cat << 'EOF' > run-samtools.sh
@@ -132,14 +133,14 @@ mkdir -p output
 for i in ${ppsingle[@]:-}; do
  prefix=output/`basename "$i"`
  local_out_files="${out_files//=/=${prefix}_}"
- echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in=\"$i\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
+ echo "$ENV_BBMAP bbmap.sh -Xmx${JAVAMEM}M ref=\"$ref\" threads=\"$threads1\" in=\"$i\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
 done
 
 #for paired-end reads
 for ((i = 0; i < ${#pppair1[@]}; i++)) {
  prefix=output/`basename "${pppair1[i]}"`
  local_out_files="${out_files//=/=${prefix}_}"
- echo "$ENV_BBMAP bbmap.sh ref=\"$ref\" threads=\"$threads1\" in1=\"${pppair1[i]}\" in2=\"${pppair2[i]}\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
+ echo "$ENV_BBMAP bbmap.sh -Xmx${JAVAMEM}M ref=\"$ref\" threads=\"$threads1\" in1=\"${pppair1[i]}\" in2=\"${pppair2[i]}\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
 }
 ) | DOPARALLEL
 
