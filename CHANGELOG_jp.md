@@ -1,8 +1,11 @@
 次回予告
+
+# 1.2.3 (2023/3/22)
 - ```post-assemble~dotplot-by-minimap2```のコンティグの向きを決めるときに、ヒットしている位置の重心の位置ではなくて、単純に＋－それぞれにヒットした長さの合計で向きを決めるように変更。
 - ```SNPcall~bcftools-mpileup```, ```WGS~genotyping-by-mpileup```の並列性の改善
 - ```RNA-seq~SNPcall-bbmap-callvariants```でミスコールを減らすようにdeletionサイズの最大値設定と、ソフトクリッピングオプションをデフォルトにした。
 - SGEでの並列処理終了時の検証を高速化
+- ```nanopore~minimap2```を```mapping-nanopore~minimap2```に変更して、cDNAをマッピングした時にGTFも出力できるように変更
 
 # 1.2.2 (2023/3/8)
 - podmanに対応
