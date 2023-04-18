@@ -2,6 +2,8 @@
 - ```mapping-nanopore~minimap2```にCDS予測オプションを追加
 - ```nanopore~split-barcode```で最大スコアの組み合わせを出力しなかいバグを修正
 - ```metagenome~PR2_NCBI-16S-mito-plastid```にSILVAを加えて```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid```に変更
+- ```annotation~BRAKER2```で入力のFASTAファイルの改行コードがWindowsだったときの対応を行った
+- ```metagenome~use-genbank-fasta-as-reference```でBLAST Databaseを入力可能にした。
 
 # 1.2.3 (2023/3/22)
 - ```post-assemble~dotplot-by-minimap2```のコンティグの向きを決めるときに、ヒットしている位置の重心の位置ではなくて、単純に＋－それぞれにヒットした長さの合計で向きを決めるように変更。
