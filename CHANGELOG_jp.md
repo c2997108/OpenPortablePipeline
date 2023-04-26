@@ -1,4 +1,6 @@
 次回予告
+
+# 1.2.4 (2023/4/26)
 - ```mapping-nanopore~minimap2```にCDS予測オプションを追加
 - ```nanopore~split-barcode```で最大スコアの組み合わせを出力しなかいバグを修正
 - ```metagenome~PR2_NCBI-16S-mito-plastid```にSILVAを加えて```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid```に変更
