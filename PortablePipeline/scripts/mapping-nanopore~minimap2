@@ -12,13 +12,17 @@ opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_f:minimap2 option (For mapping transcripts, "-x splice" is recommended):-x map-ont
 opt_g:Convert BAM to GTF (y|n):n
+opt_e:CDS prediction (y|n) (opt_g must be y for prediction):n
+opt_l:Transdecoder.LongOrfs option (opt_e must be y to use):-m 100 -S
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -g #opt_g# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -g #opt_g# -e #opt_e# -l #opt_l# #input_1# #input_2#"
 
 export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.24--h7132678_1"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 export IM_BEDTOOLS="biocontainers/bedtools:v2.28.0_cv2"
 export IM_KENT="c2997108/centos7:1-kentUtils"
+export IM_TRINOTATE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -35,6 +39,65 @@ if [ "$opt_g" = "y" ]; then
  DO_BEDTOOLS bedtools bamtobed -bed12 -i output.bam > output.bed
  DO_KENT bedToGenePred output.bed output.genepred
  DO_KENT genePredToGtf "file" output.genepred output.gtf
+ if [ "$opt_e" = "y" ]; then
+  DO_SEQKIT seqkit fx2tab "$fq" | awk -F'\t' '{print ">"$1; print $2}' > input.fa
+  DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.LongOrfs $opt_l -t input.fa
+  DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.Predict -t input.fa --cpu $N_CPU || (echo "ERROR: There is no protein sequence in your FASTA file"; false)
+  DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/util/gtf_to_alignment_gff3.pl output.gtf > output.gff3
+  DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/util/cdna_alignment_orf_to_genome_orf.pl input.fa.transdecoder.gff3 output.gff3 input.fa  > output.transdecoder.genome.gff3
+  DO_TRINOTATE rm -rf input.fa.transdecoder_dir input.fa.transdecoder_dir.__checkpoints input.fa.transdecoder_dir.__checkpoints_longorfs
+awk -F'\t' '
+ BEGIN{OFS="\t"}
+ FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2}
+ FILENAME==ARGV[2]{
+  if($3=="gene"){check=0; part=""; print $0}
+  else if($3=="mRNA"||$3=="exon"){print $0}
+  else if($3=="CDS"){
+   if($7=="+"){
+    if(check==0){
+     for(i=$4;i<=$5-2;i=i+3){
+      str=part""substr(seq[$1],i,3-length(part));
+      if(str=="ATG"){
+       if(part!=""){
+        print x[1]"\t"x[2]"\t"x[3]"\t"x[5]-length(part)+1"\t"x[5]"\t"x[6]"\t"x[7]"\t0\t"x[9];
+        print $0;
+       }else{
+        $4=i; $8=0; print $0;
+       }
+       check=1;
+       break
+      }
+      i=i-length(part);
+      part="";
+     }
+     if(check==0){part=substr(seq[$1],i,$5-i+1); for(i=1;i<=NF;i++){x[i]=$i}}
+    }else{
+     print $0
+    }
+   }else if($7=="-"){
+    if(check==0){
+     for(i=$5-2+length(part);i>=$4;i=i-3){
+      str=substr(seq[$1],i,3-length(part))""part;
+      if(str=="CAT"){
+       if(part!=""){
+        print x[1]"\t"x[2]"\t"x[3]"\t"x[4]"\t"x[4]+length(part)-1"\t"x[6]"\t"x[7]"\t0\t"x[9];
+        print $0;
+       }else{
+        $5=i+2; $8=0; print $0;
+       }
+       check=1;
+       break
+      }
+      part="";
+     }
+     if(check==0){part=substr(seq[$1],$4,i-$4+1); for(i=1;i<=NF;i++){x[i]=$i}}
+    }else{
+     print $0
+    }
+   }
+  }
+ }' <(DO_SEQKIT seqkit fx2tab "$ref") output.transdecoder.genome.gff3 > output.transdecoder.genome.trim_before_Met.gff3
+ fi
 fi
 
 post_processing
@@ -88,5 +151,12 @@ Options:
                  - sr: genomic short-read mapping
 
 #</opt_f>
+#<opt_l>
+#   --gene_trans_map <string> gene-to-transcript identifier mapping file (tab-delimited, gene_id<tab>trans_id<return> )
+#   -m <int> minimum protein length (default: 100)
+#   -S strand-specific (only analyzes top strand)
+#   --genetic_code | -G <string> genetic code (default: universal; see PerlDoc; options: Euplotes, Tetrahymena, Candida, Acetabularia)
+#                                              Genetic Codes (derived from: https://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi)
+#   --complete_orfs_only                   yields only complete ORFs (peps start with Met (M), end with stop (*))
+#</opt_l>
 #</option detail>
-

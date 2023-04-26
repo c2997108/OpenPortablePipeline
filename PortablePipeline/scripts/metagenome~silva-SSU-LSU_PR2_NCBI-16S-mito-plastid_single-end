@@ -2,10 +2,10 @@
 
 explanation='
 Meta-barcoding metagenome analysis pipeline
-using PR2 database and NCBI 16S, 23S, mito and plastid database
+using SILVA SSU+LSU, PR2 database and NCBI 16S, 23S, mito and plastid database
 '
 inputdef='
-input_1:directory:paired-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_1:directory:single-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -17,7 +17,7 @@ opt_g:read number for normalization:10000
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# #input_1#"
 
-export IM_PR2="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito"
+export IM_PR2="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito-silva-2"
 export IM_BASE="c2997108/centos7:3-java"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
@@ -25,83 +25,13 @@ source $(dirname `readlink -f $0 || echo $0`)/common.sh
 set -eux
 set -o pipefail
 
-cat << 'EOF' > run-count-paired.py
-import sys
-import re
-args = sys.argv
-if len(args) < 5:
-  raise Exception('python3 ' + args[0] + ' <file_1.fasta> <file_2.fasta> <file_1.fasta.blast> <file_2.fasta.blast>')
-
-fa1 = open(args[1], 'r')
-fa2 = open(args[2], 'r')
-fb1 = open(args[3], 'r')
-fb2 = open(args[4], 'r')
-#fa1 = open('test_1.fa', 'r')
-#fa2 = open('test_2.fa', 'r')
-#fb1 = open('test_1.fa.blast', 'r')
-#fb2 = open('test_2.fa.blast', 'r')
-
-la1 = fa1.readline()
-la2 = fa2.readline()
-lb1 = fb1.readline()
-lb2 = fb2.readline()
-
-old_lb1_1 = ''
-old_lb2_1 = ''
-
-while la1:
-  if la1[0]=='>':
-    if la1[1:].strip().split(' ')[0].split('\t')[0] == re.sub(r'/2$', "/1", la2[1:].strip().split(' ')[0].split('\t')[0]):
-      name = la1[1:].strip().split(' ')[0].split('\t')[0]
-      name2 = la2[1:].strip().split(' ')[0].split('\t')[0]
-      a={}
-      if lb1:
-        while lb1.strip().split('\t')[0] == name:
-          if lb1.strip().split('\t')[1] != old_lb1_1:
-            old_lb1_1 = lb1.strip().split('\t')[1]
-            if a.get(old_lb1_1):
-              a[old_lb1_1]+=float(lb1.strip().split('\t')[11])
-            else:
-              a[old_lb1_1]=float(lb1.strip().split('\t')[11])
-          lb1 = fb1.readline()
-          if not lb1:
-            break
-      if lb2:
-        while lb2.strip().split('\t')[0] == name2:
-          if lb2.strip().split('\t')[1] != old_lb2_1:
-            old_lb2_1 = lb2.strip().split('\t')[1]
-            if a.get(old_lb2_1):
-              a[old_lb2_1]+=float(lb2.strip().split('\t')[11])
-            else:
-              a[old_lb2_1]=float(lb2.strip().split('\t')[11])
-          lb2 = fb2.readline()
-          if not lb2:
-            break
-      if len(a) > 0:
-        ad = sorted(a.items(), key=lambda x: x[1], reverse=True)
-        #print(ad)
-        for i in ad:
-          print(name+"\t"+i[0]+"\t"+str(i[1]))
-    else:
-      raise Exception('read name of input1 is different with input2')
-  la1 = fa1.readline()
-  la2 = fa2.readline()
-#  print(not la1)
-fa1.close()
-fa2.close()
-fb1.close()
-fb2.close()
-
-EOF
-
-
 cat << 'EOS' > run-gz.sh
 i=$1
 bitscore="$2"
 top="$3"
 blastop="$5"
 cpu="$4"
-ref=/usr/local/blastdb/PR2_16S_23S_mito_plastid.maskadapters.havepath.fa
+ref=/usr/local/blastdb/database.fasta
 
 set -ex
 
@@ -109,30 +39,19 @@ echo "##count reads"
 n0=`expr $(zcat $i|wc -l) / 4`
 
 echo "##convert fastq to fasta"
-j=`echo "$i"|sed 's/[.]gz$//; s/[.]f\(ast\|\)q$//'`.fasta
+j=${i%.*}.fasta
 zcat $i|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j
 
-if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
- i2=`echo $i|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$/_2.f\1q\2/'`;
- j2=`echo $j|sed 's/_1[.]fasta$/_2.fasta/'`;
-else
- i2=`echo $i|sed 's/_R1/_R2/'`
- j2=`echo $j|sed 's/_R1/_R2/'`
-fi
-zcat $i2|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j2
-
 echo "##blast"
-blastn -db $ref -query $j -outfmt 6 -out $j.ssu.blast -num_threads $cpu
-blastn -db $ref -query $j2 -outfmt 6 -out $j2.ssu.blast -num_threads $cpu
-
-python run-count-paired.py $j $j2 $j.ssu.blast $j2.ssu.blast > $j.ssu.all.blast
-rm $j $j2
+blastn -db $ref -query $j -outfmt 6 -out $j.ssu.all.blast -num_threads $cpu
+echo "blast status: " $?
+rm $j
 
 echo "##filtering"
-cat $j.ssu.all.blast|awk -F'\t' '$3>'$bitscore'{if(a[$1]==1){if($3>=topbit*'$top'){print $0}}else{a[$1]=1; topbit=$3; print $0}}' > $j.ssu.blast.filtered
+cat $j.ssu.all.blast|awk -F'\t' '$12>'$bitscore'{if(a[$1]==1){if($12>=topbit*'$top'){print $0}}else{a[$1]=1; topbit=$12; print $0}}' > $j.ssu.blast.filtered
 
 echo "##determine LCA"
-awk -F'\t' 'FILENAME==ARGV[1]{name[$2]=$4} FILENAME==ARGV[2]{split($2,arr,"[.]"); print name[arr[1]]"\t"$0}' $ref.name $j.ssu.blast.filtered > $j.ssu.blast.filtered.name
+awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{print name[$2]"\t"$0}' $ref.path $j.ssu.blast.filtered > $j.ssu.blast.filtered.name
 
 awk -F'\t' '
 function searchLCA(data,  i, j, res, res2, str, n, stopflag){
@@ -166,10 +85,10 @@ EOS
 
 sed 's/zcat/cat/g' run-gz.sh > run.sh
 
-(for i in `find $input_1/|egrep "(_R1.*|_1)[.]f(ast|)q$"||true`; do
+(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
  echo $ENV_PR2 bash run.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
 done
-for i in `find $input_1/|egrep "(_R1.*|_1)[.]f(ast|)q[.]gz$"||true`; do
+for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
  echo $ENV_PR2 bash run-gz.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
 done)|DOPARALLEL
 

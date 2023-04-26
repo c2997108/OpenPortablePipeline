@@ -5,8 +5,9 @@ metagenome analysis pipeline with a GenBank FASTA file
 '
 inputdef='
 input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
-input_2::FAFSTA:*.fasta,*.fa,*.txt
-input_3:option:*.accession2taxid.gz
+input_2:directory:FAFSTA or BLAST database:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz,*.txt,*.nal,*.ndb,*.nhd,*.nhi,*.nhr,*.nin,*.nnd,*.nni,*.nog,*.nos,*.not,*.nsq,*.ntf,*.nto
+input_3:option:ftp.ncbi.nih.gov/pub/taxonomy/accession2taxid/nucl_gb.accession2taxid.gz:*.accession2taxid.gz
+input_4:option:ftp.ncbi.nih.gov/pub/taxonomy/taxdump.tar.gz:taxdump.tar.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -16,7 +17,7 @@ opt_d:bit score threshold:100
 opt_t:Score from top of BLAST hits used in LCA:0.95
 opt_g:read number for normalization:10000
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# -a #input_3# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# -a #input_3# -e #input_4# #input_1# #input_2#"
 
 export IM_BLAST="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7"
 export IM_BASE="c2997108/centos6:4"
@@ -27,8 +28,36 @@ set -eux
 set -o pipefail
 
 input_3="${opt_a:-}"
-sed 's/\r//' "$input_2" > "$input_2".mod.fasta
-makeblastdb -in "$input_2".mod.fasta -dbtype nucl -hash_index
+input_4="${opt_e:-}"
+
+nal=`find "$input_2"/ | grep "[.]nal$" |head -n 1 |sed 's/[.]nal$//' || true`
+nhd=`find "$input_2"/ | grep "[.]nhd$" |head -n 1 |sed 's/[.]nhd$//' || true`
+if [ "$nal" != "" ]; then
+ input_2="$nal"
+elif [ "$nhd" != "" ]; then
+ input_2="$nhd"
+else
+ input_2=`find "$input_2"/ | grep -E "[.](fa|fasta|fsa|fna|txt)(|[.]gz)$" |head -n 1 || true`
+ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+  DO_BASE gzip -dc "$input_2" > `basename "$input_2" .gz`
+  input_2=`basename "$input_2" .gz`
+ fi
+ if [ `echo "$input_2"|grep -E "[.](fa|fasta|fsa|fna|txt)$"|wc -l||true` = 1 ]; then
+  sed 's/\r//' "$input_2" > `basename "$input_2"`.mod.fasta
+  input_2=`basename "$input_2"`.mod.fasta
+  DO_BLAST makeblastdb -in "$input_2" -dbtype nucl -hash_index
+ fi
+fi
+
+if [ "$input_4" != "" ]; then
+ tar vxf "$input_4"
+ cat names.dmp |awk -F'\t' '$7=="scientific name"{print $0}' > names.dmp.sname
+ awk -F'\t' '
+  FILENAME==ARGV[1]{parent[$1]=$3}
+  FILENAME==ARGV[2]{name[$1]=$3}
+  END{for(i in name){str=name[i]; key=parent[i]; while(1){if(key==1){str=name[key]";"str; break}; str=name[key]";"str; key=parent[key]}; print i"\t"str}}
+ ' nodes.dmp names.dmp.sname > names.dmp.sname.path
+fi
 
 cat << 'EOS' > run-gz.sh
 i=$1
@@ -101,8 +130,9 @@ echo "##krona"
 
 EOS
 
-sed -i 's%/replaced/to/ref%'"$input_2"'.mod.fasta%' run-gz.sh
+sed -i 's%/replaced/to/ref%'"$input_2"'%' run-gz.sh
 if [ "$input_3" != "" ]; then sed -i 's%/usr/local/ncbi/nucl_gb.accession2taxid.ac-id.gz%'"$input_3"'%; s/taxid\[$1\]=$2/taxid\[$1\]=$3/' run-gz.sh; fi
+if [ "$input_4" != "" ]; then sed -i 's%/usr/local/ncbi/names.dmp.sname.path%names.dmp.sname.path%' run-gz.sh; fi
 sed 's/zcat/cat/g' run-gz.sh > run.sh
 
 (for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do

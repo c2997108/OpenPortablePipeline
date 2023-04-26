@@ -7,8 +7,8 @@ Docker must be installed.
 inputdef='
 input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_3::GeneMark-ES/ET/EP LINUX 64 binary :gmes_linux_64.tar.gz
-input_4::GeneMark-ES/ET/EP LINUX 64 license :gm_key_64.gz
+input_3::GeneMark-ES/ET/EP LINUX 64 binary (http://exon.gatech.edu/genemark/license_download.cgi):gmes_linux_64*.tar.gz
+input_4::GeneMark-ES/ET/EP LINUX 64 license (http://exon.gatech.edu/genemark/license_download.cgi):gm_key_64.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -61,6 +61,9 @@ ls $r2 $r2gz > /dev/null
 
 #decompress input files
 if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > "$input_2".ref.fa
+input_2="$input_2".ref.fa
+
 if [ `basename "$input_3"` != "gmes_linux_64.tar.gz" -o `basename "$input_4"` != "gm_key_64.gz" ]; then echo 'Download GeneMark-ES/ET/EP LINUX 64 binary and license(http://exon.gatech.edu/GeneMark/license_download.cgi)'; post_processing; fi
 
 DO_HISAT2 hisat2-build $opt_b -p $N_CPU "$input_2" hisat2_index
@@ -107,7 +110,6 @@ done)|DOPARALLEL
 WAITPARALLEL
 
 bamlist=`awk '{ORS=","; print $0}' bamlist|sed 's/^,//; s/,$//'`
-awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" > "$input_2".ref.fa
 
 echo 'set -eux
 #source /usr/local/BRAKER/bashrc
@@ -124,11 +126,12 @@ export HOME=$PWD
 cp -r /usr/local/BRAKER/Augustus/config .
 zcat "'"$input_4"'" > .gm_key
 tar vxf "'"$input_3"'"
+mv `find . -maxdepth 1 -type d|grep gmes_linux_64` gmes_linux_64
 cd gmes_linux_64
 ./change_path_in_perl_scripts.pl /usr/local/BRAKER/anaconda3/bin/perl
 cd ..
 rm -rf config/species/run1 || true
-/usr/local/BRAKER/BRAKER/scripts/braker.pl --genome="'"$input_2"'".ref.fa --species=run1 --bam="'"$bamlist"'" '"$opt_r"'
+/usr/local/BRAKER/BRAKER/scripts/braker.pl --genome="'"$input_2"'" --species=run1 --bam="'"$bamlist"'" '"$opt_r"'
 ' > temp_bashrc
 
 DO_BRAKER bash temp_bashrc

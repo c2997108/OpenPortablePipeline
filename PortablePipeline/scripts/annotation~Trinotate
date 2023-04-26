@@ -33,7 +33,7 @@ fi
 
 
 DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.LongOrfs -t $fasta
-DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.Predict -t $fasta --cpu $N_CPU || (echo "ERROR: There is no protein sequence in your FASTA file"; exit 1)
+DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/TransDecoder.Predict -t $fasta --cpu $N_CPU || (echo "ERROR: There is no protein sequence in your FASTA file"; false)
 
 transfasta=`basename $fasta`
 DO_TRINOTATE rm -rf $transfasta.transdecoder_dir $transfasta.transdecoder_dir.__checkpoints_longorfs $transfasta.transdecoder_dir.__checkpoints

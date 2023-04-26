@@ -20,7 +20,8 @@ set -eux
 
 cd $input_1
 
-for i in `ls |egrep "[.](fq|fastq|fq.gz|fastq.gz)$"`; do echo $ENV_FASTQC fastqc -t 1 $i --extract; done|xargs -I{} -P$N_CPU bash -c "{}"
+for i in `ls |egrep "[.](fq|fastq|fq.gz|fastq.gz)$"`; do echo $ENV_FASTQC fastqc -t $N_CPU $i --extract; done|DOPARALLELONE
+WAITPARALLEL
 
 echo "<html><head></head><body><table><tr><td>name</td>" > index.html
 

@@ -7,21 +7,27 @@ inputdef='
 input_1:directory:FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2::primer sequences (FASTA):*.fasta,*.fa,*.fna,*.txt
 input_3::sample table (Sample name[tab]Forward read name[tab]Reverse read name[tab]Minimum amplicon length[tab]Maximum amplicon length):*.txt
+input_4:option:sequencing_summary_XXX.txt:sequencing_summary*.txt
 '
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
-opt_f:coverage threshold:0.9
+opt_f:adapter alignment length threshold:0.7
+opt_i:identity threshold (%):90
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -i #opt_i# -s #input_4# #input_1# #input_2# #input_3#"
 
 export IM_BLAST="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-mitofish2"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
+export IM_R="c2997108/ubuntu20:R-2_gplots_ggExtra"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
 set -eux
 set -o pipefail
+
+input_4="${opt_s:-}"
 
 primers="$input_2"
 DO_BLAST makeblastdb -in "$primers" -dbtype nucl
@@ -32,46 +38,57 @@ list="$input_3"
  echo $ENV_BLAST "seqkit fq2fa $i > $i.fasta"
 done)|DOPARALLELONE
 
+WAITPARALLEL
+
 for i in $input_1/*.fasta; do echo $ENV_BLAST blastn -db "$primers" -query $i -num_threads 1 -word_size 4 -outfmt 6 ">" $i.blastn; done|DOPARALLELONE
-cat $input_1/*.blastn|awk -F'\t' -v thr=$opt_f '
+
+WAITPARALLEL
+
+#元々1リード中に複数ヒットしていることを前提にしていたようだけど、複数ヒットをスコア順に処理できていなかったので最もスコアの合計の高いものだけを抽出するように変更
+cat $input_1/*.blastn|awk -F'\t' -v thr=$opt_f -v identity=$opt_i '
  FILENAME==ARGV[1]{len[$1]=$2}
- FILENAME==ARGV[2]{if($4>=len[$2]*thr){print $0}}
+ FILENAME==ARGV[2]{if($4>=len[$2]*thr&&$3>=identity){print $0}}
 ' "$primers".fai /dev/stdin|awk -F'\t' '
  FILENAME==ARGV[1]{f[$1]=$2; r[$1]=$3; minlen[$1]=$4; maxlen[$1]=$5; avelen[$1]=($4+$5)/2}
- FILENAME==ARGV[2]{datalen[$1]++; data[$1][datalen[$1]][1]=$2; data[$1][datalen[$1]][2]=$7; data[$1][datalen[$1]][3]=$8; if($9<$10){data[$1][datalen[$1]][4]=1}else{data[$1][datalen[$1]][4]=-1}}
+ FILENAME==ARGV[2]{
+  datalen[$1]++; data[$1][datalen[$1]][1]=$2; data[$1][datalen[$1]][2]=$7; data[$1][datalen[$1]][3]=$8;
+  if($9<$10){data[$1][datalen[$1]][4]=1}else{data[$1][datalen[$1]][4]=-1};
+  data[$1][datalen[$1]][5]=$12; databitscore[$1][datalen[$1]]=$12;
+ }
  END{
   for(i in data){
    if(datalen[i]>=2){
     delete flag;
-    for(j=1;j<=datalen[i];j++){
+    PROCINFO["sorted_in"]="@val_num_desc"
+    for(j in databitscore[i]){
      if(flag[j]==0){
       for(k in f){
        if(f[k]==data[i][j][1]){
-        for(l=j;l<=datalen[i];l++){
+        for(l in databitscore[i]){
          if(flag[l]==0 && flag[j]==0){
           if(r[k]==data[i][l][1]){
-           fs=data[i][j][2]; fe=data[i][j][3]; fst=data[i][j][4]; rs=data[i][l][2]; re=data[i][l][3]; rst=data[i][l][4];
+           fs=data[i][j][2]; fe=data[i][j][3]; fst=data[i][j][4]; fbit=data[i][j][5]; rs=data[i][l][2]; re=data[i][l][3]; rst=data[i][l][4]; rbit=data[i][l][5];
            if(fst==1 && rst==-1 && (re-fs)>=minlen[k] && (re-fs)<=maxlen[k]){
             flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"fs"\t"re"\t1"
+            print k"\t"i"\t"f[k]"\t"r[k]"\t"fs"\t"re"\t1\t"fbit+rbit
            }else if(fst==-1 && rst==1 && (fe-rs)>=minlen[k] && (fe-rs)<=maxlen[k]){
             flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"rs"\t"fe"\t-1"
+            print k"\t"i"\t"f[k]"\t"r[k]"\t"rs"\t"fe"\t-1\t"fbit+rbit
            }
           }
          }
         }
        }else if(r[k]==data[i][j][1]){
-        for(l=j;l<=datalen[i];l++){
+        for(l in databitscore[i]){
          if(flag[l]==0 && flag[j]==0){
           if(f[k]==data[i][l][1]){
-           fs=data[i][l][2]; fe=data[i][l][3]; fst=data[i][l][4]; rs=data[i][j][2]; re=data[i][j][3]; rst=data[i][j][4];
+           fs=data[i][l][2]; fe=data[i][l][3]; fst=data[i][l][4]; fbit=data[i][j][5]; rs=data[i][j][2]; re=data[i][j][3]; rst=data[i][j][4]; rbit=data[i][l][5];
            if(fst==1 && rst==-1 && (re-fs)>=minlen[k] && (re-fs)<=maxlen[k]){
             flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"fs"\t"re"\t1"
+            print k"\t"i"\t"f[k]"\t"r[k]"\t"fs"\t"re"\t1\t"fbit+rbit
            }else if(fst==-1 && rst==1 && (fe-rs)>=minlen[k] && (fe-rs)<=maxlen[k]){
             flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"rs"\t"fe"\t-1"
+            print k"\t"i"\t"f[k]"\t"r[k]"\t"rs"\t"fe"\t-1\t"fbit+rbit
            }
           }
          }
@@ -83,7 +100,7 @@ cat $input_1/*.blastn|awk -F'\t' -v thr=$opt_f '
    }
   }
  }
-' "$list" /dev/stdin > tag_position.txt
+' "$list" /dev/stdin | sort -k2,2 -k8,8nr -t$'\t' |awk -F'\t' 'a!=$2{a=$2; print $0}' > tag_position.txt
 
 (for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
  cat $i
@@ -109,6 +126,29 @@ done)|awk -F'\t' '
   }
  }
 ' tag_position.txt /dev/stdin
+
+if [ "$input_4" != "" ];then
+ for i in *.fq; do
+  DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' '{split($1,arr,":"); print arr[1]"\t"length($2)}'|
+   awk -F'\t' '
+    BEGIN{print "read_id\tlength\tmean_qscore"}
+    FILENAME==ARGV[1]{a[$1]=$2}
+    FILENAME==ARGV[2]&&FNR==1{for(i=1;i<=NF;i++){if($i=="mean_qscore_template"){qs=i}else if($i=="read_id"){id=i}}}
+    FILENAME==ARGV[2]&&$id in a{print $id"\t"a[$id]"\t"$qs}
+   ' /dev/stdin "$input_4" > "$i".stats
+  echo 'library(ggExtra)
+library(hexbin)
+library(ggplot2)
+library(Cairo)
+a=read.table("'"$i".stats'", sep="\t", header = T)
+CairoPNG("'"$i"'.png",width=1500,height = 1500)
+g=ggplot(a, aes(x = length, y = mean_qscore))+stat_binhex(bins=300)+scale_x_log10()+scale_fill_gradient(trans = "log")+geom_point(shape=19 ,alpha = 0,size=0.1)+theme(legend.position = "left")
+ggMarginal(g, type = "density", margins = "both", size = 4)
+dev.off()' > $i.R
+  echo "$ENV_R Rscript $i.R"
+ done | DOPARALLELONE
+ WAITPARALLELONE
+fi
 
 post_processing
 #<option detail>

@@ -26,7 +26,6 @@ onerror()
     echo "------------------------------------------------------------"
     echo ""
 
-
     if [ "$N_SCRIPT" = 1 ]; then
      rm -f "$workdir"/pp-singularity-flag
      if [ "${PP_USE_PARALLEL:-}" = "y" ]; then rm -f "$workdir"/wrapper.sh; fi

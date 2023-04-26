@@ -74,7 +74,7 @@ DO_SAMTOOLS samtools faidx "$input_2"
 echo 'rm -rf SALSA_HiC
 source /usr/local/miniconda3/bin/activate salsa2
 python /usr/local/SALSA/run_pipeline.py -a "'$input_2'" -l "'$input_2'".fai -b mapped.bed -o SALSA_HiC '"$opt_s"'
-/usr/local/SALSA/convert.sh SALSA_HiC "'"$opt_j"'"' > run-salsa.sh
+/usr/local/SALSA/convert.sh SALSA_HiC "'"$opt_j" --threads $N_CPU'"' > run-salsa.sh
 
 DO_SALSA bash run-salsa.sh
 rm -rf ?

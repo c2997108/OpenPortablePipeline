@@ -4,7 +4,7 @@ explanation='
 BWA is a software package for mapping low-divergent sequences against a large reference genome
 '
 inputdef='
-input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_1:directory:paired-end FASTQ or single FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
 input_3:directory option:bwa index:*.amb,*.ann,*.bwt,*.pac,*.sa
 '
@@ -32,16 +32,45 @@ else
 fi
 
 mkdir -p output.bwa
-for i in `find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
- if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
-  i2=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
- else
-  i2=`echo $i|sed 's/_R1/_R2/'`;
- fi
- outbase=output.bwa/`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
- samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
- echo "$ENV_BWA bwa mem $opt_b -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$i2' |( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o '$outbase'.bam); $ENV_SAMTOOLS samtools index '$outbase'.bam"
-done | DOPARALLEL
+ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_BWA="$ENV_BWA" -v opt_b="$opt_b" -v N_CPU="$N_CPU" -v ref="$ref" -v ENV_SAMTOOLS="$ENV_SAMTOOLS" '
+  {file[$0]=1}
+  END{
+   for(i in file){
+    if(flag[i]!=1){
+     r1=i;
+     r2="";
+     if(i~"_1[.]f(ast|)q(|[.]gz)$"){
+      flag[i]=1;
+      samplename=gensub(/_1[.]f(ast|)q(|[.]gz)$/,"","",i);
+      j=gensub(/_1[.]f(ast|)q(|[.]gz)$/,"_2.f\\1q\\2","",i);
+      if(j in file){
+       flag[j]=1;
+       r2=j;
+      }
+     }else if($i~"_R1(.*)[.]f(ast|)q(|[.]gz)$"){
+      flag[i]=1;
+      samplename=gensub(/_R1(.*)[.]f(ast|)q(|[.]gz)$/,"","",i);
+      j=gensub(/_R1(.*)[.]f(ast|)q(|[.]gz)$/,"_R2\\1.f\\2q\\3","",i);
+      if(j in file){
+       flag[j]=1;
+       r2=j;
+      }
+     }
+     if(flag[i]==1){
+      print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' '"'"'"input_1"/"r2"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam";
+     }
+    }
+   }
+   for(i in file){
+    if(flag[i]!=1){
+     r1=i;
+     samplename=gensub(/[.]f(ast|)q(|[.]gz)$/,"","",i);
+     flag[i]=1;
+     print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam";
+    }
+   }
+  }
+ ' | DOPARALLEL
 
 WAITPARALLEL
 

@@ -95,6 +95,9 @@ awk -F'\t' '
   }
  }' output.vcf > output.conv.vcf
 
+mkdir -p output.individual_vcf
+ls | grep ^individual_| while read i; do mv $i output.individual_vcf; done
+
 echo completion at $(date)
 time_fin=$(date "+%s")
 echo -e "Total running time is `echo "scale=2; ($time_fin - $time0)/60" |bc` min"
