@@ -1,4 +1,5 @@
 次回予告
+- ```metagenome~mapping-to-MAG```、```metagenome~mapping-to-MAG-with-full-assembly```にminimum mapQのオプションを追加
 
 # 1.2.4 (2023/4/26)
 - ```mapping-nanopore~minimap2```にCDS予測オプションを追加
