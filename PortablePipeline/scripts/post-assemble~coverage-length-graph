@@ -12,8 +12,10 @@ optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_b:make a bam file (true/false):true
+opt_a:alignment coverage threshold:0.8
+opt_q:minimum mapping quality:0
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_b# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -a #opt_a# -q #opt_q# #input_1# #input_2# #input_3#"
 
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h91753b0_3"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
@@ -36,7 +38,7 @@ if [ ! -e "$ref".fai ]; then
 fi
 
 (if [ "$input_2" != "" ]; then
- for i in `find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
+ for i in `find $input_2/ -maxdepth 1 |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
   if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
    j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
   elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
@@ -47,37 +49,45 @@ fi
   i2=`basename $i`
   if [ -e "$j" ]; then
    samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$j' > '$i2.sam'"
+   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$j' | awk -F'\t' 'substr(\$0,1,1)==\"@\"||\$4!=\"0\"' > '$i2.sam'"
   else
    samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' > '$i2.sam'"
+   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' | awk -F'\t' 'substr(\$0,1,1)==\"@\"||\$4!=\"0\"' > '$i2.sam'"
   fi
  done
 fi
 if [ "$input_3" != "" ]; then
- for i in `find $input_3/ |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
+ for i in `find $input_3/ -maxdepth 1 |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
   i2=`basename $i`
   samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-  echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' > '$i2.sam'"
+  echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' | awk -F'\t' 'substr(\$0,1,1)==\"@\"||\$4!=\"0\"' > '$i2.sam'"
  done
 fi) | DOPARALLEL
 
 WAITPARALLEL
 
-
+for i in *.sam; do
+ grep -v "^@" $i|(DO_AWK awk -F'\t' -v cov=$opt_a -v minq=$opt_q '$5>=minq{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}}') > ${i}2
+ DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai ${i}2 > ${i}2.cov
+ echo 'library(Cairo); a=read.table("'${i}2.cov'",sep="\t",row.names=1); CairoPNG(file="'${i}2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (DO_R R --vanilla < /dev/stdin)
+done
 
 outname=`basename $ref`
-cat *.sam|grep -v "^@"|(DO_AWK awk -F'\t' '{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=0.8){print map"\t"$0}}}}') > $outname.sam2
+cat *.sam|grep -v "^@"|(DO_AWK awk -F'\t' -v cov=$opt_a -v minq=$opt_q '$5>=minq{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}}') > $outname.sam2
 DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai $outname.sam2 > $outname.sam2.cov
 echo 'library(Cairo); a=read.table("'$outname.sam2.cov'",sep="\t",row.names=1); CairoPNG(file="'$outname.sam2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (DO_R R --vanilla < /dev/stdin)
 (echo -e 'id\tcoverage\tmapped bases\tlength'; cat $outname.sam2.cov) > $outname.output.txt
 
 if [ "$opt_b" = "true" ]; then
+ for i in *.sam; do
+  (DO_SAMTOOLS samtools view -SH $i; cut -f 2- ${i}2)|(DO_SAMTOOLS samtools view -Sb -@ $N_CPU -) | (DO_SAMTOOLS samtools sort -T $i.clean -@ $N_CPU -o $i.clean.bam)
+  DO_SAMTOOLS samtools index $i.clean.bam
+ done
  (DO_SAMTOOLS samtools view -SH `ls -S *.sam|head -n 1`; cut -f 2- $outname.sam2)|(DO_SAMTOOLS samtools view -Sb -@ $N_CPU -) | (DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam)
  DO_SAMTOOLS samtools index $outname.clean.bam
 fi
 
-rm -f *.sam $outname.sam2
+rm -f *.sam *.sam2
 
 
 post_processing
