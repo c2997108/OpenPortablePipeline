@@ -144,7 +144,7 @@ else
   for i in $IMS; do
    if [ ! -e "$DIR_IMG"/$i ]; then
     set -ex
-    singularity pull --name "`basename $i`" docker://$i;
+    singularity pull --name "`basename $i`" docker://$i || wget -O "`basename $i`" http://suikou.fs.a.u-tokyo.ac.jp/pp/img/"$i";
     mkdir -p "$DIR_IMG/`dirname $i`";
     mv "`basename $i`" "$DIR_IMG/`dirname $i`";
     set +ex
