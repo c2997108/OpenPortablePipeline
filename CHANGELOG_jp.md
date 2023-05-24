@@ -3,7 +3,7 @@
 # 1.2.5 (2023/05/24)
 - ```metagenome~mapping-to-MAG```、```metagenome~mapping-to-MAG-with-full-assembly```にminimum mapQのオプションを追加
 - ```post-assemble~coverage-length-graph```にminimum alignment, minimum mapQオプションを追加、個別のFASTQに対してカバレッジを計算するように追加
-- DDBJスパコン 2023年アップデートに対応してsingularity pullが失敗した場合に、直接イメージをダウンロードする回避策を追加
+- DDBJスパコン 2023年アップデートに対応。singularity pullが失敗した場合に、直接イメージをダウンロードする回避策を追加
 
 # 1.2.4 (2023/4/26)
 - ```mapping-nanopore~minimap2```にCDS予測オプションを追加
