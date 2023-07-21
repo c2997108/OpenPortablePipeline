@@ -63,7 +63,7 @@ function FUNC_RUN_DOCKER () {
  echo $PPDOCNAME >> "$workdir"/pp-docker-list
  docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
 }
-CON_PODMAN='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-podman-list; podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
+CON_PODMAN='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-podman-list; podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -i --rm '
 function FUNC_RUN_PODMAN () {
  PP_RUN_IMAGE="$1"
  shift
@@ -72,7 +72,7 @@ function FUNC_RUN_PODMAN () {
  echo $PPDOCNAME >> "$workdir"/pp-podman-list
  #PODMANのほうは、dockerhubからのイメージにdocker.io/とつける必要がある
  PP_RUN_IMAGE=`echo "$PP_RUN_IMAGE"|awk -F'/' '{if(NF==2){$0="docker.io/"$0}; print $0}'`
- podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
+ podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
 }
 #if [ "`echo $PWD|grep '^/home'|wc -l`" = 1 ]; then
 # CON_SING="singularity exec $PPSINGBINDS "
