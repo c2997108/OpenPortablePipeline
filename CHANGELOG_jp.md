@@ -1,5 +1,6 @@
 次回予告
 - podman使用時に-uオプションを使わないように変更
+- apptainerで`library://`設定が無い場合に対応
 
 # 1.2.5 (2023/05/24)
 - ```metagenome~mapping-to-MAG```、```metagenome~mapping-to-MAG-with-full-assembly```にminimum mapQのオプションを追加
