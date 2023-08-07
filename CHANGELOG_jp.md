@@ -1,4 +1,7 @@
 次回予告
+- Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)でqacctが使えないことへの対応。
+
+# 1.2.6 (2023/07/21)
 - podman使用時に-uオプションを使わないように変更
 - apptainerで`library://`設定が無い場合に対応
 
