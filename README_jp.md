@@ -5,7 +5,7 @@ PortablePipelineはWindows、Macユーザが、手元のコンピュータもし
 
 ## 必要なシステム要件
 ### クライアント (GUI操作を行う端末)
-- Windows 10 もしくは Mac OSX (Java 8が動けばOK)
+- Windows 10, 11 もしくは Mac OSX (Java 8が動けばOK)
 - ストレージ：たくさん　解析にもよるが1TBくらいあると安心。
 
 ### サーバ (データ解析を行うコンピュータ)
