@@ -1,6 +1,6 @@
 次回予告
 - Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)でqacctが使えないことへの対応。
-- ```RNA-seq~HISAT2-StringTie-DEGanalysis```でgtfに登録されているchromosomeのIDがない場合gtfからレコードを削除。
+- ```RNA-seq~HISAT2-StringTie-DEGanalysis```でgtfに登録されているchromosomeのIDがない場合gtfからレコードを削除。cuffdiffへ渡るオプションがエスケープ処理を失敗していたのを修正。
 
 # 1.2.6 (2023/07/21)
 - podman使用時に-uオプションを使わないように変更
