@@ -2,6 +2,7 @@
 - Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)標準のセットアップ方法に従い子ノードでローカルのディスクにSGEをインストールした際にqacctが使えないことへの対応。
 - ```RNA-seq~HISAT2-StringTie-DEGanalysis```でgtfに登録されているchromosomeのIDがない場合gtfからレコードを削除。cuffdiffへ渡るオプションがエスケープ処理を失敗していたのを修正。
 - ```RNA-seq~Trinity-kallisto-sleuth```でサンプルが1つの場合でもアノテーションのステップまでは実行されるように修正。
+- ```statistics~DESeq2```,```statistics~edgeR```はもともとTrinityのパイプライン用に作っていたけど、これだけ実行したいときにinput_2のサンプル情報ファイルの書式を修正して実行しやすくする機能を追加。
 
 # 1.2.6 (2023/07/21)
 - podman使用時に-uオプションを使わないように変更
