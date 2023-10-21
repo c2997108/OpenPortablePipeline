@@ -4,7 +4,7 @@ explanation='
 DESeq2, edgeR
 '
 inputdef='
-input_1::count table:*.txt,*.tsv
+input_1::count table:*.txt,*.tsv,*.count_table
 input_2::sample information file:*.txt
 input_3:option:Trinotate.xls3.(isoform or gene).cnt [optional]:Trinotate.xls3.isoform.cnt,Trinotate.xls3.gene.cnt
 '

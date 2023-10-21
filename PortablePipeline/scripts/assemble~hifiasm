@@ -1,0 +1,208 @@
+#!/bin/bash
+
+explanation='
+Hifiasm is a fast haplotype-resolved de novo assembler initially designed for PacBio HiFi reads.
+'
+inputdef='
+input_1:directory:HiFi reads (FASTQ):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:Ultra-long Oxford Nanopore reads (FASTQ):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_3:directory option:Paired-end Hi-C reads (FASTQ):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_a:hifiasm option:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -n #input_2# -s #input_3# #input_1#"
+
+export IM_HIFI="quay.io/biocontainers/hifiasm:0.19.7--h43eeafb_0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+#HiFi reads
+input_hifi=""
+while read i; do
+ if [ "$input_hifi" = "" ];then
+  input_hifi="$i"
+ else
+  input_hifi="$input_hifi $i"
+ fi
+done < <(find "$input_1/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+
+echo HiFi reads: "$input_hifi"
+
+#Nanopore reads
+input_nanopore=""
+if [ "$input_2" != "" ]; then
+ while read i; do
+  if [ "$input_nanopore" = "" ];then
+   input_nanopore="--ul $i"
+  else
+   input_nanopore="$input_nanopore,$i"
+  fi
+ done < <(find "$input_2/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+ echo Nanopore reads: "$input_nanopore"
+fi
+
+#HiC reads
+input_hic=""
+if [ "$input_3" != "" ]; then
+pppair1=()
+pppair2=()
+ppsingle=()
+#フォワード側のリードを探して対応するリバース側のリードがあるか調べる
+while read i; do
+ if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
+  temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
+ else
+  temppair2=`echo "$i"|sed 's/_R1/_R2/'`
+ fi
+ if [ -e "$temppair2" ]; then
+  pppair1+=( "$i" )
+  pppair2+=( "$temppair2" )
+ else
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_3/" |egrep '(_R1.*|_1)[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+
+#全ファイルの中から_1.fq, _R1_などのフォワードリード名を持たないファイルを調べる
+while read i; do
+ ppinputcheck=0
+ for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+  if [ "$j" = "$i" ]; then
+   ppinputcheck=1
+   break
+  fi
+ done
+ if [ $ppinputcheck = 0 ];then
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_3/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+
+#for single-end reads
+for i in ${ppsingle[@]:-}; do
+ echo "$i" is not used.
+done
+
+temp_r1=""
+temp_r2=""
+#for paired-end reads
+for ((i = 0; i < ${#pppair1[@]}; i++)) {
+ if [ $i == 0 ];then
+  temp_r1="$pppair1[i]"
+  temp_r2="$pppair2[i]"
+ else
+  temp_r1="$temp_r1,$pppair1[i]"
+  temp_r2="$temp_r2,$pppair2[i]"
+ fi
+}
+
+if [ "$temp_r1" != "" ]; then
+ input_hic="--h1 $temp_r1 --h2 $temp_r2"
+fi
+
+fi
+
+DO_HIFI hifiasm -o output -t $N_CPU $opt_a $input_hic $input_nanopore $input_hifi
+
+for i in `ls output.*.gfa|grep -v noseq.gfa`; do awk '/^S/{print ">"$2;print $3}' $i > $i.fa; done
+
+post_processing
+#<option detail>
+#<opt_a>
+Options:
+  Input/Output:
+    -o STR       prefix of output files [hifiasm.asm]
+    -t INT       number of threads [1]
+    -h           show help information
+    --version    show version number
+  Overlap/Error correction:
+    -k INT       k-mer length (must be <64) [51]
+    -w INT       minimizer window size [51]
+    -f INT       number of bits for bloom filter; 0 to disable [37]
+    -D FLOAT     drop k-mers occurring >FLOAT*coverage times [5.0]
+    -N INT       consider up to max(-D*coverage,-N) overlaps for each oriented read [100]
+    -r INT       round of correction [3]
+    -z INT       length of adapters that should be removed [0]
+    --max-kocc   INT
+                 employ k-mers occurring <INT times to rescue repetitive overlaps [2000]
+    --hg-size    INT(k, m or g)
+                 estimated haploid genome size used for inferring read coverage [auto]
+  Assembly:
+    -a INT       round of assembly cleaning [4]
+    -m INT       pop bubbles of <INT in size in contig graphs [10000000]
+    -p INT       pop bubbles of <INT in size in unitig graphs [0]
+    -n INT       remove tip unitigs composed of <=INT reads [3]
+    -x FLOAT     max overlap drop ratio [0.8]
+    -y FLOAT     min overlap drop ratio [0.2]
+    -i           ignore saved read correction and overlaps
+    -u           post-join step for contigs which may improve N50; 0 to disable; 1 to enable
+                 [1] and [1] in default for the UL+HiFi assembly and the HiFi assembly, respectively
+    --hom-cov    INT
+                 homozygous read coverage [auto]
+    --lowQ       INT
+                 output contig regions with >=INT% inconsistency in BED format; 0 to disable [70]
+    --b-cov      INT
+                 break contigs at positions with <INT-fold coverage; work with '--m-rate'; 0 to disable [0]
+    --h-cov      INT
+                 break contigs at positions with >INT-fold coverage; work with '--m-rate'; -1 to disable [-1]
+    --m-rate     FLOAT
+                 break contigs at positions with <=FLOAT*coverage exact overlaps;
+                 only work with '--b-cov' or '--h-cov'[0.75]
+    --primary    output a primary assembly and an alternate assembly
+  Trio-partition:
+    -1 FILE      hap1/paternal k-mer dump generated by "yak count" []
+    -2 FILE      hap2/maternal k-mer dump generated by "yak count" []
+    -3 FILE      list of hap1/paternal read names []
+    -4 FILE      list of hap2/maternal read names []
+    -c INT       lower bound of the binned k-mer's frequency [2]
+    -d INT       upper bound of the binned k-mer's frequency [5]
+    --t-occ      INT
+                 forcedly remove unitigs with >INT unexpected haplotype-specific reads;
+                 ignore graph topology; [60]
+    --trio-dual  utilize homology information to correct trio phasing errors
+  Purge-dups:
+    -l INT       purge level. 0: no purging; 1: light; 2/3: aggressive [0 for trio; 3 for unzip]
+    -s FLOAT     similarity threshold for duplicate haplotigs in read-level [0.75 for -l1/-l2, 0.55 for -l3]
+    -O INT       min number of overlapped reads for duplicate haplotigs [1]
+    --purge-max  INT
+                 coverage upper bound of Purge-dups [auto]
+    --n-hap      INT
+                 number of haplotypes [2]
+  Hi-C-partition:
+    --h1 FILEs   file names of Hi-C R1  [r1_1.fq,r1_2.fq,...]
+    --h2 FILEs   file names of Hi-C R2  [r2_1.fq,r2_2.fq,...]
+    --seed INT   RNG seed [11]
+    --s-base     FLOAT
+                 similarity threshold for homology detection in base-level;
+                 -1 to disable [0.5]; -s for read-level (see <Purge-dups>)
+    --n-weight   INT
+                 rounds of reweighting Hi-C links [3]
+    --n-perturb  INT
+                 rounds of perturbation [10000]
+    --f-perturb  FLOAT
+                 fraction to flip for perturbation [0.1]
+    --l-msjoin   INT
+                 detect misjoined unitigs of >=INT in size; 0 to disable [500000]
+  Ultra-Long-integration (beta):
+    --ul FILEs   file names of Ultra-Long reads [r1.fq,r2.fq,...]
+    --ul-rate    FLOAT
+                 error rate of Ultra-Long reads [0.2]
+    --ul-tip     INT
+                 remove tip unitigs composed of <=INT reads for the UL assembly [6]
+    --path-max   FLOAT
+                 max path drop ratio [0.6]; higher number may make the assembly cleaner
+                 but may lead to more misassemblies
+    --path-min   FLOAT
+                 min path drop ratio [0.2]; higher number may make the assembly cleaner
+                 but may lead to more misassemblies
+    --ul-cut     INT
+                 filter out <INT UL reads during the UL assembly [0]
+Example: ./hifiasm -o NA12878.asm -t 32 NA12878.fq.gz
+See `https://hifiasm.readthedocs.io/en/latest/' or `man ./hifiasm.1' for complete documentation.
+#</opt_a>
+#</option detail>
+

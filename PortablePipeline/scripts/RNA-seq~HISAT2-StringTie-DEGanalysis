@@ -77,7 +77,11 @@ if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
  DO_BASE gff3ToGenePred "$input_3" /dev/stdout | (DO_BASE genePredToGtf file stdin "$temp_3")
  input_3="$temp_3"
 fi
+DO_SAMTOOLS samtools faidx "$input_2"
 if [ "$input_3" != "" ];then
+ tempgtf=`echo "$input_3"|sed 's/[.]gtf$//'`.corrected.gtf
+ awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=1} FILENAME==ARGV[2]&&$1 in a{print $0}' "$input_2".fai "$input_3" > "$tempgtf"
+ input_3="$tempgtf"
  DO_HISAT2 hisat2_extract_splice_sites.py "$input_3" > "$input_3".ss
  DO_HISAT2 hisat2_extract_exons.py "$input_3" > "$input_3".exon
  DO_HISAT2 hisat2-build $opt_b -p $N_CPU --ss "$input_3".ss --exon "$input_3".exon "$input_2" hisat2_index
@@ -132,8 +136,6 @@ if [ "$input_3" != "" ];then
 else
  DO_STRINGTIE stringtie --merge -o stringtie.merge.gtf output.stringtie/*.gtf
 fi
-
-DO_SAMTOOLS samtools faidx "$input_2"
 
 mkdir -p input.ballgown
 mkdir -p output.cuffquant
@@ -417,7 +419,7 @@ echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.
 #ballgown
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~ballgown -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
 #Cuffdiff
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d "\'$opt_d\'" $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d "$opt_d" $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
 
 EOF
 

@@ -26,8 +26,11 @@ set -eux
 set -o pipefail
 
 script=$opt_s
-inputsamplematrix=$input_2
+#inputsamplematrix=$input_2
 inputmatrix=$input_1
+cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//; s/[.]gz\t/\t/'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > "$input_2".`basename "$inputmatrix"`.DESeq2.txt
+inputsamplematrix="$input_2".`basename "$inputmatrix"`.DESeq2.txt
+
 g1=$opt_i
 g2=$opt_j
 if [ "$g1" = "" ]; then g1=`tail -n+2 $inputsamplematrix|cut -f 2|sort -V|uniq|head -n 1`; fi

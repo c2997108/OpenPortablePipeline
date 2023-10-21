@@ -108,7 +108,11 @@ DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/get_Trinity_ge
 cd kallisto.output
 cp ../Trinity.fasta.gene_trans_map .
 DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/abundance_estimates_to_matrix.pl --est_method kallisto --gene_trans_map Trinity.fasta.gene_trans_map --out_prefix kallisto --name_sample_by_basedir */abundance.tsv
-mv kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.gene.counts.matrix kallisto.gene.TPM.not_cross_norm kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix ..
+mv kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.gene.counts.matrix kallisto.gene.TPM.not_cross_norm ..
+ if [ -e kallisto.isoform.TMM.EXPR.matrix ]; then
+  #for 2 or more samples
+  mv kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix ..
+ fi
 cd ..
 
 #/usr/local/Trinotate-Trinotate-v3.1.1/auto/autoTrinotate.pl --Trinotate_sqlite /usr/local/Trinotate-Trinotate-v3.1.1/db/20190618.sqlite --transcripts Trinity.fasta --gene_to_trans_map ../Trinity.fasta.gene_trans_map --conf /usr/local/Trinotate-Trinotate-v3.1.1/auto/conf.txt --CPU 20

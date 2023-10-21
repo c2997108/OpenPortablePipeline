@@ -22,6 +22,7 @@ export IM_SAMTOOLS="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
 export IM_BBMAP="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
 export IM_PICARD="quay.io/biocontainers/picard:2.18.27--0"
 export IM_GATK="broadinstitute/gatk:4.3.0.0"
+export IM_BASE="c2997108/centos7:2"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 

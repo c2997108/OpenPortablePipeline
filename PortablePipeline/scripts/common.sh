@@ -137,7 +137,12 @@ elif [ ! -e "$workdir"/pp-singularity-flag -a `podman images 2> /dev/null |head 
 else
  echo Checking singularity
  set +ex
- $CHECK_SING run library://godlovedc/funny/lolcow
+ #apptainerの場合、事前に下記が必要
+ #apptainer remote add --no-login SylabsCloud cloud.sycloud.io
+ #apptainer remote use SylabsCloud
+ #apptainer remote list
+ ( $CHECK_SING run library://godlovedc/funny/lolcow ||
+   ($CHECK_SING remote add --no-login SylabsCloud cloud.sycloud.io && $CHECK_SING remote use SylabsCloud && $CHECK_SING run library://godlovedc/funny/lolcow) )
  if [ $? = 0 ];then
   echo using singularity;
   CON="$CON_SING""$DIR_IMG/";
@@ -247,17 +252,15 @@ parallel_setup(){
    if [ -e "$workdir/qsub.log2" ]; then rm "$workdir/qsub.log2"; fi
   fi
   alias DOPARALLELONE='xargs -d'"'"'\n'"'"' -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
-  #alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
   alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; awk "{print \$4\".o\"\$3}" $workdir/qsub.log|sed "s/^[(]\"//; s/\"[)]//"|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
   alias DOPARALLEL='xargs -d'"'"'\n'"'"' -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
-  #alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
   alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; awk "{print \$4\".o\"\$3}" $workdir/qsub.log|sed "s/^[(]\"//; s/\"[)]//"|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
  elif [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
   grep "^#" "$workdir"/wrapper.sh > "$workdir"/qsub.sh
   grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > "$workdir"/qsubone.sh
   echo "#$ -pe def_slot 1" >> "$workdir"/qsubone.sh
-  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> "$workdir"/qsub.sh
-  echo 'source ~/.bashrc; echo "$*"; eval "$*"' >> "$workdir"/qsubone.sh
+  echo -e 'echo SGE_JOB_SPOOL_DIR: $SGE_JOB_SPOOL_DIR\necho CMD: "$*"\nsource ~/.bashrc\neval "$*"\necho CMD_FIN_STATUS: $?' >> "$workdir"/qsub.sh
+  echo -e 'echo SGE_JOB_SPOOL_DIR: $SGE_JOB_SPOOL_DIR\necho CMD: "$*"\nsource ~/.bashrc\neval "$*"\necho CMD_FIN_STATUS: $?' >> "$workdir"/qsubone.sh
   chmod 755 "$workdir"/qsub.sh "$workdir"/qsubone.sh
   if [ "$N_SCRIPT" = 1 ]; then
    if [ -e "$workdir/fin" ]; then rm "$workdir/fin"; fi
@@ -265,12 +268,9 @@ parallel_setup(){
    if [ -e "$workdir/qsub.log2" ]; then rm "$workdir/qsub.log2"; fi
   fi
   alias DOPARALLELONE='xargs -d'"'"'\n'"'"' -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
-  alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
-  #本当は下のに切り替えたいけど、JAVAのほうを修正する必要があるので保留
-  #alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; awk "{print \$4\".o\"\$3}" $workdir/qsub.log|sed "s/^[(]\"//; s/\"[)]//"|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
+  alias WAITPARALLELONE='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; awk "{print \$4\".o\"\$3}" $workdir/qsub.log|sed "s/^[(]\"//; s/\"[)]//"|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
   alias DOPARALLEL='xargs -d'"'"'\n'"'"' -I {} bash -c "qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh \"{}\""|grep submitted >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsub.sh touch $workdir/fin|grep submitted >> $workdir/qsub.log'
-  alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; for i in $(awk "{print \$3}" $workdir/qsub.log); do qacct -j $i|egrep "^(failed|exit_status)"|tail -n 2|awk "\$2!=0{a++} END{if(a>0){print $i\" was failed\"}}"; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
-  #alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; awk "{print \$4\".o\"\$3}" $workdir/qsub.log|sed "s/^[(]\"//; s/\"[)]//"|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
+  alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; awk "{print \$4\".o\"\$3}" $workdir/qsub.log|sed "s/^[(]\"//; s/\"[)]//"|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x'
 
  else
   alias DOPARALLELONE='xargs -d'"'"'\n'"'"' -I {} -P $N_CPU bash -c "{}"'
