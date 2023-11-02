@@ -1,4 +1,6 @@
 次回予告
+
+# 1.2.7 (2023/09/21)
 - Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)標準のセットアップ方法に従い子ノードでローカルのディスクにSGEをインストールした際にqacctが使えないことへの対応。
 - ```RNA-seq~HISAT2-StringTie-DEGanalysis```でgtfに登録されているchromosomeのIDがない場合gtfからレコードを削除。cuffdiffへ渡るオプションがエスケープ処理を失敗していたのを修正。
 - ```RNA-seq~Trinity-kallisto-sleuth```でサンプルが1つの場合でもアノテーションのステップまでは実行されるように修正。
