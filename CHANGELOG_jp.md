@@ -1,5 +1,7 @@
 次回予告
 
+- ```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid_paired-end```でblast結果で配列名が変更される場合を考慮。
+
 # 1.2.7 (2023/09/21)
 - Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)標準のセットアップ方法に従い子ノードでローカルのディスクにSGEをインストールした際にqacctが使えないことへの対応。
 - ```RNA-seq~HISAT2-StringTie-DEGanalysis```でgtfに登録されているchromosomeのIDがない場合gtfからレコードを削除。cuffdiffへ渡るオプションがエスケープ処理を失敗していたのを修正。
