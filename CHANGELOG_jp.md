@@ -5,6 +5,7 @@
 - ```annotation~BRAKER2```を```annotation~BRAKER3```に変更。GeneMark-ES/ET/EPのラインセンスキーが必要なくなった。
 - pp.pyの`-g`オプションでグリッドエンジン動作時にqsub.shの最後にステータスを出力していなかったのを修正。
 - ```SNPcall~xatlas-glnexus```を追加。
+- ```mapping-illumina~bwa_mem```でFASTQファイル名が_R1を含むペアエンドリードをシングルエンドと認識していたバグを修正。
 
 # 1.2.7 (2023/09/21)
 - Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)標準のセットアップ方法に従い子ノードでローカルのディスクにSGEをインストールした際にqacctが使えないことへの対応。
