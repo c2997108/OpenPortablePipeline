@@ -8,6 +8,7 @@
 - ```mapping-illumina~bwa_mem```でFASTQファイル名が_R1を含むペアエンドリードをシングルエンドと認識していたバグを修正。
 - ```QC~kmergenie```、```post-assemble~Repeatmodeler```を追加。
 - ```SNPcall~bcftools-mpileup```で複数サンプルをSNPコールする際に、1リードなど少ないサンプルのジェノタイプが本来0/0もしくは1/1になるべき時に0/1とヘテロになる箇所を修正。
+- ```post-assemble~coverage-length-graph```でコンティグの平均デプスからゲノムサイズを推定する機能を追加。
 
 # 1.2.7 (2023/09/21)
 - Some Grid Engine (a fork of Son of Grid Engine at University of Liverpool)標準のセットアップ方法に従い子ノードでローカルのディスクにSGEをインストールした際にqacctが使えないことへの対応。
