@@ -2,7 +2,7 @@
 
 explanation='
 Meta-barcoding metagenome analysis pipeline
-using SILVA SSU+LSU, PR2 database and NCBI 16S, 23S, mito and plastid database
+using SILVA SSU+LSU, PR2 database, NCBI mito & plastid database and MitoFish database
 '
 inputdef='
 input_1:directory:paired-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
@@ -17,7 +17,7 @@ opt_g:read number for normalization:10000
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# #input_1#"
 
-export IM_PR2="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito-silva-2"
+export IM_PR2="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito-silva-3"
 export IM_BASE="c2997108/centos7:3-java"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
@@ -101,7 +101,7 @@ bitscore="$2"
 top="$3"
 blastop="$5"
 cpu="$4"
-ref=/usr/local/blastdb/database.fasta
+ref=/usr/local/blastdb/mergedDB.maskadaptors.fa
 
 set -ex
 
@@ -122,17 +122,18 @@ fi
 zcat $i2|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j2
 
 echo "##blast"
-blastn -db $ref -query $j -outfmt 6 -out $j.ssu.blast -num_threads $cpu
-blastn -db $ref -query $j2 -outfmt 6 -out $j2.ssu.blast -num_threads $cpu
+blastn -db $ref -query $j -outfmt 6 -out $j.blast -num_threads $cpu
+blastn -db $ref -query $j2 -outfmt 6 -out $j2.blast -num_threads $cpu
 
-python run-count-paired.py $j $j2 $j.ssu.blast $j2.ssu.blast > $j.ssu.all.blast
+python run-count-paired.py $j $j2 $j.blast $j2.blast > $j.all.blast
 rm $j $j2
 
 echo "##filtering"
-cat $j.ssu.all.blast|awk -F'\t' '$3>'$bitscore'{if(a[$1]==1){if($3>=topbit*'$top'){print $0}}else{a[$1]=1; topbit=$3; print $0}}' > $j.ssu.blast.filtered
+cat $j.all.blast|awk -F'\t' '$3>'$bitscore'{if(a[$1]==1){if($3>=topbit*'$top'){print $0}}else{a[$1]=1; topbit=$3; print $0}}' > $j.blast.filtered
 
 echo "##determine LCA"
-awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{print name[$2]"\t"$0}' $ref.path $j.ssu.blast.filtered > $j.ssu.blast.filtered.name
+#blast実行時に配列名の最後が「.」の場合削られるなどヒットした配列名が元の名前から変わるので注意
+awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{print name[$2]"\t"$0}' $ref.path $j.blast.filtered > $j.blast.filtered.name
 
 awk -F'\t' '
 function searchLCA(data,  i, j, res, res2, str, n, stopflag){
@@ -149,18 +150,18 @@ function searchLCA(data,  i, j, res, res2, str, n, stopflag){
  else{data[$1]=1}
 }
 END{if(length(data)>0){print searchLCA(data)"\t"oldstr}}
-' $j.ssu.blast.filtered.name > $j.ssu.blast.filtered.name.lca
+' $j.blast.filtered.name > $j.blast.filtered.name.lca
 
-awk -F'\t' '{cnt[$1]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' $j.ssu.blast.filtered.name.lca > $j.ssu.blast.filtered.name.lca.cnt
-awk -F'\t' '{print "root;"$0}' $j.ssu.blast.filtered.name.lca.cnt > $j.ssu.blast.filtered.name.lca.cnt2
-cnt=`awk -F'\t' '{a+=$2} END{if(a==""){a=0}; print a}' $j.ssu.blast.filtered.name.lca.cnt`
-echo -e "No Hit\t"`expr $n0 - $cnt` >> $j.ssu.blast.filtered.name.lca.cnt2
+awk -F'\t' '{cnt[$1]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' $j.blast.filtered.name.lca > $j.blast.filtered.name.lca.cnt
+awk -F'\t' '{print "root;"$0}' $j.blast.filtered.name.lca.cnt > $j.blast.filtered.name.lca.cnt2
+cnt=`awk -F'\t' '{a+=$2} END{if(a==""){a=0}; print a}' $j.blast.filtered.name.lca.cnt`
+echo -e "No Hit\t"`expr $n0 - $cnt` >> $j.blast.filtered.name.lca.cnt2
 awk -F'\t' '
 {n=split($1,arr,";"); ORS="\t"; print $2; for(i=1;i<n;i++){print arr[i]}; ORS="\n"; print arr[n]}
-' $j.ssu.blast.filtered.name.lca.cnt2 > $j.ssu.blast.filtered.name.lca.cnt3
+' $j.blast.filtered.name.lca.cnt2 > $j.blast.filtered.name.lca.cnt3
 
 echo "##krona"
-/usr/local/KronaTools-2.7/scripts/ImportText.pl $j.ssu.blast.filtered.name.lca.cnt3 -o $i.html
+/usr/local/KronaTools-2.7/scripts/ImportText.pl $j.blast.filtered.name.lca.cnt3 -o $i.html
 
 EOS
 
@@ -177,14 +178,14 @@ WAITPARALLEL
 
 DO_PR2 /usr/local/KronaTools-2.7/scripts/ImportText.pl $input_1/*.cnt3 -o all.html
 
-for i in $input_1/*.fasta.ssu.blast.filtered.name.lca.cnt2; do
- echo -e "id\t$(basename `echo $i|sed 's/.fasta.ssu.blast.filtered.name.lca.cnt2$//'`)" > $i.input
+for i in $input_1/*.fasta.blast.filtered.name.lca.cnt2; do
+ echo -e "id\t$(basename `echo $i|sed 's/.fasta.blast.filtered.name.lca.cnt2$//'`)" > $i.input
  cat $i >> $i.input
 done
-if [ `ls $input_1/*.fasta.ssu.blast.filtered.name.lca.cnt2.input|wc -l` -gt 1 ]; then
- DO_BASE merge_table.pl -k $input_1/*.fasta.ssu.blast.filtered.name.lca.cnt2.input|sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/' > all.counts.txt
+if [ `ls $input_1/*.fasta.blast.filtered.name.lca.cnt2.input|wc -l` -gt 1 ]; then
+ DO_BASE merge_table.pl -k $input_1/*.fasta.blast.filtered.name.lca.cnt2.input|sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/' > all.counts.txt
 else
- cp $input_1/*.fasta.ssu.blast.filtered.name.lca.cnt2.input all.counts.txt
+ cp $input_1/*.fasta.blast.filtered.name.lca.cnt2.input all.counts.txt
 fi
 DO_BASE awk -F'\t' '
  FILENAME==ARGV[1]{if(FNR>1){for(i=2;i<=NF;i++){a[i]+=$i}}}

@@ -56,6 +56,25 @@ WAITPARALLEL
  for i in `ls output.mpileup/out.*.vcf|grep -v output.mpileup/out.1.vcf|sort -V`; do DO_BASE cat $i|grep -v "^#" ||true; done
 ) > output.vcf
 
+cat output.vcf | awk -F'\t' '
+ $0~"^#"{print $0}
+ $0!~"^#"{
+  if($5!~","){
+   OFS="\t"; split($9,arr,":"); ngt=1; ndp=0;
+   for(i=1;i<=length(arr);i++){
+    if(arr[i]=="AD"){ndp=i}
+   };
+   for(i=10;i<=NF;i++){
+    if(substr($i,1,3)=="0/1"){
+     split($i,arr,":"); split(arr[ndp],arr2,",");
+     if(arr2[1]==0){str="1/1"; for(j=2;j<=length(arr);j++){str=str":"arr[j]}; $i=str}
+     else if(arr2[2]==0){str="0/0"; for(j=2;j<=length(arr);j++){str=str":"arr[j]}; $i=str}
+    }
+   }
+  };
+  print $0
+ }' | DO_BCF bgzip -@ $N_CPU -c > output.modified.vcf.gz
+DO_BCF tabix -f -p vcf output.modified.vcf.gz
 
 post_processing
 

@@ -14,13 +14,16 @@ opt_m:memory limit (GB):32
 opt_b:make a bam file (true/false):true
 opt_a:alignment coverage threshold:0.8
 opt_q:minimum mapping quality:0
+opt_s:contigs for genome size estimation:20
+opt_x:merge all fastq files (true/false):false
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -a #opt_a# -q #opt_q# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -a #opt_a# -q #opt_q# -s #opt_s# -x #opt_x# #input_1# #input_2# #input_3#"
 
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h91753b0_3"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_BWA="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -66,29 +69,61 @@ fi) | DOPARALLEL
 
 WAITPARALLEL
 
+cat << 'EOF' > run-cleanup.sh
+i=$1
+opt_a=$2
+opt_q=$3
+ref=$4
+ grep -v "^@" $i|(awk -F'\t' -v cov=$opt_a -v minq=$opt_q '
+  $5>=minq {a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]};
+   for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}
+  }') > ${i}2
+ awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai ${i}2 > ${i}2.cov
+ echo 'library(Cairo); a=read.table("'${i}2.cov'",sep="\t",row.names=1);
+ CairoPNG(file="'${i}2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (R --vanilla < /dev/stdin)
+ (echo -e 'id\tcoverage\tmapped bases\tlength'; cat ${i}2.cov) > ${i}.coverage.txt
+EOF
+
 for i in *.sam; do
- grep -v "^@" $i|(DO_AWK awk -F'\t' -v cov=$opt_a -v minq=$opt_q '$5>=minq{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}}') > ${i}2
- DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai ${i}2 > ${i}2.cov
- echo 'library(Cairo); a=read.table("'${i}2.cov'",sep="\t",row.names=1); CairoPNG(file="'${i}2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (DO_R R --vanilla < /dev/stdin)
-done
+ echo "$ENV_R bash run-cleanup.sh \"$i\" \"$opt_a\" \"$opt_q\" \"$ref\""
+done | DOPARALLELONE
+
+WAITPARALLEL
 
 outname=`basename $ref`
-cat *.sam|grep -v "^@"|(DO_AWK awk -F'\t' -v cov=$opt_a -v minq=$opt_q '$5>=minq{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}}') > $outname.sam2
-DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai $outname.sam2 > $outname.sam2.cov
-echo 'library(Cairo); a=read.table("'$outname.sam2.cov'",sep="\t",row.names=1); CairoPNG(file="'$outname.sam2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (DO_R R --vanilla < /dev/stdin)
-(echo -e 'id\tcoverage\tmapped bases\tlength'; cat $outname.sam2.cov) > $outname.output.txt
+
+awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME!=ARGV[1]{bases[$1]+=$3} END{print "id\tcoverage\tmapped bases\tlength"; for(i in len){if(bases[i]>0){print i"\t"bases[i]/len[i]"\t"bases[i]+0"\t"len[i]}}}' $ref.fai *.sam2.cov > $outname.output.txt
+echo 'library(Cairo); a=read.table("'$outname.output.txt'",header = TRUE,sep="\t",row.names=1); CairoPNG(file="'$outname.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (DO_R R --vanilla < /dev/stdin)
 
 if [ "$opt_b" = "true" ]; then
+
+ cat << 'EOF' > run-makebam.sh
+i=$1
+N_CPU=$2
+(samtools view -SH $i; cut -f 2- ${i}2)|(samtools view -Sb -@ $N_CPU -) | (samtools sort -T $i.clean -@ $N_CPU -o $i.clean.bam)
+samtools index $i.clean.bam
+
+EOF
+
  for i in *.sam; do
-  (DO_SAMTOOLS samtools view -SH $i; cut -f 2- ${i}2)|(DO_SAMTOOLS samtools view -Sb -@ $N_CPU -) | (DO_SAMTOOLS samtools sort -T $i.clean -@ $N_CPU -o $i.clean.bam)
-  DO_SAMTOOLS samtools index $i.clean.bam
- done
- (DO_SAMTOOLS samtools view -SH `ls -S *.sam|head -n 1`; cut -f 2- $outname.sam2)|(DO_SAMTOOLS samtools view -Sb -@ $N_CPU -) | (DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam)
- DO_SAMTOOLS samtools index $outname.clean.bam
+  echo "$ENV_SAMTOOLS bash run-makebam.sh \"$i\" \"$N_CPU\""
+ done | DOPARALLEL
+
+ WAITPARALLEL
+
+ if [ "$opt_x" = "true" ]; then
+  cat *.sam|grep -v "^@"|(DO_AWK awk -F'\t' -v cov=$opt_a -v minq=$opt_q '$5>=minq{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}}') > $outname.sam2
+  (DO_SAMTOOLS samtools view -SH `ls -S *.sam|head -n 1`; cut -f 2- $outname.sam2)|(DO_SAMTOOLS samtools view -Sb -@ $N_CPU -) | (DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam)
+  DO_SAMTOOLS samtools index $outname.clean.bam
+ fi
 fi
 
 rm -f *.sam *.sam2
 
+DO_SEQKIT seqkit stats `(find "$input_2" "$input_3" -maxdepth 1 2> /dev/null || true)| egrep '[.]f(ast|)q(|[.]gz)$'`|tail -n+2|sed 's/,//g'|awk '{a+=$5} END{print a}' > temp.txt
+tail -n+2 $outname.output.txt|sort -k4,4nr -t $'\t'|awk -v n=$opt_s 'NR<=n{a+=$2} END{print a/n}' > temp2.txt
+awk -v total=`cat temp.txt` -v depth=`cat temp2.txt` -v n=$opt_s 'BEGIN{print "Total bases of input reads: "total" bp"; print "Average depth of the longest "n" contigs: "depth" x"; print "Estimated genome size: "total / depth" bp"}' > estimated_genomesize.txt
+rm -f temp.txt temp2.txt
 
 post_processing
 #<option detail>

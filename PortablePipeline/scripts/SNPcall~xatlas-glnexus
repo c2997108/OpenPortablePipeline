@@ -1,0 +1,102 @@
+#!/bin/bash
+
+explanation='
+genotyping by xatlas and merge vcf files by glnexus
+'
+inputdef='
+input_1:directory:sorted bam and bam index files:*.bam,*.bai
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:optional:a bed file to limit ranges to analyze:*.bed
+'
+optiondef='
+opt_c:cpu threads:4
+opt_m:memory limit (GB):32
+opt_x:xatlas option:-v 0
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -x #opt_x# #input_1# #input_2# #input_3#"
+
+export IM_BASE="c2997108/centos7:2"
+export IM_SAMTOOLS="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
+export IM_XATLAS="quay.io/biocontainers/xatlas:0.3--h84372a0_3"
+export IM_GLNEXUS="quay.io/biocontainers/glnexus:1.4.1--h5c1b0a6_3"
+export IM_BCF="quay.io/biocontainers/bcftools:1.9--h68d8f2e_7"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+
+DO_SAMTOOLS samtools faidx "$input_2"
+ref="$input_2"
+
+bed1=""
+bed2=""
+if [ "$input_3" != "" ]; then bed1="-c $input_3"; bed2="-b $input_3"; fi
+
+mkdir -p output.vcf.dir
+
+for i in "$input_1"/*.bam; do
+ j=`basename $i .bam`
+ echo $ENV_XATLAS xatlas -r $ref -i $i -s $j -p output.vcf.dir/$j $bed1 $opt_x
+done | DOPARALLELONE
+
+WAITPARALLEL
+
+rm -rf GLnexus.DB
+DO_GLNEXUS glnexus_cli -t $N_CPU $bed2 -c xAtlas_unfiltered output.vcf.dir/*_snp.vcf | DO_BCF bcftools view - | awk -F'\t' '
+ $0~"^#"{if($0!~"^##FORMAT=<ID=GQ"){print $0}} #remove GQ field because it is "." in vcf
+ $0!~"^#"{OFS="\t"; split($9,arr,":"); ngq=0;
+  for(i=1;i<=length(arr);i++){if(arr[i]=="GQ"){ngq=i; break}};
+  if(ngq>0){
+   for(i=9;i<=NF;i++){
+    split($i,arr,":"); str=arr[1];
+    for(j=2;j<=length(arr);j++){if(j!=ngq){str=str":"arr[j]}};
+    $i=str
+   }
+  };
+  print $0
+ }'| DO_BCF bgzip -@ $N_CPU -c > output.snp.vcf.gz
+DO_BCF tabix -f -p vcf output.snp.vcf.gz
+
+rm -rf GLnexus.DB
+DO_GLNEXUS glnexus_cli -t $N_CPU $bed2 -c xAtlas_unfiltered output.vcf.dir/*_indel.vcf | DO_BCF bcftools view - | awk -F'\t' '
+ $0~"^#"{if($0!~"^##FORMAT=<ID=GQ"){print $0}} #remove GQ field because it is "." in vcf
+ $0!~"^#"{OFS="\t"; split($9,arr,":"); ngq=0;
+  for(i=1;i<=length(arr);i++){if(arr[i]=="GQ"){ngq=i; break}};
+  if(ngq>0){
+   for(i=9;i<=NF;i++){
+    split($i,arr,":"); str=arr[1];
+    for(j=2;j<=length(arr);j++){if(j!=ngq){str=str":"arr[j]}};
+    $i=str
+   }
+  };
+  print $0
+ }'| DO_BCF bgzip -@ $N_CPU -c > output.indel.vcf.gz
+DO_BCF tabix -f -p vcf output.indel.vcf.gz
+
+
+post_processing
+
+#<option detail>
+#<opt_x>
+Options:
+    -P, --multithread               Read alignment file and process records in separate threads
+    -t, --num-hts-threads NTHREAD   Number of HTSlib decompression threads to spawn
+    -c, --capture-bed BED           BED file of regions to process
+    -v, --min-p-value               Minimum logit P-value to report variants
+    -m, --min-snp-mapq MAPQ         Minimum read mapping quality for calling SNPs
+    -n, --min-indel-mapq MAPQ       Minimum read mapping quality for calling indels
+    -M, --max-coverage COV          High variant coverage cutoff for filtering variants
+    -A, --block-abs-lim LIM         gVCF non-variant block absolute range limit
+    -R, --block-rel-lim LIM         gVCF non-variant block relative range limit coefficient
+    -g, --gvcf                      Include non-variant gVCF blocks in output VCF file
+    -z, --bgzf                      Write output in bgzip-compressed VCF format
+    -S, --snp-logit-params FILE     File with intercept and coefficients for SNP logit model
+    -I, --indel-logit-params FILE   File with intercept and coefficients for indel logit model
+    -F, --enable-strand-filter      Enable SNP filter for single-strandedness
+    -h, --help                      Show this help
+#</opt_x>
+#</option detail>
+

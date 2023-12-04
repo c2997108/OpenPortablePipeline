@@ -95,7 +95,7 @@ try:
         my_env["PP_USE_SING"]="y"
         argv2 = argv2[1:]
       if argv2[0] == "-g":
-        my_env["RUNPARALLEL"]="#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\nsource ~/.bashrc\necho \"$*\"\neval \"$*\""
+        my_env["PP_USE_PARALLEL_NO_SVMEM"]="y"
         argv2 = argv2[1:]
     argv2[0]=os.path.dirname(os.path.realpath(__file__))+"/"+argv2[0]
     #print(argv2)

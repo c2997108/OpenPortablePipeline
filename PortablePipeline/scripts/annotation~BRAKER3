@@ -1,14 +1,11 @@
 #!/bin/bash
 
 explanation='
-BRAKER gene prediction pipeline with RNA-seq data. Please download GeneMark-ES/ET/EP binary and license from http://exon.gatech.edu/GeneMark/license_download.cgi before using this pipeline.
-Docker must be installed.
+BRAKER gene prediction pipeline with RNA-seq data.
 '
 inputdef='
 input_1:directory:paired-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_3::GeneMark-ES/ET/EP LINUX 64 binary (http://exon.gatech.edu/genemark/license_download.cgi):gmes_linux_64*.tar.gz
-input_4::GeneMark-ES/ET/EP LINUX 64 license (http://exon.gatech.edu/genemark/license_download.cgi):gm_key_64.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -24,7 +21,7 @@ export IM_BASE="c2997108/ubuntu-18:braker2_hisat2_5"
 export IM_PRINSEQ="quay.io/biocontainers/prinseq:0.20.4"
 export IM_HISAT2="quay.io/biocontainers/hisat2:2.2.0--py36hf0b53f7_4"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
-export IM_BRAKER="c2997108/ubuntu-18:braker2_hisat2_5"
+export IM_BRAKER="c2997108/braker:3"
 export IM_GFFREAD="quay.io/biocontainers/gffread:0.12.7--h9a82719_0"
 export IM_TRANSEQ="biocontainers/emboss:v6.6.0dfsg-7b1-deb_cv1"
 export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
@@ -63,8 +60,6 @@ ls $r2 $r2gz > /dev/null
 if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > "$input_2".ref.fa
 input_2="$input_2".ref.fa
-
-if [ `basename "$input_3"` != "gmes_linux_64.tar.gz" -o `basename "$input_4"` != "gm_key_64.gz" ]; then echo 'Download GeneMark-ES/ET/EP LINUX 64 binary and license(http://exon.gatech.edu/GeneMark/license_download.cgi)'; post_processing; fi
 
 DO_HISAT2 hisat2-build $opt_b -p $N_CPU "$input_2" hisat2_index
 
@@ -111,31 +106,8 @@ WAITPARALLEL
 
 bamlist=`awk '{ORS=","; print $0}' bamlist|sed 's/^,//; s/,$//'`
 
-echo 'set -eux
-#source /usr/local/BRAKER/bashrc
-export PATH=/usr/local/BRAKER/anaconda3/bin:$PATH
-export PATH=/usr/local/BRAKER/ProtHint/bin:$PATH
-export PATH=/usr/local/BRAKER/BRAKER/scripts/:$PATH
-export PATH=/usr/local/BRAKER/Augustus/bin:$PATH
-export GENEMARK_PATH=$PWD/gmes_linux_64
-export MAKEHUB_PATH=/usr/local/BRAKER/MakeHub
-export AUGUSTUS_SCRIPTS_PATH=/usr/local/BRAKER/Augustus/scripts
-export AUGUSTUS_BIN_PATH=/usr/local/BRAKER/Augustus/bin
-export AUGUSTUS_CONFIG_PATH=$PWD/config/
-export HOME=$PWD
-cp -r /usr/local/BRAKER/Augustus/config .
-zcat "'"$input_4"'" > .gm_key
-tar vxf "'"$input_3"'"
-mv `find . -maxdepth 1 -type d|grep gmes_linux_64` gmes_linux_64
-cd gmes_linux_64
-./change_path_in_perl_scripts.pl /usr/local/BRAKER/anaconda3/bin/perl
-cd ..
-rm -rf config/species/run1 || true
-/usr/local/BRAKER/BRAKER/scripts/braker.pl --genome="'"$input_2"'" --species=run1 --bam="'"$bamlist"'" '"$opt_r"'
-' > temp_bashrc
 
-DO_BRAKER bash temp_bashrc
-
+DO_BRAKER braker.pl --genome="$input_2" --species=run1 --bam="$bamlist" "$opt_r"
 rm -f braker/braker.exons.fasta
 DO_GFFREAD gffread -g "$input_2" -w braker/braker.exons.fasta braker/braker.gtf
 DO_TRANSEQ transeq -sequence braker/braker.exons.fasta -outseq tmp.braker.exons.aa.fasta -frame F
@@ -144,8 +116,7 @@ rm -f tmp.braker.exons.aa.fasta
 DO_BLAST blastp -query braker/braker.exons.aa.fasta -db /usr/local/Trinotate-Trinotate-v3.1.1/db/uniprot_sprot.pep -num_threads $N_CPU -max_target_seqs 1 -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle" -evalue 1e-5 > braker/braker.exons.aa.fasta.uniprot.blastp
 DO_SEQKIT seqkit fx2tab braker/braker.exons.aa.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{print ">"$1" "name[$1]":"desc[$1]" evalue:"evalue[$1]; print $2}' braker/braker.exons.aa.fasta.uniprot.blastp /dev/stdin > braker/braker.exons.uniprot.aa.fasta
 DO_SEQKIT seqkit fx2tab braker/braker.exons.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{split($1,arr," "); print ">"$1" "name[arr[1]]":"desc[arr[1]]" evalue:"evalue[arr[1]]; print $2}' braker/braker.exons.aa.fasta.uniprot.blastp /dev/stdin > braker/braker.exons.uniprot.fasta
-DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{str=$9; str2=""; sub(/.*transcript_id "/,"",str); sub(/".*/,"",str); str2=str"_"name[str]"_"desc[str]"_evalue-"evalue[str]; gsub(/[ /()=]/,"_",str2); gsub(str,str2,$0); print $0}' braker/braker.exons.aa.fasta.uniprot.blastp braker/braker.gtf > braker/braker.uniprot.gtf
-
+DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{if($3=="gene"){print $0}else{str=$9; str2=""; sub(/.*transcript_id "/,"",str); sub(/".*/,"",str); str2=str"_"name[str]"_"desc[str]"_evalue-"evalue[str]; gsub(/[ /()=]/,"_",str2); gsub(str,str2,$0); print $0}}' braker/braker.exons.aa.fasta.uniprot.blastp braker/braker.gtf > braker/braker.uniprot.gtf
 
 post_processing
 

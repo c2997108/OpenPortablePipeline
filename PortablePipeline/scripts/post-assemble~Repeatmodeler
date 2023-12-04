@@ -1,0 +1,222 @@
+#!/bin/bash
+
+explanation='
+Repeatmodeler is a de-novo repeat family identification and modeling package.
+'
+inputdef='
+input_1::FASTA:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_r:RepeatModeler option:-LTRStruct
+opt_s:RepeatMasker option:-gff
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -r #opt_r# -s #opt_s# #input_1#"
+
+export IM_RM="dfam/tetools:1.87"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+
+DO_RM BuildDatabase -name genome1 "$input_1"
+DO_RM RepeatModeler -database genome1 -threads $N_CPU $opt_r
+
+DO_RM RepeatMasker -lib genome1-families.fa -pa $N_CPU $opt_s "$input_1"
+
+rm -rf RM_1.*
+rm -rf "$input_1".*.RMoutput
+
+#runcoseg.pl -d -m 50 -c ALU.cons -s ALU.seqs -i ALU.ins
+
+
+post_processing
+#<option detail>
+#<opt_r>
+    -srand #
+        Optionally set the seed of the random number generator to a known
+        value before the batches are randomly selected ( using Fisher Yates
+        Shuffling ). This is only useful if you need to reproduce the sample
+        choice between runs. This should be an integer number.
+
+    -LTRStruct
+        Run the LTR structural discovery pipeline ( LTR_Harvest and
+        LTR_retreiver ) and combine results with the RepeatScout/RECON
+        pipeline. [optional]
+
+    -genomeSampleSizeMax #
+        Optionally change the maximum sample size (bp). The sample sizes for
+        RECON are increased until this number is reached (default: 270MB in
+        5 rounds, or 243MB in 6 rounds for '-quick' option).
+
+    -numAdditionalRounds #
+        Optionally increase the number of rounds. The sample size for
+        additional rounds will change by size multiplier (currently 3).
+
+    -quick
+        In RepeatModeler 2.0.4 due to improvements in masking and
+        parallelization the sample sizes have increased improving
+        sensitivity. Using the quick option reverts back to the original
+        sample sizes (pre 2.0.4) allowing for similar sensitivity as before,
+        at a faster rate.
+#</opt_r>
+#<opt_s>
+
+    -s  Slow search; 0-5% more sensitive, 2-3 times slower than default
+
+    -q  Quick search; 5-10% less sensitive, 2-5 times faster than default
+
+    -qq Rush job; about 10% less sensitive, 4->10 times faster than default
+        (quick searches are fine under most circumstances) repeat options
+
+    -nolow
+        Does not mask low_complexity DNA or simple repeats
+
+        NOTE: This is an important step in RepeatMasker, the identification
+        of low-divergence simple repeats early in RepeatMasker's search
+        phase lowers the overall false-positive rate for TE annotations
+        considerably. To simply remove simple repeats from the final output
+        of RepeatMasker use postprocessing tools such as:
+
+         egrep -v "Simple|Satellite" my_data.out > filtered.out
+
+        To remove these annotations from the final output. The -nolow option
+        should only be used when there is a specific reason to avoid
+        pre/post masking tandem/simple/low-complexity sequences.
+
+    -noint
+        Only masks low complex/simple repeats (no interspersed repeats)
+
+    -norna
+        Does not mask small RNA (pseudo) genes
+
+    -alu
+        Only masks Alus (and 7SLRNA, SVA and LTR5)(only for primate DNA)
+
+    -div [number]
+        Masks only those repeats with [number] percent diverged from
+        consensus
+
+    -lib [filename]
+        Allows use of a custom library (e.g. from another species)
+
+    -cutoff [number]
+        Sets cutoff score for masking repeats when using -lib (default 225)
+
+    -species <query species>
+        Specify the species or clade of the input sequence. The species name
+        must be a valid NCBI Taxonomy Database species name and be contained
+        in the RepeatMasker repeat database. Some examples are:
+
+          -species human
+          -species mouse
+          -species rattus
+          -species "ciona savignyi"
+          -species arabidopsis
+
+        Other commonly used species:
+
+        mammal, carnivore, rodentia, rat, cow, pig, cat, dog, chicken, fugu,
+        danio, "ciona intestinalis" drosophila, anopheles, worm, diatoaea,
+        artiodactyl, arabidopsis, rice, wheat, and maize
+
+    Contamination options
+
+    -is_only
+        Only clips E coli insertion elements out of fasta and .qual files
+
+    -is_clip
+        Clips IS elements before analysis (default: IS only reported)
+
+    -no_is
+        Skips bacterial insertion element check
+
+    Running options
+
+    -gc [number]
+        Use matrices calculated for 'number' percentage background GC level
+
+    -gccalc
+        RepeatMasker calculates the GC content even for batch files/small
+        seqs
+
+    -frag [number]
+        Maximum sequence length masked without fragmenting (default 60000)
+
+    -nocut
+        Skips the steps in which repeats are excised
+
+    -noisy
+        Prints search engine progress report to screen (defaults to .stderr
+        file)
+
+    -nopost
+        Do not postprocess the results of the run ( i.e. call ProcessRepeats
+        ). NOTE: This options should only be used when ProcessRepeats will
+        be run manually on the results.
+
+    output options
+
+    -dir [directory name]
+        Writes output to this directory (default is query file directory,
+        "-dir ." will write to current directory).
+
+    -a(lignments)
+        Writes alignments in .align output file
+
+    -inv
+        Alignments are presented in the orientation of the repeat (with
+        option -a)
+
+    -lcambig
+        Outputs ambiguous DNA transposon fragments using a lower case name.
+        All other repeats are listed in upper case. Ambiguous fragments
+        match multiple repeat elements and can only be called based on
+        flanking repeat information.
+
+    -small
+        Returns complete .masked sequence in lower case
+
+    -xsmall
+        Returns repetitive regions in lowercase (rest capitals) rather than
+        masked
+
+    -x  Returns repetitive regions masked with Xs rather than Ns
+
+    -poly
+        Reports simple repeats that may be polymorphic (in file.poly)
+
+    -source
+        Includes for each annotation the HSP "evidence". Currently this
+        option is only available with the "-html" output format listed
+        below.
+
+    -html
+        Creates an additional output file in xhtml format.
+
+    -ace
+        Creates an additional output file in ACeDB format
+
+    -gff
+        Creates an additional Gene Feature Finding format output
+
+    -u  Creates an additional annotation file not processed by
+        ProcessRepeats
+
+    -xm Creates an additional output file in cross_match format (for
+        parsing)
+
+    -no_id
+        Leaves out final column with unique ID for each element (was
+        default)
+
+    -e(xcln)
+        Calculates repeat densities (in .tbl) excluding runs of >=20 N/Xs in
+        the query
+#</opt_s>
+#</option detail>
+

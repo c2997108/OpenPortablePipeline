@@ -9,11 +9,13 @@ input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
+opt_j:jellyfish option:-m 21 -s 1000000 -C
 '
 runcmd="$0 -c #opt_c# -m #opt_m# #input_1#"
 
 export IM_JELLYFISH="quay.io/biocontainers/jellyfish:2.2.10--h2d50403_0"
 export IM_R="c2997108/centos6:2"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -27,7 +29,7 @@ r1=`ls |egrep "[.]f(ast|)q([.]gz|)$" || echo ""`
 if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; exit; fi
 
 set -x
-cmd="jellyfish count -m 21 -o output -s 1000000 -t $N_CPU -C"
+cmd="jellyfish count -o output -t $N_CPU $opt_j"
 for i in $r1; do
  if [ `echo $i|grep gz$|wc -l` = 1 ];then
   cmd="$cmd "'<(zcat '$i')'
@@ -58,9 +60,26 @@ CairoPNG("kmer-base-histogram.png", width = 1000, height = 1000)
 barplot(t(d),xlab = "K-mer frequency section", ylab = "K-mer frequency x coverage")
 dev.off()'|(DO_R R --vanilla < /dev/stdin)
 
+DO_SEQKIT seqkit stats $r1
+
 post_processing
 #<option detail>
-#<opt_c>
-#</opt_c>
+#<opt_j>
+ -m, --mer-len=uint32                    *Length of mer
+ -s, --size=uint64                       *Initial hash size
+ -c, --counter-len=Length in bits         Length bits of counting field (7)
+     --out-counter-len=Length in bytes    Length in bytes of counter field in output (4)
+ -C, --canonical                          Count both strand, canonical representation (false)
+     --bc=path                            Bloom counter to filter out singleton mers
+     --bf-size=uint64                     Use bloom filter to count high-frequency mers
+     --bf-fp=double                       False positive rate of bloom filter (0.01)
+ -Q, --min-qual-char=string               Any base with quality below this character is changed to N
+ -p, --reprobes=uint32                    Maximum number of reprobes (126)
+     --text                               Dump in text format (false)
+     --disk                               Disk operation. Do not do size doubling (false)
+ -L, --lower-count=uint64                 Don't output k-mer with count < lower-count
+ -U, --upper-count=uint64                 Don't output k-mer with count > upper-count
+     --timing=Timing file                 Print timing information
+#</opt_j>
 #</option detail>
 

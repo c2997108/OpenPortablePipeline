@@ -52,19 +52,6 @@ h=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)/10<8){print 4}else{print (NF-6)/2
 w2=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)<50){print 500}else{print (NF-6)*10}}'`
 h2=`head -n 1 output.tsv|awk -F'\t' '{if((NF-6)<50){print 500}else{print 500+(NF-6)*2}}'`
 
-echo "a=read.table('output.nonNA.tsv',sep='\t',header=T)
-c=cor(a); for(i in 1:ncol(c)){c[is.na(c[,i]),i]=0}; result=hclust(as.dist(1-c),'ave')
-pdf('sample-relation-nonNA.pdf',width=$w, height=$h, pointsize=2)
-plot(result)
-dev.off()
-library(Cairo)
-CairoPNG('sample-relation-nonNA.png',width=min($w2,4000), height=min($h2,2000))
-plot(result)
-dev.off()
-" > make-sample-relation-nonNA.R
-
-DO_R R --vanilla < make-sample-relation-nonNA.R
-
 cat output.tsv|awk -F'\t' '{
  if(NR==1){ORS=""; print "id"; for(i=7;i<=NF;i++){print "\t"$i}}
  else{print $1":"$2":"$3":"$4;
@@ -83,6 +70,50 @@ awk -F'\t' 'NR==1{print $0} NR>1{
  if(a/(NF-1)>0.8){print $0}
 }' output.tsv2 > output.u20pNA.txt
 head -n $opt_r output.u20pNA.txt > output.u20pNA.tsv3
+
+echo "a=read.table('output.tsv2', sep='\t',fileEncoding = 'utf8', header=T, row.names=1);
+library(parallel)
+len=ncol(a)
+f <- function(x) {
+ r1=as.integer((x-1) / len)+1;
+ c1=(x-1) %% len + 1;
+ tryCatch(error=function(cnd){-1},
+  {x1=a[,r1]; y1=a[,c1];
+   z=1-cor(x1[!(x1==-1 | y1==-1)],y1[!(x1==-1 | y1==-1)])
+   if(is.na(z)){z=2}
+   z
+  })
+}
+d <- mclapply(1:(len*len), function(i) { f(i) }, mc.cores = $N_CPU)
+e=matrix(d,nrow=len, ncol=len)
+colnames(e)=colnames(a)
+rownames(e)=colnames(a)
+adist=as.dist(e)
+library(Cairo)
+library(dendextend)
+dend <- as.dendrogram(hclust(adist,method='ave'))
+CairoPNG('sample-relation-all-cor.png',width=min($w2,6000),height=min($h2,3000))
+plot(dend)
+dev.off()
+write.table(labels(dend),file='tree-labels.all-cor.txt',sep='\t',quote=F)
+" > make-sample-relation-all-cor.R
+
+DO_R2 bash -c "LANG=ja_JP.UTF-8 R --vanilla" < make-sample-relation-all-cor.R
+
+
+echo "a=read.table('output.nonNA.tsv',sep='\t',header=T)
+c=cor(a); for(i in 1:ncol(c)){c[is.na(c[,i]),i]=0}; result=hclust(as.dist(1-c),'ave')
+pdf('sample-relation-nonNA.pdf',width=$w, height=$h, pointsize=2)
+plot(result)
+dev.off()
+library(Cairo)
+CairoPNG('sample-relation-nonNA.png',width=min($w2,4000), height=min($h2,2000))
+plot(result)
+dev.off()
+" > make-sample-relation-nonNA.R
+
+DO_R R --vanilla < make-sample-relation-nonNA.R
+
 
 echo "library(snowfall)
 sfInit(parallel = TRUE, cpus = $N_CPU)
@@ -133,35 +164,6 @@ write.table(labels(dend),file='tree-labels.all.txt',sep='\t',quote=F)
 " > make-sample-relation-all.R
 
 DO_R R --vanilla < make-sample-relation-all.R
-
-echo "a=read.table('output.tsv2', sep='\t',fileEncoding = 'utf8', header=T, row.names=1);
-library(parallel)
-len=ncol(a)
-f <- function(x) {
- r1=as.integer((x-1) / len)+1;
- c1=(x-1) %% len + 1;
- tryCatch(error=function(cnd){-1},
-  {x1=a[,r1]; y1=a[,c1];
-   z=1-cor(x1[!(x1==-1 | y1==-1)],y1[!(x1==-1 | y1==-1)])
-   if(is.na(z)){z=2}
-   z
-  })
-}
-d <- mclapply(1:(len*len), function(i) { f(i) }, mc.cores = $N_CPU)
-e=matrix(d,nrow=len, ncol=len)
-colnames(e)=colnames(a)
-rownames(e)=colnames(a)
-adist=as.dist(e)
-library(Cairo)
-library(dendextend)
-dend <- as.dendrogram(hclust(adist,method='ave'))
-CairoPNG('sample-relation-all-cor.png',width=min($w2,6000),height=min($h2,3000))
-plot(dend)
-dev.off()
-write.table(labels(dend),file='tree-labels.all-cor.txt',sep='\t',quote=F)
-" > make-sample-relation-all-cor.R
-
-DO_R2 bash -c "LANG=ja_JP.UTF-8 R --vanilla" < make-sample-relation-all-cor.R
 
 post_processing
 

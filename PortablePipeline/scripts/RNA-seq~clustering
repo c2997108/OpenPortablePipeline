@@ -25,7 +25,7 @@ set -o pipefail
 
 ln -sf "$input_1" input.table.txt
 
-echo 'data=read.table("input.table.txt",header=T,row.names=1)
+echo 'data=read.table("input.table.txt",header=T,row.names=1,sep="\t")
 data2=log2(data[order(apply(data,1,sum),decreasing=T),]+1)
 data2=data2[apply(data2,1,sum)!=0,]
 write.table(data2, "input.table.sorted.log2p1.txt",row.names=T, quote=F, sep="\t")'| (DO_BASE /opt/R/4.0.3/bin/R --vanilla --silent)
@@ -33,8 +33,9 @@ write.table(data2, "input.table.sorted.log2p1.txt",row.names=T, quote=F, sep="\t
 DO_BASE awk -F'\t' 'NR==1{print "id\t"$0} NR>1{print $0}' input.table.sorted.log2p1.txt > input.table.sorted.log2p1.h.txt
 DO_BASE java -cp /opt corclust.Clustering input.table.sorted.log2p1.h.txt $opt_r $opt_c > input.table.sorted.log2p1.h.txt.clust
 paste input.table.sorted.log2p1.h.txt <(echo cluster; cat input.table.sorted.log2p1.h.txt.clust|cut -f 2) > output.table.txt
+mkdir -p "images"
 
-echo 'data=read.table("input.table.sorted.log2p1.h.txt",header=T,row.names=1)
+echo 'data=read.table("input.table.sorted.log2p1.h.txt",header=T,row.names=1,sep="\t")
 clust=read.table("input.table.sorted.log2p1.h.txt.clust", row.names=1)
 data2=data/apply(data,1,function(x){sqrt(sum(x*x))})
 
@@ -43,7 +44,7 @@ library(tidyverse)
 for(i in sort(unique(clust[,1]))){
  data3=data2[clust[,1]==i,]
  if(dim(data3)[1]>1){
-  CairoPNG(paste("cluster.",i,".png",sep=""),width='$opt_a',height='$opt_b')
+  CairoPNG(paste("images/cluster.",i,".png",sep=""),width='$opt_a',height='$opt_b')
   cat(paste("plotting cluster:",i,"...\n"))
   ymin = min(data3)
   ymax = max(data3)

@@ -1,0 +1,42 @@
+#!/bin/bash
+
+explanation='
+KmerGenie estimates the best k-mer length for genome de novo assembly and the genome size
+'
+inputdef='
+input_1::FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_k:KmerGenie option:--diploid
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -k #opt_k# #input_1#"
+
+export IM_KMER="docker.io/c2997108/centos7:kmergenie1.7051"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eu
+set -o pipefail
+
+DO_KMER kmergenie $opt_k "$input_1"
+
+post_processing
+
+#<option detail>
+#<opt_k>
+Options:
+    --diploid    use the diploid model (default: haploid model)
+    --one-pass   skip the second pass to estimate k at 2 bp resolution (default: two passes)
+    -k <value>   largest k-mer size to consider (default: 121)
+    -l <value>   smallest k-mer size to consider (default: 15)
+    -s <value>   interval between consecutive kmer sizes (default: 10)
+    -e <value>   k-mer sampling value (default: auto-detected to use ~200 MB memory/thread)
+    -t <value>   number of threads (default: number of cores minus one)
+    -o <prefix>  prefix of the output files (default: histograms)
+    --debug      developer output of R scripts
+    --orig-hist  legacy histogram estimation method (slower, less accurate)
+#</opt_k>
+#</option detail>
+
