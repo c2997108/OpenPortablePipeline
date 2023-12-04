@@ -1,5 +1,6 @@
 次回予告
 
+# 1.2.8 (2023/12/04)
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid_paired-end```を```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```,```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```に変更。SILVAはバクテリア専用、PR2は真核生物専用にした。
 - ```RNA-seq~clustering```サンプル名の区切り文字をタブに指定。
 - ```annotation~BRAKER2```を```annotation~BRAKER3```に変更。GeneMark-ES/ET/EPのラインセンスキーが必要なくなった。
