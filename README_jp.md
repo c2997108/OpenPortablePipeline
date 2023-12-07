@@ -236,6 +236,10 @@ WSL2以降が動作するWindows10もしくはWindows11を準備する。基本�
 
 ![image](https://user-images.githubusercontent.com/5350508/180928671-036a54ff-1f8a-42ef-8b55-66b26d806cab.png)
 
+もしエラーが出るようなら、Linux kernelを更新しておく必要があるかも。下記のページに従って更新すること。
+
+https://learn.microsoft.com/ja-jp/windows/wsl/install-manual#step-4---download-the-linux-kernel-update-package
+
 4．https://github.com/c2997108/OpenPortablePipeline/releases/download/v1.1.0/PortablePipeline-win-v1.1.0.zip
 からPortable Pipelineをダウンロードして、解凍しておく。
 
