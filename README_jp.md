@@ -148,7 +148,7 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
   SGEを使わない場合は、xargsで並列処理、SGEを使う場合は、xargs+qsubでグリッドエンジンに渡す。
   並列処理の最終的なコマンドの引数に空白を渡すためなどの理由で「'」を使いたいときは、echo中では「\'」と書いておくと、xargsによる削除を抜けられる。
 - headをパイプの途中で使うと、パイプの前の段が途中で強制終了となりpipefailが生じるので途中では使わないのと、grepはヒット件数が0だとエラーになるので、|| trueなどをつけて対策すること。
-- 「|」(パイプ)の後ろで、DO_なりENV_を使うときは、ver1以降では(DO_xxx  < /dev/stdin), "("$ENV_xxx < /dev/stdin")"などというように括弧で囲むこと。
+- 「|」(パイプ)の後ろで、<del>DO_なり</del>ENV_を使うときは、ver1以降では(DO_xxx  < /dev/stdin), "("$ENV_xxx < /dev/stdin")"などというように括弧で囲むこと。->v1.2.0でDO_は不要に。ENV_は未検証。
 - dockerを使う場合は途中でキャンセル処理はSGEなしの場合のみ完全対応。SGEを使うとqsubで投げたjobは削除するが、投げた先のサーバの中のdockerは停止されないので、docker stopを実行しないといけないが現在は対応していない。singularityの場合はSGEでもSGEがプロセスを停止させてくれるはず。
 - <del>xargsの仕様として、「'」や「"」はエスケープ処理しておかないと消える。```echo 'set -eux; echo \"a   a\"'|xargs -I{} bash -c "{}"```</del>->v1.2.0でxargs -0とすることで影響なくなった。
 - DOPARALLELの中で子スクリプトを呼び出す場合、bashコマンドの前にN_SCRIPT=$N_SCRIPTを付けて、子スクリプトであることを伝える必要がある。
@@ -161,7 +161,10 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 
 ### dockerに起因する部分
 - <del>ファイルは$PWD以下しかマウントされないので、親ディレクトリのファイルを使わない</del>->一応入力ファイルの10階層までシンボリックリンクを辿るようにしたけど、ディレクトリへのシンボリックリンクの後のシンボリックリンクなどは上手く取れないケースもまだある。
-- dockerは実行したユーザの権限で実行されるので、/rootなどにはアクセスできないので、/root以外を使うこと。例：/usr/localなど
+- dockerは実行したユーザの権限で実行されるので、/rootフォルダなどにはアクセスできないので、/root以外を使うこと。例：/usr/localなど
+
+### podmanに起因する部分
+- `podman run -i --rm -v /tmp:/tmp -w /tmp docker.io/c2997108/centos7:2 awk '{print $0}' <(cat /tmp/a.fa)`などの入力方式は`awk: fatal: cannot open file '/dev/fd/63' for reading (No such file or directory)`となりエラー。`cat /tmp/a.fa | podman run -i --rm -v /tmp:/tmp -w /tmp docker.io/c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito-silva-3 awk '{print $0}' /dev/stdin`はOK。
 
 ### singularityに起因する部分
 - コンテナの/root以下にツールなどをインストールしても、singularityはコンテナの/rootを普通はマウントしないようでアクセスできない。
