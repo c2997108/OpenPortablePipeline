@@ -283,7 +283,7 @@ https://learn.microsoft.com/ja-jp/windows/wsl/install-manual#step-4---download-t
 
 基本的には自動でインストールされるはずだけど、手動でインストールする場合はWindows用のDocker Desktopではなくて、Ubuntu用の公式の手順でWSLにDokcerをインストールする。
 
-## Macをサーバとして使用する場合のセットアップ方法
+## Macをサーバとして使用する場合のセットアップ方法 (Docker)
 1．Dockerのインストール
 
 OSのバージョンが OS X Sierra 10.12以降であることを確認すること。Docker Desktop for Macを[公式サイト](https://download.docker.com/mac/stable/Docker.dmg)からダウンロードし、dmgファイルをダブルクリックし、指示に従ってインストールを完了する。
@@ -323,6 +323,44 @@ export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/xargs$`|head -n 1))':
 source ~/.bash_profile
 ```
 途中でMacのパスワードが聞かれるはずなので、入力する。
+
+## Macをサーバとして使用する場合のセットアップ方法 (Podman)
+
+```/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"```
+
+でhomebrewをインストールしたら、下記のコマンドでpodmanをインストール
+
+```
+brew install podman
+#podmanの仮想マシンをダウンロード。cpu数、メモリー量は各自のPCに合わせて。volumeは実際に解析するときに使用するフォルダーの絶対パスを指定しておく。（下記はCPU数4、メモリー4GBで、現在のフォルダで解析を行う場合の例）
+podman machine init --cpus 4 --memory 4096 --volume "$PWD:$PWD"
+#podmanの仮想マシンをスタート（OS再起動時は毎回行う)
+podman machine start
+        #To start a podman VM automatically at login, also install the cask
+        #"podman-desktop".
+```
+
+grepやawkなどの基本ツールの最新版をMacにインストールしておく
+
+```
+brew install grep gawk gzip bash
+brew install gnu-tar gnu-sed gnu-getopt
+
+brew install findutils #xargs
+brew install moreutils #parallel
+brew install coreutils #cat, ls 
+
+echo 'export PATH="/opt/homebrew/opt/grep/libexec/gnubin:$PATH"' >> ~/.bash_profile
+echo 'export PATH="/opt/homebrew/opt/gawk/libexec/gnubin:$PATH"' >> ~/.bash_profile
+echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.bash_profile
+
+echo 'export PATH="/opt/homebrew/opt/gnu-sed/libexec/gnubin:$PATH"' >> ~/.bash_profile
+echo 'export PATH="/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH"' >> ~/.bash_profile
+echo 'export PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"' >> ~/.bash_profile
+
+echo 'export PATH="/opt/homebrew/opt/findutils/libexec/gnubin:$PATH"' >> ~/.bash_profile
+echo 'export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"' >> ~/.bash_profile
+```
 
 ## GUIではなく、コマンドラインから実行する場合
 
