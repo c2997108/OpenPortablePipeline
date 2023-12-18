@@ -1,8 +1,14 @@
-次回予告
+# 1.3.0 (2023/12/18)
+
 - ```QC~seqkit```を追加。
 - ```Hi-C~YaHS```を追加。
 - ```nanopore~split-barcode```で最大スコアの組み合わせを出力しないバグを修正
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```で葉緑体と植物の18Sが競合してunknownとなる場合に葉緑体を優先するように修正。
+- Java8->Java21へアップデート
+- sshでlinuxサーバに接続していたモードの名前を「direct」から「ssh」へと変更
+- linuxでGUI起動に対応。GUIで起動しているサーバで直接解析するモードとして「linux」を追加
+- 秘密鍵を使用したssh接続時に使用する秘密鍵は```ssh-keygen -m PEM```とオプションをつけて作成するように注意書きを追加
+
 
 # 1.2.8 (2023/12/04)
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-16S-mito-plastid_paired-end```を```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```,```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```に変更。SILVAはバクテリア専用、PR2は真核生物専用にした。
