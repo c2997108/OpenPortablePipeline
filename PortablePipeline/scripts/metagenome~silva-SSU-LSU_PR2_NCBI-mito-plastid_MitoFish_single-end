@@ -60,7 +60,27 @@ function searchLCA(data,  i, j, res, res2, str, n, stopflag){
   if(n==0){n=split(i,res,";")}
   else{split(i,res2,";"); for(j in res){if(res[j]!=res2[j]){res[j]=""}}}
  }
- if(res[1]!=""){str=res[1]}else{str="unknown"; stopflag=1};
+ if(res[1]!=""){str=res[1]}
+ else{
+  #i: taxonomy path
+  #葉緑体と植物の18Sは相同性が高いみたいなのでそれが混ざるときは葉緑体を優先させる
+  chloroplast=0
+  delete datachloro
+  for(i in data){
+   if(i~"^Bacteria;Cyanobacteria;Cyanobacteriia;Chloroplast;"){chloroplast++; datachloro[i]=1}
+  }
+  if(chloroplast>0){
+   n2=0
+   for(i in datachloro){
+    if(n2==0){n2=split(i,res,";")}
+    else{split(i,res2,";"); for(j in res){if(res[j]!=res2[j]){res[j]=""}}}
+   }
+  }
+ }
+ if(res[1]!=""){str=res[1]}
+ else{
+  str="unknown"; stopflag=1
+ };
  for(i=2;i<=n;i++){if(stopflag==0 && res[i]!=""){str=str";"res[i]}else{stopflag=1}}
  return str;
 }

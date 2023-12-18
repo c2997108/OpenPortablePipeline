@@ -101,9 +101,6 @@ WAITPARALLEL
 mkdir -p kallisto.output.tar.gz
 mv kallisto.output/*.kallisto.tar.gz kallisto.output.tar.gz
 
-#for i in $r1 $r1gz; do (echo -e "id\t`echo $i|sed 's/[.]\(fq\|fastq\)\([.]gz\|\)$//'|sed 's/_1$//; s/_R1//'`" ; cut -f 1,4 `basename $i.kallisto`/abundance.tsv|tail -n+2)  > `basename $i.kallisto`.cnt; done
-#for i in $r1 $r1gz; do (echo -e "id\t`echo $i|sed 's/[.]\(fq\|fastq\)\([.]gz\|\)$//'|sed 's/_1$//; s/_R1//'` (tpm)" ; cut -f 1,5 `basename $i.kallisto`/abundance.tsv|tail -n+2)  > `basename $i.kallisto`.tpm; done
-
 DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/get_Trinity_gene_to_trans_map.pl Trinity.fasta > Trinity.fasta.gene_trans_map
 cd kallisto.output
 cp ../Trinity.fasta.gene_trans_map .
@@ -114,8 +111,6 @@ mv kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.g
   mv kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix ..
  fi
 cd ..
-
-#/usr/local/Trinotate-Trinotate-v3.1.1/auto/autoTrinotate.pl --Trinotate_sqlite /usr/local/Trinotate-Trinotate-v3.1.1/db/20190618.sqlite --transcripts Trinity.fasta --gene_to_trans_map ../Trinity.fasta.gene_trans_map --conf /usr/local/Trinotate-Trinotate-v3.1.1/auto/conf.txt --CPU 20
 
 bash "$scriptdir"/annotation~Trinotate -c $N_CPU -m $N_MEM Trinity.fasta Trinity.fasta.gene_trans_map
 

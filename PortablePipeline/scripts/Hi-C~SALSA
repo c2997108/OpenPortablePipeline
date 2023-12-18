@@ -28,18 +28,18 @@ source $(dirname `readlink -f $0 || echo $0`)/common.sh
 set -eux
 set -o pipefail
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
 if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_4"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_4" > `echo "$input_4"|sed 's/[.]gz$//'`; input_4=`echo "$input_4"|sed 's/[.]gz$//'`; fi
 
 if [ "$input_3" = "" ]; then
  mkdir -p reformat
- DO_EXONERATE fastareformat "$input_1" |sed 's/\r//g' > reformat/input_1.fa.tmp
- awk '{if($1~"^>"){str=substr($1,2); gsub("[^A-Za-z0-9_-]","_",str); print ">"str}else{print $0}}' reformat/input_1.fa.tmp > reformat/input_1.fa
- if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_SALSA gzip -dc "$input_2" > reformat/input.fa; else cat "$input_2" > reformat/input.fa; fi
- DO_EXONERATE fastareformat reformat/input.fa |sed 's/\r//g'| awk '{if($1~"^>"){str=substr($1,2); gsub("[^A-Za-z0-9_-]","_",str); print ">"str}else{print $0}}' > reformat/`basename "$input_2" .gz`
- input_2=reformat/`basename "$input_2" .gz`
+ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+  DO_SALSA gzip -dc "$input_2" > reformat/input.fa
+  DO_EXONERATE fastareformat reformat/input.fa |sed 's/\r//g'| awk '{if($1~"^>"){str=substr($1,2); gsub("[^A-Za-z0-9_-]","_",str); print ">"str}else{print $0}}' > reformat/`basename "$input_2" .gz`
+  input_2=reformat/`basename "$input_2" .gz`
+ else
+  DO_EXONERATE fastareformat "$input_2" |sed 's/\r//g'| awk '{if($1~"^>"){str=substr($1,2); gsub("[^A-Za-z0-9_-]","_",str); print ">"str}else{print $0}}' > reformat/`basename "$input_2"`
+  input_2=reformat/`basename "$input_2"`
+ fi
  DO_BWA bwa index "$input_2"
  ref="$input_2"
 else

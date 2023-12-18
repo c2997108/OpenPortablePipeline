@@ -164,6 +164,15 @@ public class JobWindowController {
 
     @FXML
     private CheckBox checkdelete;
+    
+    @FXML
+    private Label label_privatekey;
+    
+    @FXML
+    private Label label_workfolder;
+    
+    @FXML
+    private Label label_imagefolder;
 
     String file_id_rsa = "id_rsa.txt";
 
@@ -188,7 +197,7 @@ public class JobWindowController {
     boolean isSending = false;
 
     Map<String, Map<String, String>> settings = new LinkedHashMap<String, Map<String, String>>();
-    String[] settingPresetKey = {"direct","direct (SGE)","ddbj","shirokane","WSL","Mac"};
+    String[] settingPresetKey = {"ssh","ssh (SGE)","ddbj","shirokane","WSL","Mac","Linux","Linux (SGE)"};
     String[] settingItemKey = {"hostname", "port", "user", "password", "privatekey", "workfolder", "imagefolder"};
 
     @FXML
@@ -360,8 +369,9 @@ public class JobWindowController {
     					Session sc = null;
     					Channel channel = null;
 
-    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						if((new File(file_id_rsa)).exists()) {
+    							System.out.println(file_id_rsa);
     							jsch.addIdentity(file_id_rsa, ppSetting.get("password"));
     						}
     						System.out.println("identity added ");
@@ -386,7 +396,7 @@ public class JobWindowController {
     					String workdir = ppSetting.get("workfolder")+"/"+workid;
     					String resultdir = ppSetting.get("outputfolder")+"/"+workid+"/results";
 
-    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						String tempworkpath = "";
     						for(String tempworkpathnode : workdir.split("/")) {
     							if(tempworkpath.equals("")) {
@@ -410,7 +420,7 @@ public class JobWindowController {
     					List<String> scriptcontList = new ArrayList<String>();
     					searchScript(ppSetting.get("scriptfolder"), selectedScript, scriptcontList);
 
-    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						System.out.println("sending...  "+selectedScript);
     						c.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
     						System.out.println("sending...  "+"common.sh");
@@ -507,7 +517,7 @@ public class JobWindowController {
     									if(getStatusByWorkId(workid).equals("cancelled")) {
     										throw new Exception("Cancelled");
     									}
-    									if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    									if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     										System.out.println("sending...  "+fileName);
     										try {
     											c.mkdir(workdir+"/"+fileid);
@@ -568,118 +578,65 @@ public class JobWindowController {
     					//System.out.println("done");
 
     					String cmdString = "";
+    							
     					try{
-    						File file;
+    						String outputFile = ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh";
 
-    						if(!selectedPreset.equals("WSL")) {
-    							file = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh");
-    						}else{
-    							file = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat");
-    						}
-    						FileWriter filewriter = new FileWriter(file);
-
-    						if(selectedPreset.equals("direct")) {
-    							filewriter.write("#!/bin/bash\n");
-    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter.write("chmod 755 ./pp.py\n");
-    							filewriter.write("chmod 755 "+selectedScript+"\n");
-    							filewriter.write("nohup ./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
-    							filewriter.write("echo $! > save_pid.txt\n");
+    						String templateFile = "";
+    						if(selectedPreset.equals("ssh")) {
+    							templateFile="templates/ssh-wrapper.sh";
     							cmdString = "cd "+workdir+"; bash wrapper.sh";
-    						}else if(selectedPreset.equals("shirokane") || selectedPreset.equals("ddbj")) {
-    							filewriter.write("#!/bin/bash\n");
-    							filewriter.write("#$ -S /bin/bash\n");
-    							filewriter.write("#$ -notify\n");
-    							filewriter.write("#$ -cwd\n");
-    							filewriter.write("#$ -pe def_slot "+numCPU+"\n");
-    							filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G,s_vmem="+Double.valueOf(numMEM)/Double.valueOf(numCPU)+"G\n");
-    							filewriter.write("trap 'sleep 13; echo Detected SIGUSR2' SIGUSR2\n");
-    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter.write("source ~/.bashrc\n");
-    							filewriter.write("chmod 755 ./pp.py\n");
-    							filewriter.write("chmod 755 "+selectedScript+"\n");
-    							filewriter.write("./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
-    							cmdString = "cd "+workdir+"; qsub wrapper.sh | grep wrapper.sh > save_jid.txt";
-    						}else if(selectedPreset.equals("direct (SGE)")) {
-    							filewriter.write("#!/bin/bash\n");
-    							filewriter.write("#$ -S /bin/bash\n");
-    							filewriter.write("#$ -notify\n");
-    							filewriter.write("#$ -cwd\n");
-    							filewriter.write("#$ -pe def_slot "+numCPU+"\n");
-    							filewriter.write("#$ -l mem_req="+ Double.valueOf(numMEM)/Double.valueOf(numCPU) +"G\n");
-    							filewriter.write("trap 'sleep 13; echo Detected SIGUSR2' SIGUSR2\n");
-    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter.write("source ~/.bashrc\n");
-    							filewriter.write("chmod 755 ./pp.py\n");
-    							filewriter.write("chmod 755 "+selectedScript+"\n");
-    							filewriter.write("./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1\n");
-    							cmdString = "cd "+workdir+"; qsub wrapper.sh | grep wrapper.sh > save_jid.txt";
+    						}else if(selectedPreset.equals("shirokane")) {
+    							templateFile="templates/shirokane-wrapper.sh";
+    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh > save_jid.txt";
+    						}else if(selectedPreset.equals("ddbj")) {
+    							templateFile="templates/ddbj-wrapper.sh";
+    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh > save_jid.txt";
+    						}else if(selectedPreset.equals("ssh (SGE)")) {
+    							templateFile="templates/sshsge-wrapper.sh";
+    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh > save_jid.txt";
     						}else if(selectedPreset.equals("WSL")){
     							String curDir = new File(".").getAbsoluteFile().getParent();
     							String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
     							wslcurDir = wslcurDir.replaceAll("\\\\", "/");
-    							filewriter.write("wsl bash -c \"cat /proc/cmdline |grep vsyscall=emulate\"\r\n");
-    							filewriter.write("if not \"%ERRORLEVEL%\" == \"0\" (\r\n");
-    							filewriter.write(" echo [wsl2] >> %USERPROFILE%\\.wslconfig\r\n");
-    							filewriter.write(" echo kernelCommandLine = vsyscall=emulate >> %USERPROFILE%\\.wslconfig\r\n");
-    							filewriter.write(" wsl --shutdown\r\n");
-    							filewriter.write(")\r\n");
-    							filewriter.write("wsl -l\r\n");
-    							filewriter.write("if not \"%ERRORLEVEL%\" == \"0\" (\r\n");
-    							filewriter.write(" echo INSTALLING WSL... After the WSL installation, restart your PC and enter your new user name and password.If you get an error, you probably need to turn on the virtualization support function in the BIOS.\r\n");
-    							filewriter.write(" powershell.exe start-process cmd -verb runas -ArgumentList '/K \\\"wsl --install -d Ubuntu\\\"'\r\n");
-    							filewriter.write(")\r\n");
-    							filewriter.write("set i=1\r\n");
-    							filewriter.write(":WAIT\r\n");
-    							filewriter.write("wsl bash -c \"cat /proc/cmdline |grep vsyscall=emulate\"\r\n");
-    							filewriter.write("if not \"%ERRORLEVEL%\" == \"0\" (\r\n");
-    							filewriter.write(" echo Waiting for Ubuntu installation\r\n");
-    							filewriter.write(" timeout 10\r\n");
-    							filewriter.write(" set /a i+=1\r\n");
-    							filewriter.write(" if %i% leq 60 goto WAIT\r\n");
-    							filewriter.write(")\r\n");
-    							filewriter.write("wsl bash -c \"cat /proc/cmdline |grep vsyscall=emulate\"\r\n");
-    							filewriter.write("if not ERRORLEVEL 0 (\r\n");
-    							filewriter.write(" mkdir %LOCALAPPDATA%\\PPUbuntu20\r\n");
-    							filewriter.write(" powershell -Command \"Invoke-WebRequest http://suikou.fs.a.u-tokyo.ac.jp/pp/PPUbuntu20.tar -outFile PPUbuntu20.tar\"\r\n");
-    							filewriter.write(" wsl --import PPUbuntu20 %LOCALAPPDATA%/PPUbuntu20 PPUbuntu20.tar --version 2\r\n");
-    							filewriter.write(" wsl -s PPUbuntu20\r\n");
-    							filewriter.write(")\r\n");
-    							filewriter.write("powershell.exe start-process bash -Wait -ArgumentList '-c \\\"cd "+wslcurDir+"; echo "+password.getText()+"|sudo -S bash WSL-setup.sh\\\"'\r\n");
-    							//filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
-    							//filewriter.write("powershell.exe start-sleep -s 5\r\n");
-    							//filewriter.write("powershell.exe start-process bash -verb runas -ArgumentList '-c \\\"if [ `service docker status|grep not|wc -l` = 1 ]; then sudo cgroupfs-mount; sudo service docker start; fi\\\"'\r\n");
-    							//filewriter.write("powershell.exe start-sleep -s 5\r\n");
-    							filewriter.write("powershell.exe start-process bash -ArgumentList '-c \\\"echo Do not close this window.; echo "+password.getText()+"|sudo -S bash service docker start; bash wrapper2.sh\\\"'\r\n");
-
-    							File file2 = new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper2.sh");
-    							FileWriter filewriter2 = new FileWriter(file2);
-    							filewriter2.write("#!/bin/bash\n");
-    							filewriter2.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter2.write("chmod 755 ./pp.py\n");
-    							filewriter2.write("chmod 755 "+selectedScript+"\n");
-    							filewriter2.write("nohup ./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
-    							filewriter2.write("echo $! > save_pid.txt\n");
-    							filewriter2.write("wait\n"); // for win10 1803, 1809
-    							filewriter2.close();
-
+    							try (BufferedReader reader = new BufferedReader(new FileReader("templates/WSL-wrapper.bat"));
+       					             BufferedWriter writer = new BufferedWriter(new FileWriter(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat"))) {
+       								String line;
+       								while ((line = reader.readLine()) != null) {
+       									line = line.replace("@wslcurDir@", wslcurDir);
+       									line = line.replace("@password@", password.getText());
+       									writer.write(line+"\n");
+       								}
+       							}
+    							
+    							templateFile="templates/WSL-wrapper.sh";
     							cmdString = "cmd.exe /c start cmd.exe /k wrapper.bat";
     						}else if(selectedPreset.equals("Mac")){
-    							filewriter.write("#!/bin/bash\n");
-    							filewriter.write("export DIR_IMG="+ppSetting.get("imagefolder")+"\n");
-    							filewriter.write("export PATH=/usr/local/bin:${PATH}\n");
-    							filewriter.write("export PATH=/usr/local/opt/coreutils/libexec/gnubin:${PATH}\n");
-    							filewriter.write("source ~/.bash_profile\n");
-    							filewriter.write("chmod 755 ./pp.py\n");
-    							filewriter.write("chmod 755 "+selectedScript+"\n");
-    							filewriter.write("nohup ./pp.py "+selectedScript+" "+runcmd+" > log.txt 2>&1 &\n");
-    							filewriter.write("echo $! > save_pid.txt\n");
+    							templateFile="templates/Mac-wrapper.sh";
+    							cmdString = "bash wrapper.sh";
+    						}else if(selectedPreset.equals("Linux")){
+    							templateFile="templates/Linux-wrapper.sh";
+    							cmdString = "bash wrapper.sh";
+    						}else if(selectedPreset.equals("Linux (SGE)")) {
+    							templateFile="templates/Linuxsge-wrapper.sh";
     							cmdString = "bash wrapper.sh";
     						}
 
-    						filewriter.close();
+							try (BufferedReader reader = new BufferedReader(new FileReader(templateFile));
+   					             BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile))) {
+   								String line;
+   								while ((line = reader.readLine()) != null) {
+   									line = line.replace("@imagefolder@", ppSetting.get("imagefolder"));
+   									line = line.replace("@selectedScript@", selectedScript);
+   									line = line.replace("@runcmd@", runcmd);
+   									line = line.replace("@numCPU@", numCPU);
+   									line = line.replace("@numMEM_1core@", String.valueOf(Double.valueOf(numMEM)/Double.valueOf(numCPU)));
+   									writer.write(line+"\n");
+   								}
+   							}
 
-    						if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+							
+    						if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     							c.put(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh", workdir);
     						}
     					}catch(IOException e){
@@ -690,7 +647,7 @@ public class JobWindowController {
 
     					System.out.println(cmdString);
 
-    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						ChannelExec channelexec = (ChannelExec) sc.openChannel("exec");
     						//channelexec.setCommand("cd "+workdir+"; bash "+selectedScript+" "+runcmd);
     						channelexec.setCommand(cmdString);
@@ -736,6 +693,7 @@ public class JobWindowController {
     					}else {
     						Process process = Runtime.getRuntime().exec(cmdString, null, new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"));
     						process.waitFor();
+
     					}
 
     					System.out.println(jobdesc);
@@ -747,7 +705,7 @@ public class JobWindowController {
     					});
 
 
-    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						sc.disconnect();
     					}
 
@@ -838,7 +796,7 @@ public class JobWindowController {
         		jsonGenerator.writeStringField("password","user2");jsonGenerator.writeRaw("\n");
         		jsonGenerator.writeStringField("privatekey","");jsonGenerator.writeRaw("\n");
         		jsonGenerator.writeStringField("workfolder","work");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("preset","direct");jsonGenerator.writeRaw("\n");
+        		jsonGenerator.writeStringField("preset","ssh");jsonGenerator.writeRaw("\n");
         		jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
         		jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
         		jsonGenerator.writeStringField("imagefolder","~/img");jsonGenerator.writeRaw("\n");
@@ -896,9 +854,9 @@ public class JobWindowController {
         selectedPreset = ppSetting.get("preset");
 
 		switch(selectedPreset) {
-		case "direct":
+		case "ssh":
 			break;
-		case "direct (SGE)":
+		case "ssh (SGE)":
 			break;
 		case "ddbj":
 			//password.setDisable(true);
@@ -934,6 +892,32 @@ public class JobWindowController {
 			password.setText("");
 			imagefolder.setDisable(true);
 			imagefolder.setText("");
+			workfolder.setDisable(true);
+			workfolder.setText("");
+			checkdelete.setDisable(true);
+			break;
+		case "Linux":
+			hostname.setDisable(true);
+			hostname.setText("");
+			port.setDisable(true);
+			port.setText("");
+			privatekey.setDisable(true);
+			privatekey.setText("");
+			user.setDisable(true);
+			user.setText("");
+			workfolder.setDisable(true);
+			workfolder.setText("");
+			checkdelete.setDisable(true);
+			break;
+		case "Linux (SGE)":
+			hostname.setDisable(true);
+			hostname.setText("");
+			port.setDisable(true);
+			port.setText("");
+			privatekey.setDisable(true);
+			privatekey.setText("");
+			user.setDisable(true);
+			user.setText("");
 			workfolder.setDisable(true);
 			workfolder.setText("");
 			checkdelete.setDisable(true);
@@ -1017,7 +1001,20 @@ public class JobWindowController {
             }
         );
 
+        //textボックスでEnterが押された場合
+        searchtxt.setOnAction((ActionEvent event)->{
+        	//System.out.println(searchtxt.getText());
+        	Platform.runLater( ()->{
+        		ScriptNodes.clear();
+            	for(ScriptNode sNode : ScriptNodesOrig) {
+            		if(sNode.filename.toUpperCase().contains(searchtxt.getText().toUpperCase()) || sNode.explanation.toUpperCase().contains(searchtxt.getText().toUpperCase())){
+            			ScriptNodes.add(sNode);
+            		}
+            	}
 
+        	});
+        });
+        //searchボタンが押された場合
         searchbtn.setOnAction((ActionEvent event)->{
         	//System.out.println(searchtxt.getText());
         	Platform.runLater( ()->{
@@ -1375,7 +1372,8 @@ public class JobWindowController {
 
         						ChannelSftp channelSftp =null;
 
-        						if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
+        						if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+        								&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
         							channelSftp = ConnectSsh.getSftpChannel(node, savedOutputFolder+"/"+tempJobNode.id);
 
         							try {
@@ -1392,7 +1390,8 @@ public class JobWindowController {
         								(new File(saveFolder.toString()+"/"+"results")).mkdirs();
         							}
 
-        							if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
+        							if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+        									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
         								channelSftp.get(workdir+"/log.txt", saveFolder.toString()+"/"+"results");
         							}
 
@@ -1423,7 +1422,8 @@ public class JobWindowController {
         							System.err.println("no log.txt in "+workdir);
         						}
         						try {
-        							if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
+        							if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+        									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
         								try {
         									channelSftp.get(workdir+"/fin_status", saveFolder.toString()+"/"+"results");
         									//recursiveFolderDownload(workdir+"/fin_status", saveFolder.toString()+"/"+"results", channelSftp);
@@ -1434,7 +1434,8 @@ public class JobWindowController {
 
         							if(new File(saveFolder.toString()+"/"+"results"+"/"+"fin_status").exists()) {
         								System.out.println("job: "+tempJobNode.id+" was finished.");
-        								if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
+        								if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+            									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
         									recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results", channelSftp);
         									if(node.get("checkdelete").asText().equals("true")) {
             									lsFolderRemove(workdir, channelSftp);
@@ -1454,11 +1455,83 @@ public class JobWindowController {
         								Platform.runLater( () -> jobNodes.set( jobNodes.indexOf(tempJobNode),new JobNode(tempJobNode.id, tempString, tempJobNode.desc) ) );
         								Platform.runLater( () -> saveJobList() );
         							}
+        							//ここにsave_pid, save_jidを使ったチェックを書く
+        							/**
+        	    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
+            	    					JSch jsch = new JSch();
+            	    					ChannelSftp c = null;
+            	    					Session sc = null;
+            	    					Channel channel = null;
+
+            	    					//workフォルダに保存した値から呼び出すように変更する
+        	    						ChannelExec channelexec = (ChannelExec) sc.openChannel("exec");
+        	    						if((new File(file_id_rsa)).exists()) {
+        	    							jsch.addIdentity(file_id_rsa, ppSetting.get("password"));
+        	    						}
+        	    						System.out.println("identity added ");
+        	    						sc = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
+        	    						System.out.println("session created.");
+
+        	    						sc.setConfig("StrictHostKeyChecking", "no");
+        	    						sc.setPassword(ppSetting.get("password"));
+
+        	    						sc.connect();
+        	    						System.out.println("session connected.....");
+
+        	    						channelexec.setCommand("qstat -j `cat save...`");
+        	    						channelexec.connect();
+
+        	    						BufferedInputStream bin = null;
+        	    						//コマンド実行
+        	    						try {
+        	    							bin = new BufferedInputStream(channelexec.getInputStream());
+        	    							BufferedReader bufferedReader = new BufferedReader(
+        	    									new InputStreamReader(bin, StandardCharsets.UTF_8));
+
+        	    							String data;
+        	    							while ((data = bufferedReader.readLine()) != null) {
+        	    								System.out.println(data);
+        	    								String data2 = new String(data);
+        	    								Platform.runLater( () -> listRecords.add(data2) );
+        	    								//listRecords.add(data);
+        	    							}
+
+        	    							// 最後にファイルを閉じてリソースを開放する
+        	    							bufferedReader.close();
+        	    						} catch (Exception e) {
+        	    							System.err.println(e);
+        	    						} finally {
+        	    							if (bin != null) {
+        	    								try {
+        	    									bin.close();
+        	    								}
+        	    								catch (IOException e) {
+        	    								}
+        	    							}
+        	    						}
+        	    						channelexec.disconnect();
+        	    						int returnCode = channelexec.getExitStatus();
+        	    						
+
+        	    						//download results
+        	    						//channelSftp = (ChannelSftp) sc.openChannel("sftp");
+        	    						//channelSftp = c;
+        	    						//recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results",c);
+        	    						//        lsFolderRemove(workdir);
+        	    						//channelSftp.exit();
+        	    					}else {
+        	    						Process process = Runtime.getRuntime().exec("ps -p `cat save...`", null, new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"));
+        	    						int returnCode = process.waitFor();
+
+        	    					}
+        	    					**/
+
         						}catch (Exception e2) {
         							System.out.println("download error: "+workdir);
         						}
 
-        						if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")) {
+        						if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+        								&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
         							channelSftp.exit();
         							channelSftp.getSession().disconnect();
         							//System.out.println("Close SFTP");
@@ -1523,9 +1596,9 @@ public class JobWindowController {
 						checkdelete.setSelected(false);
 					}
 					switch(mode) {
-					case "direct":
+					case "ssh":
 						break;
-					case "direct (SGE)":
+					case "ssh (SGE)":
 						break;
 					case "ddbj":
 						//password.setDisable(true);
@@ -1565,22 +1638,48 @@ public class JobWindowController {
 						workfolder.setText("");
 						checkdelete.setDisable(true);
 						break;
+					case "Linux":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						user.setDisable(true);
+						user.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
+						checkdelete.setDisable(true);
+						break;
+					case "Linux (SGE)":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						user.setDisable(true);
+						user.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
+						checkdelete.setDisable(true);
+						break;
 					default:
 						System.out.println("no preset value");
 					}
 
 				}else {
 					switch(mode) {
-					case "direct":
-						if(settings.get("direct (SGE)").get("changed").compareTo("T")==0) {
-							hostname.setText(settings.get("direct (SGE)").get("hostname"));
-							port.setText(settings.get("direct (SGE)").get("port"));
-							user.setText(settings.get("direct (SGE)").get("user"));
-							password.setText(settings.get("direct (SGE)").get("password"));
-							privatekey.setText(settings.get("direct (SGE)").get("privatekey"));
-							workfolder.setText(settings.get("direct (SGE)").get("workfolder"));
-							imagefolder.setText(settings.get("direct (SGE)").get("imagefolder"));
-							if(settings.get("direct (SGE)").get("checkdelete").compareTo("true")==0) {
+					case "ssh":
+						if(settings.get("ssh (SGE)").get("changed").compareTo("T")==0) {
+							hostname.setText(settings.get("ssh (SGE)").get("hostname"));
+							port.setText(settings.get("ssh (SGE)").get("port"));
+							user.setText(settings.get("ssh (SGE)").get("user"));
+							password.setText(settings.get("ssh (SGE)").get("password"));
+							privatekey.setText(settings.get("ssh (SGE)").get("privatekey"));
+							workfolder.setText(settings.get("ssh (SGE)").get("workfolder"));
+							imagefolder.setText(settings.get("ssh (SGE)").get("imagefolder"));
+							if(settings.get("ssh (SGE)").get("checkdelete").compareTo("true")==0) {
 								checkdelete.setSelected(true);
 							}else {
 								checkdelete.setSelected(false);
@@ -1593,16 +1692,16 @@ public class JobWindowController {
 							checkdelete.setSelected(true);
 						}
 						break;
-					case "direct (SGE)":
-						if(settings.get("direct").get("changed").compareTo("T")==0) {
-							hostname.setText(settings.get("direct").get("hostname"));
-							port.setText(settings.get("direct").get("port"));
-							user.setText(settings.get("direct").get("user"));
-							password.setText(settings.get("direct").get("password"));
-							privatekey.setText(settings.get("direct").get("privatekey"));
-							workfolder.setText(settings.get("direct").get("workfolder"));
-							imagefolder.setText(settings.get("direct").get("imagefolder"));
-							if(settings.get("direct").get("checkdelete").compareTo("true")==0) {
+					case "ssh (SGE)":
+						if(settings.get("ssh").get("changed").compareTo("T")==0) {
+							hostname.setText(settings.get("ssh").get("hostname"));
+							port.setText(settings.get("ssh").get("port"));
+							user.setText(settings.get("ssh").get("user"));
+							password.setText(settings.get("ssh").get("password"));
+							privatekey.setText(settings.get("ssh").get("privatekey"));
+							workfolder.setText(settings.get("ssh").get("workfolder"));
+							imagefolder.setText(settings.get("ssh").get("imagefolder"));
+							if(settings.get("ssh").get("checkdelete").compareTo("true")==0) {
 								checkdelete.setSelected(true);
 							}else {
 								checkdelete.setSelected(false);
@@ -1664,12 +1763,48 @@ public class JobWindowController {
 						workfolder.setText("");
 						checkdelete.setSelected(false);
 						break;
+					case "Linux":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						user.setDisable(true);
+						user.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
+						checkdelete.setDisable(true);
+						break;
+					case "Linux (SGE)":
+						hostname.setDisable(true);
+						hostname.setText("");
+						port.setDisable(true);
+						port.setText("");
+						privatekey.setDisable(true);
+						privatekey.setText("");
+						user.setDisable(true);
+						user.setText("");
+						workfolder.setDisable(true);
+						workfolder.setText("");
+						checkdelete.setDisable(true);
+						break;
 					default:
 						System.out.println("no preset value");
 					}
 				}
         	}
 		});
+
+        Tooltip label_privatekey_tooltip = new Tooltip();
+        label_privatekey_tooltip.setText(label_privatekey.getText());
+	    label_privatekey.setTooltip(label_privatekey_tooltip);
+        Tooltip label_workfolder_tooltip = new Tooltip();
+        label_workfolder_tooltip.setText(label_workfolder.getText());
+	    label_workfolder.setTooltip(label_workfolder_tooltip);
+        Tooltip label_imagefolder_tooltip = new Tooltip();
+        label_imagefolder_tooltip.setText(label_imagefolder.getText());
+	    label_imagefolder.setTooltip(label_imagefolder_tooltip);
     }
 
 
@@ -1729,7 +1864,7 @@ public class JobWindowController {
     }
 
     void mkSymLinkOrCopy(String target, String link) {
-    	if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
+    	if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     		try {
     			Files.createSymbolicLink(Paths.get(link+"/"+Paths.get(target).getFileName()), Paths.get(target).toAbsolutePath());
     		} catch (IOException e) {

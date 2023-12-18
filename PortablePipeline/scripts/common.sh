@@ -244,6 +244,7 @@ parallel_setup(){
  if [ "${RUNPARALLEL:-}" != "" ]; then
   echo "$RUNPARALLEL"|sed 's/N_CPU/'$N_CPU'/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > "$workdir"/qsub.sh
   echo "$RUNPARALLEL"|sed 's/N_CPU/1/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > "$workdir"/qsubone.sh
+  if [ -e "$workdir"/wrapper.sh ]; then cp -f "$workdir"/wrapper.sh "$workdir"/wrapper.sh.back; fi
   cp "$workdir"/qsub.sh "$workdir"/wrapper.sh
   chmod 755 "$workdir"/qsub.sh "$workdir"/qsubone.sh
   if [ "$N_SCRIPT" = 1 ]; then
@@ -460,8 +461,8 @@ for i in "${PPINDIRS[@]}"; do
 done
 
 
-
-N_CPU=`cat /proc/cpuinfo 2> /dev/null |grep ^processor|wc -l` #all CPU
+#N_CPU=`cat /proc/cpuinfo 2> /dev/null |grep ^processor|wc -l` #all CPU
+N_CPU=`nproc`
 if [ "$N_CPU" = "0" ]; then
  N_CPU=`getconf _NPROCESSORS_ONLN`
 fi

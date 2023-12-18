@@ -1,14 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<?import java.lang.*?>
-<?import javafx.scene.control.*?>
-<?import javafx.scene.layout.*?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.CheckBox?>
 <?import javafx.scene.control.Label?>
 <?import javafx.scene.control.ListView?>
 <?import javafx.scene.control.RadioButton?>
 <?import javafx.scene.control.ScrollPane?>
+<?import javafx.scene.control.SplitPane?>
 <?import javafx.scene.control.Tab?>
 <?import javafx.scene.control.TabPane?>
 <?import javafx.scene.control.TextArea?>
@@ -22,7 +20,7 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.RowConstraints?>
 
-<BorderPane fx:id="bp" xmlns="http://javafx.com/javafx/8" xmlns:fx="http://javafx.com/fxml/1" fx:controller="application.JobWindowController">
+<BorderPane fx:id="bp" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="application.JobWindowController">
    <center>
       <TabPane fx:id="tabPane" maxHeight="1200.0" maxWidth="2000.0" tabClosingPolicy="UNAVAILABLE" BorderPane.alignment="CENTER">
         <tabs>
@@ -151,16 +149,18 @@
                               <HBox prefHeight="55.0" prefWidth="588.0" GridPane.columnIndex="2" GridPane.columnSpan="3" GridPane.rowIndex="7">
                                  <children>
                                     <Label text="Preset:  " />
-                                    <RadioButton mnemonicParsing="false" selected="true" text="direct">
+                                    <RadioButton mnemonicParsing="false" selected="true" text="ssh">
                                        <toggleGroup>
                                           <ToggleGroup fx:id="preset" />
                                        </toggleGroup>
                                     </RadioButton>
-                                    <RadioButton mnemonicParsing="false" text="direct (SGE)" toggleGroup="$preset" />
+                                    <RadioButton mnemonicParsing="false" text="ssh (SGE)" toggleGroup="$preset" />
                                     <RadioButton mnemonicParsing="false" text="ddbj" toggleGroup="$preset" />
                                     <RadioButton mnemonicParsing="false" text="shirokane" toggleGroup="$preset" />
                                     <RadioButton mnemonicParsing="false" text="WSL" toggleGroup="$preset" />
                                     <RadioButton mnemonicParsing="false" text="Mac" toggleGroup="$preset" />
+                                    <RadioButton mnemonicParsing="false" text="Linux" toggleGroup="$preset" />
+                                    <RadioButton mnemonicParsing="false" text="Linux (SGE)" toggleGroup="$preset" />
                                  </children>
                               </HBox>
                               <Button fx:id="savesetting" mnemonicParsing="false" onAction="#onButtonSave" text="Save" visible="false" GridPane.columnIndex="3" GridPane.rowIndex="12" />

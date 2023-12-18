@@ -1,7 +1,7 @@
 #!/bin/bash
 
 explanation='
-test tool 2
+test tool 3
 '
 inputdef='
 input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
@@ -26,7 +26,7 @@ cd $input_1
 
 r1=`ls |egrep "[.]f(ast|)q([.]gz|)$" || echo ""`
 
-if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; exit; fi
+if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; false; fi
 
 DO_TEST ls > output.txt
 DO_TEST sleep 6

@@ -36,7 +36,7 @@ DO_SAMTOOLS samtools faidx "$primers"
 list="$input_3"
 (for i in `find $input_1/|egrep "[.]f(ast|)q(|[.]gz)$"||true`; do
  echo $ENV_BLAST "seqkit fq2fa $i > $i.fasta"
-done)|DOPARALLELONE
+done) |DOPARALLELONE
 
 WAITPARALLEL
 
@@ -48,59 +48,90 @@ WAITPARALLEL
 cat $input_1/*.blastn|awk -F'\t' -v thr=$opt_f -v identity=$opt_i '
  FILENAME==ARGV[1]{len[$1]=$2}
  FILENAME==ARGV[2]{if($4>=len[$2]*thr&&$3>=identity){print $0}}
-' "$primers".fai /dev/stdin|awk -F'\t' '
- FILENAME==ARGV[1]{f[$1]=$2; r[$1]=$3; minlen[$1]=$4; maxlen[$1]=$5; avelen[$1]=($4+$5)/2}
+' "$primers".fai /dev/stdin | awk -F'\t' '
+ FILENAME==ARGV[1]{f[$2]=1; r[$3]=1; minlen[$1]=$4; maxlen[$1]=$5; pair[$2][$3]=$1}
  FILENAME==ARGV[2]{
-  datalen[$1]++; data[$1][datalen[$1]][1]=$2; data[$1][datalen[$1]][2]=$7; data[$1][datalen[$1]][3]=$8;
-  if($9<$10){data[$1][datalen[$1]][4]=1}else{data[$1][datalen[$1]][4]=-1};
-  data[$1][datalen[$1]][5]=$12; databitscore[$1][datalen[$1]]=$12;
- }
- END{
-  for(i in data){
-   if(datalen[i]>=2){
-    delete flag;
-    PROCINFO["sorted_in"]="@val_num_desc"
-    for(j in databitscore[i]){
-     if(flag[j]==0){
-      for(k in f){
-       if(f[k]==data[i][j][1]){
-        for(l in databitscore[i]){
-         if(flag[l]==0 && flag[j]==0){
-          if(r[k]==data[i][l][1]){
-           fs=data[i][j][2]; fe=data[i][j][3]; fst=data[i][j][4]; fbit=data[i][j][5]; rs=data[i][l][2]; re=data[i][l][3]; rst=data[i][l][4]; rbit=data[i][l][5];
-           if(fst==1 && rst==-1 && (re-fs)>=minlen[k] && (re-fs)<=maxlen[k]){
-            flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"fs"\t"re"\t1\t"fbit+rbit
-           }else if(fst==-1 && rst==1 && (fe-rs)>=minlen[k] && (fe-rs)<=maxlen[k]){
-            flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"rs"\t"fe"\t-1\t"fbit+rbit
-           }
-          }
-         }
+  if($1!=old){
+   for(i=1;i<=nf;i++){
+    for(j=1;j<=nr;j++){
+     if(namef[i] in pair && namer[j] in pair[namef[i]]){
+      #pair[namef[i]][namer[j]]はサンプル名
+      #そのリードのペアがありうる組み合わせなら
+      if(orientf[i]==1 && orientr[j]==-1){
+       #順向きのペア
+       len_frag = rendr[j] - rstartf[i] + 1
+       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
+        nsum[scoref[i]+scorer[j]]++
+        if(scoref[i]+scorer[j]>maxscore){
+         maxscore=scoref[i]+scorer[j]
+         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendf[i]+1"\t"rstartr[j]-1"\t1\t"scoref[i]+scorer[j]
         }
-       }else if(r[k]==data[i][j][1]){
-        for(l in databitscore[i]){
-         if(flag[l]==0 && flag[j]==0){
-          if(f[k]==data[i][l][1]){
-           fs=data[i][l][2]; fe=data[i][l][3]; fst=data[i][l][4]; fbit=data[i][j][5]; rs=data[i][j][2]; re=data[i][j][3]; rst=data[i][j][4]; rbit=data[i][l][5];
-           if(fst==1 && rst==-1 && (re-fs)>=minlen[k] && (re-fs)<=maxlen[k]){
-            flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"fs"\t"re"\t1\t"fbit+rbit
-           }else if(fst==-1 && rst==1 && (fe-rs)>=minlen[k] && (fe-rs)<=maxlen[k]){
-            flag[j]=1; flag[l]=1;
-            print k"\t"i"\t"f[k]"\t"r[k]"\t"rs"\t"fe"\t-1\t"fbit+rbit
-           }
-          }
-         }
+       }
+      }else if(orientf[i]==-1 && orientr[j]==1){
+       #逆向きのペア
+       len_frag = rendf[i] - rstartr[j] + 1
+       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
+        nsum[scoref[i]+scorer[j]]++
+        if(scoref[i]+scorer[j]>maxscore){
+         maxscore=scoref[i]+scorer[j]
+         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendr[j]+1"\t"rstartf[i]-1"\t-1\t"scoref[i]+scorer[j]
         }
        }
       }
      }
     }
    }
+   if(maxscore>0 && nsum[maxscore]==1){
+    print data
+   }
+   delete namef
+   delete namer
+   nf=0
+   nr=0
+   n=0
+   maxscore=0
+   delete nsum
+   old=$1
   }
+  if($2 in f){nf++; namef[nf]=$2; scoref[nf]=$12; rstartf[nf]=$7; rendf[nf]=$8; if($9<$10){orientf[nf]=1}else{orientf[nf]=-1}}
+  else if($2 in r){nr++; namer[nr]=$2; scorer[nr]=$12; rstartr[nr]=$7; rendr[nr]=$8; if($9<$10){orientr[nr]=1}else{orientr[nr]=-1}}
  }
-' "$list" /dev/stdin | sort -k2,2 -k8,8nr -t$'\t' |awk -F'\t' 'a!=$2{a=$2; print $0}' > tag_position.txt
+ END{
+  #最後に同じ処理
+   for(i=1;i<=nf;i++){
+    for(j=1;j<=nr;j++){
+     if(namef[i] in pair && namer[j] in pair[namef[i]]){
+      #pair[namef[i]][namer[j]]はサンプル名
+      #そのリードのペアがありうる組み合わせなら
+      if(orientf[i]==1 && orientr[j]==-1){
+       #順向きのペア
+       len_frag = rendr[j] - rstartf[i] + 1
+       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
+        nsum[scoref[i]+scorer[j]]++
+        if(scoref[i]+scorer[j]>maxscore){
+         maxscore=scoref[i]+scorer[j]
+         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendf[i]+1"\t"rstartr[j]-1"\t1\t"scoref[i]+scorer[j]
+        }
+       }
+      }else if(orientf[i]==-1 && orientr[j]==1){
+       #逆向きのペア
+       len_frag = rendf[i] - rstartr[j] + 1
+       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
+        nsum[scoref[i]+scorer[j]]++
+        if(scoref[i]+scorer[j]>maxscore){
+         maxscore=scoref[i]+scorer[j]
+         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendr[j]+1"\t"rstartf[i]-1"\t-1\t"scoref[i]+scorer[j]
+        }
+       }
+      }
+     }
+    }
+   }
+   if(maxscore>0 && nsum[maxscore]==1){
+    print data
+   }
+ }
+' "$list" /dev/stdin > tag_position.txt
 
 (for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
  cat $i
@@ -113,16 +144,27 @@ done)|awk -F'\t' '
  function revcomp(x,  i, str, revx){revx=rev(x); for(i=1;i<=length(revx);i++){str=str""comp(substr(revx,i,1))}; return str}
  FILENAME==ARGV[1]{name[$2]=$1; s[$2]=$5; e[$2]=$6; strand[$2]=$7; info[$2]=$5":"$6":"$7":"$3":"$4}
  FILENAME==ARGV[2]{
+  n++;
   if(FNR%4==1){split($1,arr," "); id=substr(arr[1],2)};
   if(name[id]!=""){
-   if(FNR%4==1){print "@"id":"info[id] > name[id]".fq"}
-   else if(FNR%4==2){
+   n2++;
+   if(FNR%4==1){
+    n3[name[id]]++;
+    print "@"id":"info[id] > name[id]".fq"
+   }else if(FNR%4==2){
     if(strand[id]==1){print substr($0,s[id],e[id]-s[id]+1) > name[id]".fq"}
     else{print revcomp(substr($0,s[id],e[id]-s[id]+1)) > name[id]".fq"}
    }else if(FNR%4==0){
     if(strand[id]==1){print substr($0,s[id],e[id]-s[id]+1) > name[id]".fq"}
     else{print rev(substr($0,s[id],e[id]-s[id]+1)) > name[id]".fq"}
    }else{print "+" > name[id]".fq"}
+  }
+ }
+ END{
+  print "Total: "n/4" reads"
+  print " Demultiplexed: "n2/4" reads"
+  for(i in n3){
+   print "  "i": "n3[i]" reads"
   }
  }
 ' tag_position.txt /dev/stdin

@@ -11,7 +11,7 @@ opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_j:jellyfish option:-m 21 -s 1000000 -C
 '
-runcmd="$0 -c #opt_c# -m #opt_m# #input_1#"
+runcmd="$0 -c #opt_c# -m #opt_m# -j #opt_j# #input_1#"
 
 export IM_JELLYFISH="quay.io/biocontainers/jellyfish:2.2.10--h2d50403_0"
 export IM_R="c2997108/centos6:2"
