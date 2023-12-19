@@ -307,7 +307,23 @@ Hello from Docker! と表示されればOK
 Macに標準で入っているコマンドラインツールは10年くらい前のものなどもあって古いので、新しい必須のツール群をインストールしておく。ターミナルを開いて、下記のコマンドを一行ずつコピー＆ペーストする。
 ```
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+```
 
+もしproxy環境下であれば、下記の設定をしておく
+
+```
+echo '
+export http_proxy=http://10.0.0.132:80
+export https_proxy=$http_proxy
+export all_proxy=$http_proxy
+' >> ~/.bash_profile
+
+source ~/.bash_profile
+```
+
+Linuxで標準的なツールのインストール
+
+```
 brew install grep gawk gzip bash
 brew install gnu-tar gnu-sed gnu-getopt
 brew install findutils coreutils moreutils
