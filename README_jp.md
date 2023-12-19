@@ -307,6 +307,9 @@ Hello from Docker! と表示されればOK
 Macに標準で入っているコマンドラインツールは10年くらい前のものなどもあって古いので、新しい必須のツール群をインストールしておく。ターミナルを開いて、下記のコマンドを一行ずつコピー＆ペーストする。
 ```
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+echo 'eval "$(/usr/local/bin/brew shellenv)"' >> ~/.bash_profile
+source ~/.bash_profile
 ```
 
 もしproxy環境下であれば、下記の設定をしておく
