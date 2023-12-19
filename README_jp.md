@@ -283,7 +283,7 @@ https://learn.microsoft.com/ja-jp/windows/wsl/install-manual#step-4---download-t
 
 基本的には自動でインストールされるはずだけど、手動でインストールする場合はWindows用のDocker Desktopではなくて、Ubuntu用の公式の手順でWSLにDokcerをインストールする。
 
-## Macをサーバとして使用する場合のセットアップ方法 (Docker)
+## Macをサーバとして使用する場合のセットアップ方法 (Intel Mac)
 1．Dockerのインストール
 
 OSのバージョンが OS X Sierra 10.12以降であることを確認すること。Docker Desktop for Macを[公式サイト](https://download.docker.com/mac/stable/Docker.dmg)からダウンロードし、dmgファイルをダブルクリックし、指示に従ってインストールを完了する。
@@ -306,25 +306,28 @@ Hello from Docker! と表示されればOK
 
 Macに標準で入っているコマンドラインツールは10年くらい前のものなどもあって古いので、新しい必須のツール群をインストールしておく。ターミナルを開いて、下記のコマンドを一行ずつコピー＆ペーストする。
 ```
-/usr/bin/ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-#次の2行は不要かもしれないけど、一応実行する。
-sudo mkdir -p /usr/local/sbin /usr/local/opt
-sudo chown $USER /usr/local/sbin /usr/local/opt
-
-brew install grep gawk gzip ed htop iftop bash
-brew install gnu-tar gnu-sed gnu-time gnu-getopt
-brew install binutils findutils diffutils coreutils moreutils
+brew install grep gawk gzip bash
+brew install gnu-tar gnu-sed gnu-getopt
+brew install findutils coreutils moreutils
 
 echo 'export PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:/usr/local/sbin:${PATH}
 export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/grep$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/awk$`|head -n 1))':$PATH
 export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/bash$`|head -n 1))':$PATH
-export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/xargs$`|head -n 1))':$PATH' >> ~/.bash_profile
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/tar$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/sed$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/getopt$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/xargs$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/ls$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/parallel$`|head -n 1))':$PATH
+' >> ~/.bash_profile
 source ~/.bash_profile
 ```
 途中でMacのパスワードが聞かれるはずなので、入力する。
 
-## Macをサーバとして使用する場合のセットアップ方法 (Podman)
+## Macをサーバとして使用する場合のセットアップ方法 (M1以降のMac)
 
 ```/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"```
 
@@ -348,7 +351,7 @@ brew install gnu-tar gnu-sed gnu-getopt
 
 brew install findutils #xargs
 brew install moreutils #parallel
-brew install coreutils #cat, ls 
+brew install coreutils #cat, ls, nproc
 
 echo 'export PATH="/opt/homebrew/opt/grep/libexec/gnubin:$PATH"' >> ~/.bash_profile
 echo 'export PATH="/opt/homebrew/opt/gawk/libexec/gnubin:$PATH"' >> ~/.bash_profile
