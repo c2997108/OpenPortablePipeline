@@ -348,6 +348,16 @@ source ~/.bash_profile
 
 ## Macをサーバとして使用する場合のセットアップ方法 (M1以降のMac)
 
+Rosettaがインストールされているか確認
+
+```
+/usr/sbin/sysctl hw.optional.arm64
+#で「hw.optional.arm64: 1」ならばOK、「0」ならば下記のコマンドを実行
+softwareupdate --install-rosetta
+```
+
+Homebrewのインストール
+
 ```/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"```
 
 でhomebrewをインストールしたら、下記のコマンドでpodmanをインストール
