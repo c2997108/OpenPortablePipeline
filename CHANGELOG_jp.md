@@ -1,5 +1,7 @@
 # 次回予告
 
+- ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```でインプットファイルを分割してblastするように変更。
+- ```RNA-seq~HISAT2-StringTie-DEGanalysis```のcuffdiffがエラーになっていたのを修正。
 
 # 1.3.1 (2023/12/21)
 
