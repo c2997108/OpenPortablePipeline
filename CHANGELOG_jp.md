@@ -3,6 +3,8 @@
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```でインプットファイルを分割してblastするように変更
 - ```RNA-seq~HISAT2-StringTie-DEGanalysis```のcuffdiffがエラーになっていたのを修正
 - GUIモードでジョブの終了チェックをpidやsge jobidでも行う
+- SGEモードの時に中断した場合に並列実行中のジョブを削除する機能を追加
+- コマンドラインで実行した場合も標準出力・エラー出力を```pp_log.txt```ファイルにも保存
 - sshでsingularityを使用した場合wrapper.shを上書きしてしまう挙動を修正
 - ```mapping-nanopore~minimap2```で入力ファイルが複数の場合、並列で処理できるように修正
 
