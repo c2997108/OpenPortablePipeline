@@ -25,12 +25,12 @@ PortablePipelineは手元のコンピュータもしくはリモートのサー�
 1. 最新のPortablePipelineのリリースをダウンロードして解凍する。 日本語のフォルダやスペースを含むフォルダの中に解凍しないでください。
   
   https://github.com/c2997108/OpenPortablePipeline/releases
-  
+
+```
   Win: PortablePipeline-win-vXXX.zip
-  
   Mac: PortablePipeline-mac-vXXX.tar.gz
-  
   Linux: PortablePipeline-linux-vXXX.tar.gz
+```
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。Linuxであれば「PortablePipeline.sh」を右クリックして「Run as a program」などを選択して実行する。
 Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSの「System Preferences」→「Security & Privacy」→「General」タブ→「Open Anyway」をクリックして、実行を許可する必要がある。
