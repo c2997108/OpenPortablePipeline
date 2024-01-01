@@ -144,6 +144,34 @@ sudo groupadd docker
 sudo usermod -aG docker $USER
 ```
 
+## Linuxサーバのセットアップ方法(SGEを使用する場合)
+SGEの設定ではスロットの設定としてデフォルトのsmpではなくdef_slotというスロットを設定し、complex attributeとしてmem_reqを設定しておく必要がある。
+
+```
+qconf -ap def_slot
+# slot 999に変更
+
+qconf -aattr queue pe_list def_slot all.q
+```
+
+```
+#各ノードのメモリー量の設定
+#まず、グリッドエンジンでのcomplex attributeにmem_reqを追加するために、下記のように行う。
+qconf -mc
+
+#で次の行を追加する。
+mem_req             mem_req    MEMORY      <=    YES         YES        1G      0
+#それから各ノードで
+qconf -rattr exechost complex_values mem_req=128G your_host_name
+#とやってメモリー量を設定する。
+
+#mem_reqのcomplex attributes設定の確認は
+qconf -sc
+
+#ノードごとのメモリー設定量は下記で表示される。
+qconf -se m8.s
+```
+
 ## WSLサーバのセットアップ方法
 
 基本的にはPortable PipelineからWSLモードで実行すれば、必要なツールをインストールしていくが、下記を手動でセットアップしても良い。Administratorグループのユーザでログインして実行すること。（大規模な入力ファイルがある場合、少なくともHDDで起動しているWSL2だと、同じファイルを同時に複数のプロセスで読み込むステップで、ファイルの読み込みがエラーもなく中断されるというWSL2のバグらしき挙動に遭遇するため、Hyper-Vなどの仮想PCに普通のLinuxをインストールして使ったほうが良さそう。）
