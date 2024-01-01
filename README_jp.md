@@ -163,14 +163,16 @@ qconf -mc
 mem_req             mem_req    MEMORY      <=    YES         YES        1G      0
 #それから各ノードで
 qconf -rattr exechost complex_values mem_req=128G your_host_name
-#とやってメモリー量を設定する。
+#などとやってメモリー量を設定する。上の例は128GBの場合
 
 #mem_reqのcomplex attributes設定の確認は
 qconf -sc
 
 #ノードごとのメモリー設定量は下記で表示される。
-qconf -se m8.s
+qconf -se your_host_name
 ```
+
+また、SGEで使う場合は、NFSによる共有フォルダとして/home以下を全ノードで共有するように設定する必要がある。それから仮想コンテナとしてはsingularityをインストールしておく必要がある。
 
 ## WSLサーバのセットアップ方法
 
