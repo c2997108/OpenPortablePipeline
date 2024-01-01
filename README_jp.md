@@ -27,7 +27,9 @@ PortablePipelineは手元のコンピュータもしくはリモートのサー�
   https://github.com/c2997108/OpenPortablePipeline/releases
   
   Win: PortablePipeline-win-vXXX.zip
+  
   Mac: PortablePipeline-mac-vXXX.tar.gz
+  
   Linux: PortablePipeline-linux-vXXX.tar.gz
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。Linuxであれば「PortablePipeline.sh」を右クリックして「Run as a program」などを選択して実行する。
