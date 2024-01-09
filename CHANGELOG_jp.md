@@ -7,6 +7,7 @@
 - コマンドラインで実行した場合も標準出力・エラー出力を```pp_log.txt```ファイルにも保存
 - sshでsingularityを使用した場合wrapper.shを上書きしてしまう挙動を修正
 - ```mapping-nanopore~minimap2```で入力ファイルが複数の場合、並列で処理できるように修正
+- ```SNPcall~bcftools-mpileup```でbamのインデックスファイル(.bai)を指定していない場合、自動で作成するように変更。
 
 # 1.3.1 (2023/12/21)
 
