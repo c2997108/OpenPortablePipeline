@@ -393,6 +393,7 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 ### dockerに起因する部分
 - <del>ファイルは$PWD以下しかマウントされないので、親ディレクトリのファイルを使わない</del>->一応入力ファイルの10階層までシンボリックリンクを辿るようにしたけど、ディレクトリへのシンボリックリンクの後のシンボリックリンクなどは上手く取れないケースもまだある。
 - dockerは実行したユーザの権限で実行されるので、/rootフォルダなどにはアクセスできないので、/root以外を使うこと。例：/usr/localなど
+- catなどでファイルを開くだけの場合などを連続して何度も実行する状態だと、途中で出力が切れることがある様子（要確認）
 
 ### podmanに起因する部分
 - `podman run -i --rm -v /tmp:/tmp -w /tmp docker.io/c2997108/centos7:2 awk '{print $0}' <(cat /tmp/a.fa)`などの入力方式は`awk: fatal: cannot open file '/dev/fd/63' for reading (No such file or directory)`となりエラー。`cat /tmp/a.fa | podman run -i --rm -v /tmp:/tmp -w /tmp docker.io/c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito-silva-3 awk '{print $0}' /dev/stdin`はOK。
