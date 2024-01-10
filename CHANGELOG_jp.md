@@ -9,6 +9,7 @@
 - ```mapping-nanopore~minimap2```で入力ファイルが複数の場合、並列で処理できるように修正
 - ```SNPcall~bcftools-mpileup```でbamのインデックスファイル(.bai)を指定していない場合、自動で作成するように変更。
 - ```WGS~genotyping-by-mpileup```, ```SNPcall~bcftools-mpileup```で分割したファイルを連結する際のcatをdocker経由で実行するとなぜか出力が途中で切れるファイルが出てくるので、catはdockerを経由せずにホストのシステムのcatを使うように変更。
+- 1.3.0以降のWSLモードが正常に実行されず、すぐに異常終了ステータスになっていたのを修正。
 
 # 1.3.1 (2023/12/21)
 
