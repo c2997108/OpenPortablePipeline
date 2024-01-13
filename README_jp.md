@@ -33,7 +33,7 @@ PortablePipelineは手元のコンピュータもしくはリモートのサー�
 ```
 
 2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。Linuxであれば「PortablePipeline.sh」を右クリックして「Run as a program」などを選択して実行する。
-Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、OSの「System Preferences」→「Security & Privacy」→「General」タブ→「Open Anyway」をクリックして、実行を許可する必要がある。
+Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、「開発元が未確認のため開けません」というメッセージが出るので、「システム設定」→「プライバシーとセキュリティ」→下の方にある「セキュリティ」の箇所に「開発元を確認できないため、使用がブロックされました。」の下にある「このまま開く」をクリックして、実行を許可する必要がある。
 
 3. ソフトウェアが起動したら、「Settings」タブを開いて、Linuxサーバに接続するか(「ssh」を選択)、スパコンに接続するか(「ddbj」、「shirokane」を選択)、Windows単体で解析まで実行するか(「WSL」を選択)、Mac単体で解析まで実行するか(「Mac」を選択)、Linuxで直接実行するか(「Linux」を選択)を選択する。サーバに接続する場合は、必要なアカウント情報を入力する。
 例としてDDBJスパコンを使用する際の設定例を示す。
@@ -300,12 +300,10 @@ source ~/.bash_profile
 
 ## Macをサーバとして使用する場合のセットアップ方法 (M1以降のMac)
 
-Rosettaがインストールされているか確認
+Rosettaがインストールされていない場合、インストールされているかわからない場合は、ひとまず下記のコマンドを実行しておく。
 
 ```
-/usr/sbin/sysctl hw.optional.arm64
-#で「hw.optional.arm64: 1」ならばOK、「0」ならば下記のコマンドを実行
-softwareupdate --install-rosetta
+softwareupdate --install-rosetta --agree-to-license
 ```
 
 Homebrewのインストール
