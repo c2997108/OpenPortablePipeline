@@ -1,5 +1,8 @@
 # 次回予告
 
+- GUIからジョブを投げる際に、データをチェックするタイミングとたまたま一致した場合、ステータスはabortなのに実行されるという状態を修正。
+
+  
 # 1.3.2 (2024/01/10)
 
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```でインプットファイルを分割してblastするように変更
