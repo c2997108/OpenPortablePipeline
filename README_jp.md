@@ -146,6 +146,22 @@ sudo groupadd docker
 sudo usermod -aG docker $USER
 ```
 
+### Rocky Linux 9の場合
+
+GPUも使う場合のセットアップ方法。NVIDIAのドライバーをインストールしているものとする。まだインストールしていない場合はhttps://www.server-world.info/query?os=CentOS_7&p=nvidia を参照。
+
+```
+sudo yum install -y yum-utils
+sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+curl -s -L https://nvidia.github.io/nvidia-docker/centos8/nvidia-docker.repo | sudo tee /etc/yum.repos.d/nvidia-docker.repo
+sudo dnf -y install nvidia-container-toolkit
+sudo usermod -aG docker $USER
+sudo systemctl start docker
+sudo systemctl enable docker
+sudo docker run -it --rm --gpus all nvcr.io/nvidia/clara/clara-parabricks:4.1.0-1 nvidia-smi #docker内でGPUが使えるか確認
+```
+
 ## Linuxサーバのセットアップ方法(SGEを使用する場合)
 SGEの設定ではスロットの設定としてデフォルトのsmpではなくdef_slotというスロットを設定し、complex attributeとしてmem_reqを設定しておく必要がある。
 
