@@ -5,6 +5,7 @@
 - v1.3.2でコマンドライン実行時に```-s```, ```-g```オプションを無視していたのを修正
 - GPUを使用するツールに対応。DOGPU_XXXとつければよい。
 - ```mapping-illumina~parabricks```を追加。
+- ```annotation~SpliceAI```を追加。
 
   
 # 1.3.2 (2024/01/10)
