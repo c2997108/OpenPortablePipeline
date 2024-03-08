@@ -1,7 +1,11 @@
 # 次回予告
 
+# 1.3.4 (2024/03/08)
+
 - ```mapping-illumina~bbmap```で入力ファイルが複数ある場合、baiインデックスを正しく作成できていなかった点を修正。
 - SGE使用時にDOPARALLELでジョブを分散させる際、ジョブが0個の場合エラーになっていたのを修正。
+- v1.3.2以降に```RNA-seq~Trinity-kallisto-sleuth```で比較解析が上手くいかなくなっていたのを修正。結果ファイルのサンプル名から.gzを削除するように変更。
+- ```mapping-illumina~bwa_mem```, ```mapping-illumina~parabricks```で並列処理が正しく実行されないのを修正。
 
 # 1.3.3 (2024/01/17)
 
