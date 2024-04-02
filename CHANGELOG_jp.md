@@ -1,5 +1,7 @@
 # 次回予告
 
+- ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```がv1.3.2以降でペアエンドとして処理できなくなっていたのを修正
+
 # 1.3.7 (2024/03/31)
 
 - sshでジョブのチェックをする際にセッションを切断せずに新しくSSHのセッションを張り、サーバに負荷がかかるのを修正。
