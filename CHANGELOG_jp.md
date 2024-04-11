@@ -1,6 +1,9 @@
 # 次回予告
 
-- ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```がv1.3.2以降でペアエンドとして処理できなくなっていたのを修正
+# 1.3.8 (2024/04/11)
+
+- ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```がv1.3.2以降でペアエンドとして処理できなくなっていたのを修正。
+- DDBJのスパコン使用時にDDBJサーバ内の.bashrcに```source /home/geadmin/AGER/ager/common/settings.sh```が書かれていないと実行されない不具合を修正。
 
 # 1.3.7 (2024/03/31)
 
