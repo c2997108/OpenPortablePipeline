@@ -1,5 +1,7 @@
 # 次回予告
 
+- ```mapping-smallRNA-miRDeep2```を追加。
+
 # 1.3.8 (2024/04/11)
 
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```がv1.3.2以降でペアエンドとして処理できなくなっていたのを修正。
