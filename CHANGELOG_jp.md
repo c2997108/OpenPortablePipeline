@@ -1,6 +1,7 @@
 # 次回予告
 
 - ```mapping-smallRNA-miRDeep2```を追加。
+- ```annotation~BRAKER3```でゲノムが断片化しすぎているときにGeneMarkがエラーになるので、GeneMarkのmin_contigパラメーターを変更できるようにした。
 
 # 1.3.8 (2024/04/11)
 
