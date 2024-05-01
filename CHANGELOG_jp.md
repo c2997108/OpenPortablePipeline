@@ -4,6 +4,7 @@
 - ```annotation~BRAKER3```でゲノムが断片化しすぎているときにGeneMarkがエラーになるので、GeneMarkのmin_contigパラメーターを変更できるようにした。
 - SGEを使って分散してジョブを実行する場合、ジョブがノードに入った後でエラーになった場合は1回だけ再実行する機能を追加。
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```がv1.3.2以降、入力のFASTQがgz圧縮されている場合にエラーになっていたのを修正。
+- apptainerをコンテナエンジンとして利用可能になった。
 
 # 1.3.8 (2024/04/11)
 
