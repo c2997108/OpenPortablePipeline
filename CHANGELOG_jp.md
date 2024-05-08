@@ -6,6 +6,7 @@
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```がv1.3.2以降、入力のFASTQがgz圧縮されている場合にエラーになっていたのを修正。
 - apptainerをコンテナエンジンとして利用可能になった。
 - ```annotation~PASA```, ```annotation~FINDER```の試験的な追加。
+- ```annotation~Funannotate```を追加。
 
 # 1.3.8 (2024/04/11)
 
