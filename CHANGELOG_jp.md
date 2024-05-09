@@ -1,5 +1,7 @@
 # 次回予告
 
+# 1.4.0 (2024/05/09)
+
 - ```mapping-smallRNA-miRDeep2```を追加。
 - ```annotation~BRAKER3```でゲノムが断片化しすぎているときにGeneMarkがエラーになるので、GeneMarkのmin_contigパラメーターを変更できるようにした。
 - SGEを使って分散してジョブを実行する場合、ジョブがノードに入った後でエラーになった場合は1回だけ再実行する機能を追加。
@@ -7,6 +9,7 @@
 - apptainerをコンテナエンジンとして利用可能になった。
 - ```annotation~PASA```, ```annotation~FINDER```の試験的な追加。
 - ```annotation~Funannotate```を追加。
+- Portable Pipelineのスクリプトから、ほかのPortable Pipelineのスクリプトを呼び出す方法として```PP_DO_CHILD```, ```PP_ENV_CHILD```を追加。
 
 # 1.3.8 (2024/04/11)
 
