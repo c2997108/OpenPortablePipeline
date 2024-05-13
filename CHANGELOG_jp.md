@@ -10,6 +10,7 @@
 - ```annotation~PASA```, ```annotation~FINDER```の試験的な追加。
 - ```annotation~Funannotate```を追加。
 - Portable Pipelineのスクリプトから、ほかのPortable Pipelineのスクリプトを呼び出す方法として```PP_DO_CHILD```, ```PP_ENV_CHILD```を追加。
+- ```nanopore~split-barcode```で2段階目のフィルタリング時のバグを修正。
 
 # 1.3.8 (2024/04/11)
 
