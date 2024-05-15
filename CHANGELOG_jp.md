@@ -1,6 +1,6 @@
 # 次回予告
 
-# 1.4.0 (2024/05/13)
+# 1.4.0 (2024/05/15)
 
 - ```mapping-smallRNA-miRDeep2```を追加。
 - ```annotation~BRAKER3```でゲノムが断片化しすぎているときにGeneMarkがエラーになるので、GeneMarkのmin_contigパラメーターを変更できるようにした。
@@ -11,6 +11,7 @@
 - ```annotation~Funannotate```を追加。
 - Portable Pipelineのスクリプトから、ほかのPortable Pipelineのスクリプトを呼び出す方法として```PP_DO_CHILD```, ```PP_ENV_CHILD```を追加。
 - ```nanopore~split-barcode```で2段階目のフィルタリング時のバグを修正。
+- 複数ユーザに対応するため、環境変数「```PP_BASE_DIR```」に設定したフォルダにoutputやsettings.json, jobs.jsonを書き出すようにした。
 
 # 1.3.8 (2024/04/11)
 
