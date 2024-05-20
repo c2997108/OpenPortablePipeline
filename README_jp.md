@@ -348,9 +348,12 @@ grepやawkなどの基本ツールの最新版をMacにインストールして�
 brew install grep gawk gzip bash
 brew install gnu-tar gnu-sed gnu-getopt
 
-brew install findutils #xargs
-brew install moreutils #parallel
-brew install coreutils #cat, ls, nproc
+#xargs
+brew install findutils
+#parallel
+brew install moreutils
+#cat, ls, nproc
+brew install coreutils
 
 echo 'export PATH="/opt/homebrew/opt/grep/libexec/gnubin:$PATH"' >> ~/.bash_profile
 echo 'export PATH="/opt/homebrew/opt/gawk/libexec/gnubin:$PATH"' >> ~/.bash_profile
