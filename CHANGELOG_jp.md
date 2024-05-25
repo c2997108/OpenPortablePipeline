@@ -1,6 +1,7 @@
 # 次回予告
 
 - ```SNPcall~bcftools-mpileup```でコンティグ長がちょうど1Mbpの倍数の長さの場合にバグになるのを修正。
+- Windows ARMのWSLで解析を実行できるようにdocker周りを修正。
 
 # 1.4.0 (2024/05/15)
 
