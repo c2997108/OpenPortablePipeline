@@ -2,6 +2,7 @@
 
 - ```SNPcall~bcftools-mpileup```でコンティグ長がちょうど1Mbpの倍数の長さの場合にバグになるのを修正。
 - Windows ARMのWSLで解析を実行できるようにdocker周りを修正。
+- SGEモードの時にqsubが失敗すると再実行するようにした。
 
 # 1.4.0 (2024/05/15)
 
