@@ -4,6 +4,7 @@
 - Windows ARMのWSLで解析を実行できるようにdocker周りを修正。
 - SGEモードの時にqsubが失敗すると再実行するようにした。
 - ```nanopore~flye```でインプットがfastq.gzの場合も対応するように修正。
+- ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```,```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```でFASTQの分割リード数を設定できるようにした。
 
 # 1.4.0 (2024/05/15)
 
