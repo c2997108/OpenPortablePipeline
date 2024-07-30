@@ -5,6 +5,7 @@
 - SGEモードの時にqsubが失敗すると再実行するようにした。
 - ```nanopore~flye```でインプットがfastq.gzの場合も対応するように修正。
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```,```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```でFASTQの分割リード数を設定できるようにした。
+- ```post-assemble~coverage-length-graph```で縦軸をコンティグ長の合計の場合のグラフを追加。
 
 # 1.4.0 (2024/05/15)
 
