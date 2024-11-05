@@ -1,7 +1,10 @@
 # 次回予告
+
+# 1.4.2 (2024/11/05)
 - インプットファイルのシンボリックリンクが相対パスだったときにエラーになる場合があるケースに対応。
 - ```post-assemble~coverage-length-graph```のグラフ表示バグを修正。
 - ```nanopore~split-barcode```でinputのバーコード部分を探す方法として5'の8bpを見て同一のプライマーをまとめたのち、アダプター部分を探すように変更。その後3'側でも同じように行う。縮重塩基Hのバグを修正。
+- ```nanopore~flye```を削除し、```assemble~flye```, ```trimming~sickle-se```, ```trimming~sickle-pe```を追加。
 
 # 1.4.1 (2024/08/02)
 
