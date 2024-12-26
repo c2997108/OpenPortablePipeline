@@ -2,6 +2,7 @@
 - ```post-assemble~busco_v5```でminiprotを使用するBUSCO v5.8.0にアップデート
 - ```nanopore~split-barcode```でprimer.fastaの配列名にタブ文字が入っている場合、sample.txtファイルにタブ区切りが複数連続する場合にエラーになっていたのを対応
 - ```QC~jellyfish```で入力ファイルがFASTAの場合も対応可能に。
+- singularityを使用可能かどうかをチェックするときにsingularityのライブラリーではなく、dockerのhello-worldを使用するように変更。
 
 # 1.4.2 (2024/11/05)
 - インプットファイルのシンボリックリンクが相対パスだったときにエラーになる場合があるケースに対応。
