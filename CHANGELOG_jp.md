@@ -1,6 +1,6 @@
 # 次回予告
 - ```post-assemble~busco_v5```でminiprotを使用するBUSCO v5.8.0にアップデート
-- ```nanopore~split-barcode```でprimer.fastaの配列名にタブ文字が入っている場合、sample.txtファイルにタブ区切りが複数連続する場合にエラーになっていたのを対応
+- ```nanopore~split-barcode```でprimer.fastaの配列名にタブ文字が入っている場合、sample.txtファイルにタブ区切りが複数連続する場合にエラーになっていたのを対応。ナノポアのリードがライゲーションによって複数リードが連結されてシーケンスされる？現象に対して閾値以下のプライマーのヒットでもそこでリードを区切り、キメラが生成されにくくなるように対応。このキメラ対応を行っていない旧バージョンを```nanopore~split-barcode_with_slightly_misaligned_primer```として残す。
 - ```QC~jellyfish```で入力ファイルがFASTAの場合も対応可能に。予測ゲノムサイズを自動で算出するようにした。
 - singularityを使用可能かどうかをチェックするときにsingularityのライブラリーではなく、dockerのhello-worldを使用するように変更。
 
