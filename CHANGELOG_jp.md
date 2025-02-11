@@ -2,8 +2,9 @@
 - ```post-assemble~busco_v5```でminiprotを使用するBUSCO v5.8.0にアップデート
 - ```nanopore~split-barcode```でprimer.fastaの配列名にタブ文字が入っている場合、sample.txtファイルにタブ区切りが複数連続する場合にエラーになっていたのを対応。ナノポアのリードがライゲーションによって複数リードが連結されてシーケンスされる？現象に対して閾値以下のプライマーのヒットでもそこでリードを区切り、キメラが生成されにくくなるように対応。このキメラ対応を行っていない旧バージョンを```nanopore~split-barcode_with_slightly_misaligned_primer```として残す。
 - ```QC~jellyfish```で入力ファイルがFASTAの場合も対応可能に。予測ゲノムサイズを自動で算出するようにした。
-- singularityを使用可能かどうかをチェックするときにsingularityのライブラリーではなく、dockerのhello-worldを使用するように変更。
+- singularityを使用可能かどうかをチェックするときにsingularityのライブラリーではなく、dockerのhello-worldを使用するように変更。homeフォルダをマウントしないように```--no-home```を追加。
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```で厳密な一致のみを集計しやすくするために、一致率やアライメント長でのフィルタリングオプションを追加。メンテナンスが不十分になっていた```metagenome~silva_SSU+LSU```, ```metagenome~silva_SSU+LSU-paired-end```を削除。
+- ```annotation~Helixer```を追加。```annotation~BRAKER3```でトップヒットが1subjectに複数ヒットあった場合にスコアが低くなるのを修正。
 
 # 1.4.2 (2024/11/05)
 - インプットファイルのシンボリックリンクが相対パスだったときにエラーになる場合があるケースに対応。
