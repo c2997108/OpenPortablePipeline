@@ -2,6 +2,7 @@
 - ```QC~jellyfish```でナノポアなどのようにシーケンスエラーが多い場合に、シーケンスエラー分のkmer回数を推定して除去したのちにゲノムサイズを推定する機能を追加。
 - ```post-assemble~busco_v5```でデフォルトオプションを自動推定```--auto-lineage```に変更。
 - 大きいゲノムの場合にエラーになることがあったので、```mapping-nanopore~minimap2```でminimap2のバージョンを2.24から2.28に上げた。
+- ```post-assemble~coverage-length-graph_by-minimap2```を追加。
 
 
 # 1.4.3 (2025/02/11)
