@@ -4,7 +4,7 @@
 - 大きいゲノムの場合にエラーになることがあったので、```mapping-nanopore~minimap2```でminimap2のバージョンを2.24から2.28に上げた。
 - ```post-assemble~coverage-length-graph_by-minimap2```を追加。
 - ```Comparative-genomics~FastANI```を追加。
-- 
+- ```nanopore~split-barcode```で0塩基のリードを出力しないように修正。
 
 # 1.4.3 (2025/02/11)
 - ```post-assemble~busco_v5```でminiprotを使用するBUSCO v5.8.0にアップデート
