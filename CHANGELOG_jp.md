@@ -7,6 +7,7 @@
 - ```nanopore~split-barcode```で0塩基のリードを出力しないように修正。
 - ```post-assemble~Repeatmodeler```で無料版のRepBaseを使ったアノテーションを追加。
 - ```annotation~Helixer-with-GPU```とは別にGPUを使わないバージョン```annotation~Helixer```を追加。
+- ```nanopore~get-consensus```を追加。
 
 # 1.4.3 (2025/02/11)
 - ```post-assemble~busco_v5```でminiprotを使用するBUSCO v5.8.0にアップデート
