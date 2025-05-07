@@ -15,6 +15,7 @@ opt_s:RepeatMasker option:-gff
 runcmd="$0 -c #opt_c# -m #opt_m# -r #opt_r# -s #opt_s# #input_1#"
 
 export IM_RM="dfam/tetools:1.87"
+export IM_BLAST="c2997108/blast:2.13.0-repbase20181026"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -33,6 +34,16 @@ rm -rf "$input_1".*.RMoutput
 
 #runcoseg.pl -d -m 50 -c ALU.cons -s ALU.seqs -i ALU.ins
 
+DO_BLAST tblastx -db /usr/local/db/RepBaseRepeatMaskerEdition-20181026.fasta -query genome1-families.fa -outfmt 6 -num_threads $N_CPU|awk '!a[$1]++' > genome1-families.fa.tblastx
+
+awk -F'\t' '
+ FILENAME==ARGV[1]{split($1,arr,"#"); a1[arr[1]]=arr[2]; a2[arr[1]]=$2; eval[arr[1]]=$11}
+ FILENAME==ARGV[2]{
+  OFS="\t";
+  c=$9; sub(/^[^"]*"Motif:/,"",c); sub(/".*/,"",c);
+  s=c; if(c in a1){s=c"__"a1[c]"__repbase_"a2[c]"__eval_"eval[c]; sub(c,s,$9)};
+  print $0
+ }' genome1-families.fa.tblastx "$input_1".out.gff > "$input_1".out-annotated.gff
 
 post_processing
 #<option detail>

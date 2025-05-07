@@ -22,7 +22,7 @@ runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -d #opt_d# -p #opt_p# -a #opt_a# -s 
 
 export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_5-kegg_4"
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
-
+export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_5-kegg_4"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 

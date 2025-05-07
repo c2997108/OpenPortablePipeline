@@ -1,0 +1,110 @@
+#!/bin/bash
+
+explanation='
+Helixer is a tool for structural genome annotation. It utilizes Deep Neural Networks and a Hidden Markov Model to directly provide primary gene models in a gff3 file. It’s performant and applicable to a wide variety of genomes.
+'
+inputdef='
+input_1::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_l:model file (fungi_v0.3_a_0400.h5 / invertebrate_v0.3_m_0200.h5 / land_plant_v0.3_m_0200.h5 / vertebrate_v0.3_m_0100.h5):invertebrate_v0.3_m_0200.h5
+opt_s:subsequence length - How to slice the genomic sequence. Set moderately longer than length of typical genic loci. E.g. 21384, 64152, or 213840 for fungi, plants, and animals, respectively:213840
+opt_r:Helixer options:
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -s #opt_s# -r #opt_r# #input_1#"
+
+export IM_HELIXER="c2997108/helixer:v0.3.4_cuda_12.2.2-cudnn8_2"
+export IM_GFFREAD="quay.io/biocontainers/gffread:0.12.7--h9a82719_0"
+export IM_TRANSEQ="biocontainers/emboss:v6.6.0dfsg-7b1-deb_cv1"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
+export IM_BLAST="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_HELIXER gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_1" | sed 's/\r//' > "$input_1".ref.fa
+input_1="$input_1".ref.fa
+
+DO_HELIXER Helixer.py --fasta-path "$input_1" --gff-output-path helixer.gff3 --model-filepath /home/helixer_user/model/"$opt_l" --subsequence-length "$opt_s" $opt_r
+
+DO_GFFREAD gffread -g "$input_1" -w helixer.exons.fasta -x helixer.cds.fasta helixer.gff3
+DO_TRANSEQ transeq -sequence helixer.cds.fasta -outseq tmp.helixer.cds.aa.fasta -frame 1
+DO_SEQKIT seqkit fx2tab tmp.helixer.cds.aa.fasta |(DO_BLAST awk -F'\t' '{sub(/_1$/,"",$1); sub(/*$/,"",$(NF-1)); print ">"$1; print $(NF-1)}') > helixer.cds.aa.fasta
+rm -f tmp.helixer.cds.aa.fasta
+DO_BLAST blastp -query helixer.cds.aa.fasta -db /usr/local/Trinotate-Trinotate-v3.1.1/db/uniprot_sprot.pep -num_threads $N_CPU -max_target_seqs 1 -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle" -evalue 1e-5 > helixer.cds.aa.fasta.uniprot.blastp
+DO_SEQKIT seqkit fx2tab helixer.cds.aa.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{print ">"$1" "name[$1]":"desc[$1]" evalue:"evalue[$1]; print $2}' helixer.cds.aa.fasta.uniprot.blastp /dev/stdin > helixer.cds.uniprot.aa.fasta
+DO_SEQKIT seqkit fx2tab helixer.cds.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{split($1,arr," "); print ">"$1" "name[arr[1]]":"desc[arr[1]]" evalue:"evalue[arr[1]]; print $2}' helixer.cds.aa.fasta.uniprot.blastp /dev/stdin > helixer.cds.uniprot.fasta
+DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]&&!($1 in name){name[$1]=$2; desc[$1]=$16; evalue[$1]=$13; newname[$1]=$1"_"$2"_"$16"_evalue-"$13; gsub(/[ /()=]/,"_",newname[$1])} FILENAME==ARGV[2]{OFS="\t"; if($0~"^#"){print $0}else{split($9,arr,";"); for(i in arr){split(arr[i],arr2,"="); str2=arr2[2]; for(j=3;j<=length(arr2);j++){str2=str2"="arr2[j]}; if(str2 in newname){arr[i]=arr2[1]"="newname[str2]}}; $9=arr[1]; for(i=2;i<=length(arr);i++){$9=$9";"arr[i]}; print $0}}' helixer.cds.aa.fasta.uniprot.blastp helixer.gff3 > helixer.uniprot.gff3
+
+
+post_processing
+
+#<option detail>
+#<opt_r>
+usage: Helixer.py [-h] [--config-path CONFIG_PATH] [--compression {gzip,lzf}] [--no-multiprocess] [--version] --fasta-path FASTA_PATH --gff-output-path
+                  GFF_OUTPUT_PATH [--species SPECIES] [--temporary-dir TEMPORARY_DIR] [--subsequence-length SUBSEQUENCE_LENGTH] [--write-by WRITE_BY]
+                  [--lineage {vertebrate,land_plant,fungi,invertebrate}] [--model-filepath MODEL_FILEPATH] [--batch-size BATCH_SIZE] [--no-overlap]
+                  [--overlap-offset OVERLAP_OFFSET] [--overlap-core-length OVERLAP_CORE_LENGTH] [--debug] [--window-size WINDOW_SIZE]
+                  [--edge-threshold EDGE_THRESHOLD] [--peak-threshold PEAK_THRESHOLD] [--min-coding-length MIN_CODING_LENGTH]
+
+options:
+  -h, --help            show this help message and exit
+  --version             show program's version number and exit
+
+Data input and output:
+  --config-path CONFIG_PATH
+                        Config in form of a YAML file with lower priority than parameters given on the command line.
+  --fasta-path FASTA_PATH
+                        FASTA input file.
+  --gff-output-path GFF_OUTPUT_PATH
+                        Output GFF3 file path.
+  --species SPECIES     Species name.
+  --temporary-dir TEMPORARY_DIR
+                        use supplied (instead of system default) for temporary directory
+
+Data generation parameters:
+  --compression {gzip,lzf}
+                        Compression algorithm used for the intermediate .h5 output files with a fixed compression level of 4. (Default is "gzip", which is much
+                        slower than "lzf".)
+  --no-multiprocess     Whether to not parallize the numerification of large sequences. Uses half the memory but can be much slower when many CPU cores can be
+                        utilized.
+  --subsequence-length SUBSEQUENCE_LENGTH
+                        How to slice the genomic sequence. Set moderately longer than length of typical genic loci. Tested up to 213840. Must be evenly divisible
+                        by the timestep width of the used model, which is typically 9. (Default is lineage dependent from 21384 to 213840).                           --write-by WRITE_BY   convert genomic sequence in super-chunks to numerical matrices with this many base pairs; for lower memory consumption, which will be
+                        rounded to be divisible by subsequence-length; ; needs to be equal to or larger than subsequence length, for lower memory consumption,
+                        consider setting a lower number
+  --lineage {vertebrate,land_plant,fungi,invertebrate}
+                        What model to use for the annotation.
+  --model-filepath MODEL_FILEPATH
+                        set this to override the default model for any given lineage and instead take a specific model
+  --no-overlap          Switches off the overlapping after predictions are made. Predictions without overlapping will be faster, but will have lower quality
+                        towards the start and end of each subsequence. With this parameter --overlap-offset and --overlap-core-length will have no effect.
+
+Prediction parameters:
+  --batch-size BATCH_SIZE
+                        The batch size for the raw predictions in TensorFlow. Should be as large as possible on your GPU to save prediction time. (Default is 8.)
+  --overlap-offset OVERLAP_OFFSET
+                        Offset of the overlap processing. Smaller values may lead to better predictions but will take longer. The subsequence_length should be
+                        evenly divisible by this value. (Default is subsequence_length / 2).
+  --overlap-core-length OVERLAP_CORE_LENGTH
+                        Predicted sequences will be cut to this length to increase prediction quality if overlapping is enabled. Smaller values may lead to better
+                        predictions but will take longer. Has to be smaller than subsequence_length (Default is subsequence_length * 3 / 4)
+  --debug               add this to quickly run the code through without loading/predicting on the full file
+
+Post-processing parameters:
+  --window-size WINDOW_SIZE
+                        width of the sliding window that is assessed for intergenic vs genic (UTR/Coding Sequence/Intron) content
+  --edge-threshold EDGE_THRESHOLD
+                        threshold specifies the genic score which defines the start/end boundaries of each candidate region within the sliding window
+  --peak-threshold PEAK_THRESHOLD
+                        threshold specifies the minimum peak genic score required to accept the candidate region; the candidate region is accepted if it contains
+                        at least one window with a genic score above this threshold
+  --min-coding-length MIN_CODING_LENGTH
+                        output is filtered to remove genes with a total coding length shorter than this value
+#</opt_r>
+#</option detail>

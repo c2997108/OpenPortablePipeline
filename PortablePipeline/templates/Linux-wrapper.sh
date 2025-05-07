@@ -1,5 +1,4 @@
 #!/bin/bash
-export DIR_IMG="@imagefolder@"
 source ~/.bashrc
 chmod 755 ./pp.py
 chmod 755 "@selectedScript@"

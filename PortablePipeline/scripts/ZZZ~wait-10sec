@@ -27,7 +27,7 @@ ls -lh
 r1=`ls |egrep "[.](fastq|fq)([.]gz$|$)" || echo ""`
 
 if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; false; fi
-DO_TEST ls -lh "$r1"
+DO_TEST ls -lh $r1
 DO_TEST touch test.txt
 
 touch sleepb10.txt

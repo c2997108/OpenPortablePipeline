@@ -1,0 +1,83 @@
+#!/bin/bash
+
+explanation='
+finder is a gene annotator pipeline which automates the process of downloading short reads, aligning them and using the assembled transcripts to generate gene annotations.
+This pipeline needs docker/singularity
+'
+inputdef='
+input_1:directory:paired-end FASTQ files:*_1.fastq,*_2.fastq
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3::GeneMark-ES/ET/EP LINUX 64 binary (http://exon.gatech.edu/genemark/license_download.cgi):gmes_linux_64*.tar.gz
+input_4::GeneMark-ES/ET/EP LINUX 64 license (http://exon.gatech.edu/genemark/license_download.cgi):gm_key_64.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_b:finder option:-om VERT --addUTR
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2# #input_3# #input_4#"
+
+
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ `basename "$input_3"|grep "gmes_linux_64.*[.]tar[.]gz"|wc -l` != 1 -o `basename "$input_4"` != "gm_key_64.gz" ]; then echo 'Download GeneMark-ES/ET/EP LINUX 64 binary and license(http://exon.gatech.edu/GeneMark/license_download.cgi)'; post_processing; fi
+zcat "$input_4" > gm_key_64
+tar vxf "$input_3"
+rm -rf gmes_linux_64
+mv `find . -maxdepth 1 -type d|grep gmes_linux_64` gmes_linux_64
+
+#decompress input files
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > `basename "$input_2"`.ref.fa
+input_2=`basename "$input_2"`.ref.fa
+
+curl -OL https://github.com/sagnikbanerjee15/Finder/archive/refs/tags/finder_v1.1.0.tar.gz
+tar -vxf finder_v1.1.0.tar.gz
+rm -rf dep example others scripts utils
+mv Finder-finder_v1.1.0/* .
+rm -rf Finder-finder_v1.1.0
+sed 's/docker run/docker run '"-u `id -u`:`id -g`"'/' run_finder
+
+ls "$input_1"/*_1.fastq|while read i; do echo 'Dummy,'`basename $i|sed 's/_1.fastq$//'`','`basename $i|sed 's/_1.fastq$//'`',dummy,2000/1/1,100,PE,1,1,'`realpath "$input_1"`; done > input.csv
+
+./run_finder -mf $PWD/input.csv -out_dir $PWD/out -g $PWD/"$input_2" -gm $PWD/gmes_linux_64 -gml $PWD/gm_key_64 --cpu 16 $opt_b
+
+
+post_processing
+
+#<option detail>
+#<opt_b>
+  --organism_model {VERT,INV,PLANTS,FUNGI}, -om {VERT,INV,PLANTS,FUNGI}
+                        Enter the type of organism
+  --verbose VERBOSE, -verb VERBOSE
+                        Enter a verbosity level
+  --no_cleanup, -no_cleanup
+                        Provide this option if you do not wish to remove any intermediate files. Please note that this will NOT remove any files and might take up a large amount of space
+  --preserve_raw_input_data, -preserve
+                        Set this argument if you want to preserve the raw fastq files. All other temporary files will be removed. These fastq files can be later used.
+  --checkpoint CHECKPOINT, -c CHECKPOINT
+                        Enter a value if you wish to restart operations from a certain check point. Please note if you have new RNA-Seq samples, then FINDER will override this argument and computation will take place from read alignment. If there are missing data in any step then also FINDER will enforce restart of operations from a previous
+                        . For example, if you wish to run assembly on samples for which alignments are not available then FINDER will readjust this value and set it to 1.
+                            1. Align reads to reference genome (Will trigger removal of all alignments and start from beginning)
+                            2. Assemble with PsiCLASS (Will remove all assemblies)
+                            3. Find genes with FINDER (entails changepoint detection)
+                            4. Predict genes using BRAKER2 (Will remove previous results of gene predictions with BRAKER2)
+                            5. Annotate coding regions
+                            6. Merge FINDER annotations with BRAKER2 predictions and protein sequences
+  --perform_post_completion_data_cleanup, -pc_clean
+                        Set this field if you wish to clean up all the intermediate files after the completion of the execution. If this operation is requested prior to generation of all the important files then it will be ignored and finder will proceed to annotate the genome.
+  --run_tests, -rt      Modify behaviour of finder to accelerate tests. This will reduce the downloaded fastq files to a bare minimum and also check the other installations
+  --addUTR, --addUTR    Turn on this option if you wish BRAKER to add UTR sequences
+  --skip_cpd, --skip_cpd
+                        Turn on this option to skip changepoint detection. Could be effective for grasses
+  --star_shared_mem, --star_shared_mem
+                        Turn on this option if you want STAR to load the genome index into shared memory. This saves memory if multiple finder runs are executing on the same host, but might not work in your cluster environment.
+  --framework {docker,singularity}, -fm {docker,singularity}
+                        Enter your choice of framework
+#</opt_b>
+#</option detail>
+

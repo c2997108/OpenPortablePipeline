@@ -1,6 +1,5 @@
 package application;
 
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -8,6 +7,7 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -205,9 +205,9 @@ public class JobWindowController {
     void onButtonSave(ActionEvent event) {
         String path = new File(".").getAbsoluteFile().getParent();
         System.out.println(path);
-
+        
 		try {
-	        Writer out = new PrintWriter("settings.json");
+	        Writer out = new PrintWriter(PPSetting.getBaseDir()+"settings.json");
 
 	        JsonFactory jsonFactory = new JsonFactory();
 			JsonGenerator jsonGenerator = jsonFactory.createJsonGenerator(out);
@@ -242,7 +242,7 @@ public class JobWindowController {
 	            	tempfile.delete();
 	            }
 	        }
-	        savedOutputFolder = new PPSetting().get("outputfolder");
+	        savedOutputFolder = PPSetting.getBaseDir() + new PPSetting().get("outputfolder");
 	        selectedPreset = new PPSetting().get("preset");
 		} catch (Exception e) {
 			// TODO 自動生成された catch ブロック
@@ -363,10 +363,32 @@ public class JobWindowController {
     					jsonGenerator.writeEndObject();
     					jsonGenerator.flush();
 
-
+////sshクライアントの詳細ログ表示
+//    			        JSch.setLogger(new Logger() {
+//    			            @Override
+//    			            public boolean isEnabled(int level) {
+//    			                return true; // 全レベル出力
+//    			            }
+//
+//    			            @Override
+//    			            public void log(int level, String message) {
+//    			                System.out.println("JSchLog [" + levelToString(level) + "]: " + message);
+//    			            }
+//
+//    			            private String levelToString(int level) {
+//    			                switch (level) {
+//    			                    case Logger.DEBUG: return "DEBUG";
+//    			                    case Logger.INFO: return "INFO";
+//    			                    case Logger.WARN: return "WARN";
+//    			                    case Logger.ERROR: return "ERROR";
+//    			                    case Logger.FATAL: return "FATAL";
+//    			                    default: return "UNKNOWN";
+//    			                }
+//    			            }
+//    			        });
     					JSch jsch = new JSch();
-    					ChannelSftp c = null;
-    					Session sc = null;
+    					ChannelSftp csftp = null;
+    					Session jsesion = null;
     					Channel channel = null;
 
     					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
@@ -374,27 +396,27 @@ public class JobWindowController {
     							System.out.println(file_id_rsa);
     							jsch.addIdentity(file_id_rsa, ppSetting.get("password"));
     						}
-    						System.out.println("identity added ");
-    						sc = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
-    						System.out.println("session created.");
+    						//System.out.println("identity added ");
+    						jsesion = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
+    						//System.out.println("session created.");
 
-    						sc.setConfig("StrictHostKeyChecking", "no");
-    						sc.setPassword(ppSetting.get("password"));
+    						jsesion.setConfig("StrictHostKeyChecking", "no");
+    						jsesion.setPassword(ppSetting.get("password"));
 
-    						sc.connect();
+    						jsesion.connect();
     						System.out.println("session connected.....");
 
-    						channel = sc.openChannel("sftp");
+    						channel = jsesion.openChannel("sftp");
     						channel.setInputStream(System.in);
     						channel.setOutputStream(System.out);
     						channel.connect();
-    						System.out.println("shell channel connected....");
+    						System.out.println("SFTP channel connected....");
 
-    						c = (ChannelSftp) channel;
+    						csftp = (ChannelSftp) channel;
     					}
     					//mkdir work
     					String workdir = ppSetting.get("workfolder")+"/"+workid;
-    					String resultdir = ppSetting.get("outputfolder")+"/"+workid+"/results";
+    					String resultdir = PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results";
 
     					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						String tempworkpath = "";
@@ -410,7 +432,7 @@ public class JobWindowController {
     							}
     							try {
     								//System.out.println("mkdir...  "+tempworkpath);
-    								c.mkdir(tempworkpath);
+    								csftp.mkdir(tempworkpath);
     							}catch(Exception e2) {
     								//e2.printStackTrace();
     							}
@@ -422,14 +444,14 @@ public class JobWindowController {
 
     					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     						System.out.println("sending...  "+selectedScript);
-    						c.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
+    						csftp.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
     						System.out.println("sending...  "+"common.sh");
-    						c.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
+    						csftp.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
     						System.out.println("sending...  "+"pp.py");
-    						c.put(ppSetting.get("scriptfolder")+"/pp.py", workdir);
+    						csftp.put(ppSetting.get("scriptfolder")+"/pp.py", workdir);
     						for(String scripti: scriptcontList) {
     							System.out.println("sending...  "+scripti);
-    							c.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
+    							csftp.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
     						}
     					}
 
@@ -520,12 +542,12 @@ public class JobWindowController {
     									if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
     										System.out.println("sending...  "+fileName);
     										try {
-    											c.mkdir(workdir+"/"+fileid);
+    											csftp.mkdir(workdir+"/"+fileid);
     											new File(resultdir+"/"+fileid).mkdirs();
     										}catch(Exception e2) {
     											//e2.printStackTrace();
     										}
-    										c.put(fileName, workdir+"/"+fileid);
+    										csftp.put(fileName, workdir+"/"+fileid);
     									}else {
     										System.out.println("creating hard link...  "+fileName);
     										try {
@@ -580,7 +602,7 @@ public class JobWindowController {
     					String cmdString = "";
     							
     					try{
-    						String outputFile = ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh";
+    						String outputFile = PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh";
 
     						String templateFile = "";
     						if(selectedPreset.equals("ssh")) {
@@ -588,19 +610,20 @@ public class JobWindowController {
     							cmdString = "cd "+workdir+"; bash wrapper.sh";
     						}else if(selectedPreset.equals("shirokane")) {
     							templateFile="templates/shirokane-wrapper.sh";
-    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh > save_jid.txt";
+    							//2>&1を>の前に書くことで、標準出力のみsave_jid.txtに保存し、標準エラー出力を標準出力として出力
+    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh 2>&1 > save_jid.txt";
     						}else if(selectedPreset.equals("ddbj")) {
     							templateFile="templates/ddbj-wrapper.sh";
-    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh > save_jid.txt";
+    							cmdString = "cd "+workdir+"; sbatch --parsable wrapper.sh 2>&1 > save_jid.txt";
     						}else if(selectedPreset.equals("ssh (SGE)")) {
     							templateFile="templates/sshsge-wrapper.sh";
-    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh > save_jid.txt";
+    							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh 2>&1 > save_jid.txt";
     						}else if(selectedPreset.equals("WSL")){
-    							String curDir = new File(".").getAbsoluteFile().getParent();
+    							String curDir = new File(PPSetting.getBaseDir() + ".").getAbsoluteFile().getParent();
     							String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
     							wslcurDir = wslcurDir.replaceAll("\\\\", "/");
     							try (BufferedReader reader = new BufferedReader(new FileReader("templates/WSL-wrapper.bat"));
-       					             BufferedWriter writer = new BufferedWriter(new FileWriter(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat"))) {
+       					             BufferedWriter writer = new BufferedWriter(new FileWriter(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat"))) {
        								String line;
        								while ((line = reader.readLine()) != null) {
        									line = line.replace("@wslcurDir@", wslcurDir);
@@ -631,13 +654,14 @@ public class JobWindowController {
    									line = line.replace("@runcmd@", runcmd);
    									line = line.replace("@numCPU@", numCPU);
    									line = line.replace("@numMEM_1core@", String.valueOf(Double.valueOf(numMEM)/Double.valueOf(numCPU)));
+   									line = line.replace("@numMEM_total@", numMEM);
    									writer.write(line+"\n");
    								}
    							}
 
 							
     						if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
-    							c.put(ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh", workdir);
+    							csftp.put(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.sh", workdir);
     						}
     					}catch(IOException e){
     						//System.out.println(e);
@@ -645,53 +669,58 @@ public class JobWindowController {
     						return false;
     					}
 
-    					System.out.println(cmdString);
+    					System.out.println("CMD: "+cmdString);
 
     					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
-    						ChannelExec channelexec = (ChannelExec) sc.openChannel("exec");
-    						//channelexec.setCommand("cd "+workdir+"; bash "+selectedScript+" "+runcmd);
-    						channelexec.setCommand(cmdString);
-    						//channelexec.setCommand("ls -l |wc -l");
-    						//channelexec.setPty(false);
-    						channelexec.connect();
+    						System.out.println("SFTP session closed.");
+    						jsesion.disconnect(); //ここでいったんsftp用のセッションは閉じる
 
-    						BufferedInputStream bin = null;
-    						//コマンド実行
-    						try {
-    							bin = new BufferedInputStream(channelexec.getInputStream());
-    							BufferedReader bufferedReader = new BufferedReader(
-    									new InputStreamReader(bin, StandardCharsets.UTF_8));
-
-    							String data;
-    							while ((data = bufferedReader.readLine()) != null) {
-    								System.out.println(data);
-    								String data2 = new String(data);
-    								Platform.runLater( () -> listRecords.add(data2) );
-    								//listRecords.add(data);
-    							}
-
-    							// 最後にファイルを閉じてリソースを開放する
-    							bufferedReader.close();
-    						} catch (Exception e) {
-    							System.err.println(e);
-    						} finally {
-    							if (bin != null) {
-    								try {
-    									bin.close();
-    								}
-    								catch (IOException e) {
-    								}
-    							}
+    						List<String> cmdResults;
+    						if(selectedPreset.equals("ddbj")) {
+    							cmdResults = ConnectSsh.getSshCmdResult2StepSession(ppSetting, file_id_rsa, cmdString);
+    						}else {
+    							cmdResults = ConnectSsh.getSshCmdResult(ppSetting, file_id_rsa, cmdString);
     						}
+    						cmdResults.forEach(item -> listRecords.add(item));
+    						
+//        					ChannelExec channelexec = (ChannelExec) jsesion.openChannel("exec");
+//    						//channelexec.setCommand("cd "+workdir+"; bash "+selectedScript+" "+runcmd);
+//    						channelexec.setCommand(cmdString);
+//    						//channelexec.setCommand("ls -l |wc -l");
+//    						//channelexec.setPty(false);
+//    						channelexec.connect();
+//
+//    						BufferedInputStream bin = null;
+//    						//コマンド実行
+//    						try {
+//    							bin = new BufferedInputStream(channelexec.getInputStream());
+//    							BufferedReader bufferedReader = new BufferedReader(
+//    									new InputStreamReader(bin, StandardCharsets.UTF_8));
+//
+//    							String data;
+//    							while ((data = bufferedReader.readLine()) != null) {
+//    								System.out.println(data);
+//    								String data2 = new String(data);
+//    								Platform.runLater( () -> listRecords.add(data2) );
+//    								//listRecords.add(data);
+//    							}
+//
+//    							// 最後にファイルを閉じてリソースを開放する
+//    							bufferedReader.close();
+//    						} catch (Exception e) {
+//    							System.err.println(e);
+//    						} finally {
+//    							if (bin != null) {
+//    								try {
+//    									bin.close();
+//    								}
+//    								catch (IOException e) {
+//    								}
+//    							}
+//    						}
 
-    						//download results
-    						//channelSftp = (ChannelSftp) sc.openChannel("sftp");
-    						//channelSftp = c;
-    						//recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results",c);
-    						//        lsFolderRemove(workdir);
-    						//channelSftp.exit();
     					}else {
-    						Process process = Runtime.getRuntime().exec(cmdString, null, new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"));
+    						Process process = Runtime.getRuntime().exec(cmdString, null, new File(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"));
     						process.waitFor();
 
     					}
@@ -704,11 +733,6 @@ public class JobWindowController {
     						saveJobList();
     					});
 
-
-    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
-    						sc.disconnect();
-    					}
-
     				} catch (Exception e) {
     					//System.err.println(e);
     					e.printStackTrace();
@@ -719,21 +743,6 @@ public class JobWindowController {
     						jobNodes.set( jobNodes.indexOf(finalJobNode),runninngJobNode );
     						saveJobList();
     					});
-    				} finally {
-    					//                    if (channel != null) {
-    					//                        try {
-    					//                            channel.disconnect();
-    					//                        }
-    					//                        catch (Exception e) {
-    					//                        }
-    					//                    }
-    					//                    if (session != null) {
-    					//                        try {
-    					//                            session.disconnect();
-    					//                        }
-    					//                        catch (Exception e) {
-    					//                        }
-    					//                    }
     				}
 
     				isSending = false;
@@ -786,21 +795,42 @@ public class JobWindowController {
             //e.printStackTrace();
         	try {
         		//settings.jsonが無い場合に作成する。
-        		Writer out = new PrintWriter("settings.json");
+        		Writer out = new PrintWriter(PPSetting.getBaseDir()+"settings.json");
         		JsonFactory jsonFactory = new JsonFactory();
         		JsonGenerator jsonGenerator = jsonFactory.createJsonGenerator(out);
         		jsonGenerator.writeStartObject();jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("hostname","m208.s");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("port","22");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("user","user2");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("password","user2");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("privatekey","");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("workfolder","work");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("preset","ssh");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("imagefolder","~/img");jsonGenerator.writeRaw("\n");
-        		jsonGenerator.writeStringField("checkdelete", "true");jsonGenerator.writeRaw("\n");
+
+    			final String OS_NAME = System.getProperty("os.name").toLowerCase();
+    			try {
+    				if(OS_NAME.startsWith("windows")) {
+    	        		jsonGenerator.writeStringField("user","your_wsl_user_name");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("password","your_wsl_password");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("preset","WSL");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
+    				//}else if(OS_NAME.startsWith("mac")) {
+    				}else if(OS_NAME.startsWith("linux")) {
+    	        		jsonGenerator.writeStringField("imagefolder","$HOME/img");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("preset","Linux");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
+    				}else {
+    	        		jsonGenerator.writeStringField("hostname","m208.s");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("port","22");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("user","user2");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("password","user2");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("privatekey","");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("workfolder","work");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("preset","ssh");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("imagefolder","$HOME/img");jsonGenerator.writeRaw("\n");
+    	        		jsonGenerator.writeStringField("checkdelete", "true");jsonGenerator.writeRaw("\n");
+    				}
+    			} catch (Exception e2) {
+    				e2.printStackTrace();
+    			}
+    			
         		jsonGenerator.writeEndObject();
         		jsonGenerator.flush();
 
@@ -832,7 +862,7 @@ public class JobWindowController {
             scriptfolder.setText(ppSetting.get("scriptfolder"));
         }
         if(ppSetting.get("imagefolder").equals("")) {
-            imagefolder.setText("~/img");
+            imagefolder.setText("$HOME/img");
         }else {
         	imagefolder.setText(ppSetting.get("imagefolder"));
         }
@@ -850,7 +880,7 @@ public class JobWindowController {
         			};
         		}
         		);
-        savedOutputFolder = ppSetting.get("outputfolder");
+        savedOutputFolder = PPSetting.getBaseDir() + ppSetting.get("outputfolder");
         selectedPreset = ppSetting.get("preset");
 
 		switch(selectedPreset) {
@@ -905,6 +935,8 @@ public class JobWindowController {
 			privatekey.setText("");
 			user.setDisable(true);
 			user.setText("");
+			password.setDisable(true);
+			password.setText("");
 			workfolder.setDisable(true);
 			workfolder.setText("");
 			checkdelete.setDisable(true);
@@ -918,6 +950,8 @@ public class JobWindowController {
 			privatekey.setText("");
 			user.setDisable(true);
 			user.setText("");
+			password.setDisable(true);
+			password.setText("");
 			workfolder.setDisable(true);
 			workfolder.setText("");
 			checkdelete.setDisable(true);
@@ -942,11 +976,12 @@ public class JobWindowController {
         	}
         });
         //ObservableList<JobNode> jobNodes = FXCollections.observableArrayList();
+        //jobファイルから読み込んで履歴を表示
     	int numOfJob = 0;
         ObjectMapper mapperJob = new ObjectMapper();
         try {
         	arrayNode = new ObjectMapper().createArrayNode();
-        	List<JobNode> jobs = mapperJob.readValue(new File("jobs.json"), new TypeReference<List<JobNode>>(){});
+        	List<JobNode> jobs = mapperJob.readValue(new File(PPSetting.getBaseDir()+"jobs.json"), new TypeReference<List<JobNode>>(){});
 
 
             for(JobNode job : jobs) {
@@ -978,15 +1013,20 @@ public class JobWindowController {
         	        // 実行する処理
            	    	try {
                	    	JobNode tempNode = (JobNode)newVal;
-               	    	System.out.println(((JobNode)newVal).id);
+               	    	System.out.println("Job ID: "+((JobNode)newVal).id +" is selected.");
                	    	listRecords.clear();
-						List<String> lines = Files.readAllLines(Paths.get(new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt"), StandardCharsets.UTF_8);
+               	    	//System.out.println(new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt");
+						List<String> lines = Files.readAllLines(Paths.get(PPSetting.getBaseDir() + new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt"), StandardCharsets.UTF_8);
+               	    	//System.out.println(lines.size());
 						List<String> templines = new ArrayList<String>();
 						for(String string : lines) {
+	               	    	//System.out.println(string);
 							if(templines.size()>=1000) {
 								templines.remove(0);
 							}
-							templines.add(string);
+							if(!string.equals("")) {
+								templines.add(string);
+							}
 						}
 	        	    	for(String string : templines) {
 	               	    	//System.out.println(string);
@@ -1339,19 +1379,21 @@ public class JobWindowController {
 
         			for(JobNode tempJobNode : jobNodes) {
         				//System.out.println(tempJobNode.id);
+        				String keyFilePath = savedOutputFolder+"/"+tempJobNode.id+"/"+"id_rsa";
         				if(tempJobNode.status.equals("running")) {
         					ObjectMapper mapper = new ObjectMapper();
         					JsonNode node;
         					try {
+        						//ジョブごとのサーバへの接続に使用した認証ファイルを読み込み
         						node = mapper.readTree(new File(savedOutputFolder+"/"+tempJobNode.id+"/"+"settings.json"));
 
         						if(!node.get("privatekey").asText().equals("")) {
-        							FileWriter file = new FileWriter(savedOutputFolder+"/"+tempJobNode.id+"/"+"id_rsa");
+        							FileWriter file = new FileWriter(keyFilePath);
         							PrintWriter pw = new PrintWriter(new BufferedWriter(file));
         							pw.write(node.get("privatekey").asText());
         							pw.close();
         						}else {
-        							File tempfile = new File(savedOutputFolder+"/"+tempJobNode.id+"/"+"id_rsa");
+        							File tempfile = new File(keyFilePath);
         							if(tempfile.exists()) {
         								tempfile.delete();
         							}
@@ -1368,7 +1410,7 @@ public class JobWindowController {
         					try {
         						String workid = tempJobNode.id;
         						String workdir = node.get("workfolder").asText()+"/"+workid;
-        						File saveFolder = new File(node.get("outputfolder").asText()+"/"+workid);
+        						File saveFolder = new File(PPSetting.getBaseDir() + node.get("outputfolder").asText()+"/"+workid);
 
         						ChannelSftp channelSftp =null;
 
@@ -1415,12 +1457,38 @@ public class JobWindowController {
         									}
         								} catch (IOException e) {
         									e.printStackTrace();
+        									System.out.println("Maybe it is because the job is still in the process of being thrown.");
+        									return;
         								}
         							}
         							//recursiveFolderDownload(workdir+"/log.txt", saveFolder.toString()+"/"+"results", channelSftp);
         						}catch (Exception e2) {
         							System.err.println("no log.txt in "+workdir);
+        							//まだlog.txtが出来ていない状態（＝まだサーバの待ち行列に入っていて実行されていない状態が多い）の時の待ち順確認
+        							try {
+            							if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+            									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
+        									ChannelExec channelExec = ConnectSsh.getSshChannel(node, savedOutputFolder+"/"+tempJobNode.id);
+        									
+        									List<String> listStr;
+        									if(!node.get("preset").asText().equals("ddbj")) {
+        										listStr = ConnectSsh.getSshCmdResult(node, keyFilePath, "cd "+workdir+"; qstat -u '*'|awk '$5==\"qw\"'|awk -v id=`cat save_jid.txt` '$1==id{print NR}'");
+        									}else { //ddbjの時
+        										listStr = ConnectSsh.getSshCmdResult2StepSession(node, keyFilePath, "cd "+workdir+"; squeue --all -o '%.2t %.18i %.10M %Q' --sort=-p|awk -v id=`cat save_jid.txt` '$1==\"PD\"{n++; split($2,arr,\"_\"); if(arr[1]==id){m=n}} END{print m+0}'");
+        									}
+        									try {
+        										String data2 = "Your job will be the "+ listStr.get(0) +" th job to be executed in the entire grid engine.";
+        										System.out.println(data2);
+    											Platform.runLater( () -> listRecords.add(data2) );
+           									}catch(Exception e) {
+        										System.err.println(e);
+        									}
+            							}
+        							}catch(Exception e3) {
+        								System.err.println(e3);
+        							}
         						}
+        						//結果ファイルの転送
         						try {
         							if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
         									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
@@ -1428,7 +1496,7 @@ public class JobWindowController {
         									channelSftp.get(workdir+"/fin_status", saveFolder.toString()+"/"+"results");
         									//recursiveFolderDownload(workdir+"/fin_status", saveFolder.toString()+"/"+"results", channelSftp);
         								}catch (Exception e) {
-        									System.out.println("job: "+workdir+" is running");
+        									System.out.println("#There is no fin_status file for job id "+tempJobNode.id+". It is still running.");
         								}
         							}
 
@@ -1437,6 +1505,7 @@ public class JobWindowController {
         								if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
             									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
         									recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results", channelSftp);
+        									//System.out.println("debug: "+node.get("checkdelete").asText());
         									if(node.get("checkdelete").asText().equals("true")) {
             									lsFolderRemove(workdir, channelSftp);
         									}
@@ -1454,77 +1523,119 @@ public class JobWindowController {
         								String tempString = new String(exitSatusString);
         								Platform.runLater( () -> jobNodes.set( jobNodes.indexOf(tempJobNode),new JobNode(tempJobNode.id, tempString, tempJobNode.desc) ) );
         								Platform.runLater( () -> saveJobList() );
+        							}else{
+        								//fin_statusがない場合でもsave_pid, save_jidのプロセスが起動しているか調べる   
+        								System.out.println("#Check whether a server process is running. job: "+tempJobNode.id);
+        								int returnCode = 0;
+        								if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+        										&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
+        									//ChannelExec channelExec = ConnectSsh.getSshChannel(node, savedOutputFolder+"/"+tempJobNode.id);
+
+        									List<String> listStr;
+    										if(node.get("preset").asText().equals("ssh")) {
+    											listStr = ConnectSsh.getSshCmdResult(node, keyFilePath, "cd "+workdir+"; ps -p `cat save_pid.txt`|grep python|wc -l");
+    											//channelExec.setCommand("cd "+workdir+"; ps -p `cat save_pid.txt`|grep python|wc -l");
+    										}else {
+            									if(!node.get("preset").asText().equals("ddbj")) { //shirokane, ssh (SGE)の時
+            										listStr = ConnectSsh.getSshCmdResult(node, keyFilePath, "cd "+workdir+"; qstat -j `cat save_jid.txt`|awk '$1==\"error\"{system(\"qdel '`cat save_jid.txt`' >> log.txt 2>&1\"); e=1} END{if(e==1){print 0}else{print NR}}'");
+        											//channelExec.setCommand("cd "+workdir+"; qstat -j `cat save_jid.txt`|grep job_number|wc -l");
+            									}else { //ddbjの時
+            										listStr = ConnectSsh.getSshCmdResult2StepSession(node, keyFilePath, "cd "+workdir+"; if [ -s save_jid.txt ]; then squeue -j `cat save_jid.txt` 2> /dev/null|tail -n+2|wc -l; else echo The job was rejected. It is likely that the requested amount of resources was too large. >> log.txt; echo 0; fi");
+        											//channelExec.setCommand("ssh a001 \"cd "+workdir+"; squeue -j `cat save_jid.txt` 2> /dev/null|tail -n+2|wc -l\"");
+            									}
+    										}
+    										//jobRunningStatusが0以外になったら異常終了判断
+    										int jobRunningStatus = 0;
+    										try {
+    											//save_pid.txtのjidで調べた結果の行数が0ならば異常終了
+    											if(listStr.get(0).equals("0")) {
+    												jobRunningStatus = 1;
+    											}
+    										}catch(Exception e2) {
+    											e2.printStackTrace();
+    										}
+//    										channelExec.connect();
+//    										//System.out.println("Jsch: start");
+//    										
+//        									BufferedInputStream bin = null;
+//        									int jobRunningStatus = 0;
+//        									//コマンド実行
+//        									try {
+//        										bin = new BufferedInputStream(channelExec.getInputStream());
+//        										BufferedReader bufferedReader = new BufferedReader(
+//        												new InputStreamReader(bin, StandardCharsets.UTF_8));
+//
+//        										String data;
+//        										while ((data = bufferedReader.readLine()) != null) {
+//        											//System.out.println(data);
+//        											String data2 = new String(data);
+//        											if(data2.equals("0")) {
+//        												jobRunningStatus = 1;
+//        											}
+//        											//Platform.runLater( () -> listRecords.add(data2) );
+//        										}
+//
+//        										// 最後にファイルを閉じてリソースを開放する
+//        										bufferedReader.close();
+//        									} catch (Exception e) {
+//        										System.err.println(e);
+//        									} finally {
+//        										if (bin != null) {
+//        											try {
+//        												bin.close();
+//        											}
+//        											catch (IOException e) {
+//        											}
+//        										}
+//        									}
+//    										//System.out.println("Jsch: end");
+//        									channelExec.disconnect();
+//        									channelExec.getSession().disconnect();
+        									
+        									returnCode = jobRunningStatus;
+        									//returnCode = channelExec.getExitStatus(); //これだと、まだ実行中のプロセスがあるのにExitStatusが0以外になることが稀にある模様。
+
+        								}else {
+        									try {
+        										if(node.get("preset").asText().equals("WSL")) {
+        											Process process = Runtime.getRuntime().exec("bash -c 'ps -p `cat save_pid.txt`'", null, new File(savedOutputFolder+"/"+tempJobNode.id+"/results/"));
+            										returnCode = process.waitFor();
+        										}else { //Mac & Linux & Linux (SGE)
+        											//「`cat ...`」などという書き方がexecの中で直接は使えないようなので、2回に分ける
+        											Process process = Runtime.getRuntime().exec("cat save_pid.txt", null, new File(savedOutputFolder+"/"+tempJobNode.id+"/results/"));
+        											InputStream inputStream = process.getInputStream();
+        											BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+        											String line;
+        											//一行だけ読み取る
+        											line = reader.readLine();
+        											returnCode = process.waitFor(); //終了待ち
+        											
+        											//System.out.println("line: "+line);
+        											process = Runtime.getRuntime().exec("ps -p "+line, null, new File(savedOutputFolder+"/"+tempJobNode.id+"/results/"));
+        											returnCode = process.waitFor();
+        										}
+        										
+        									} catch (Exception e) {
+        										System.err.println(e);
+        									}
+        								}
+        								if(returnCode != 0) {
+        									System.out.println("The job was terminated abnormally.");
+            								if(!node.get("preset").asText().equals("WSL") && !node.get("preset").asText().equals("Mac")
+                									&& !node.get("preset").asText().equals("Linux") && !node.get("preset").asText().equals("Linux (SGE)")) {
+            									recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results", channelSftp);
+            									//System.out.println("debug: "+node.get("checkdelete").asText());
+            									if(node.get("checkdelete").asText().equals("true")) {
+                									lsFolderRemove(workdir, channelSftp);
+            									}
+            								}
+
+            								String exitSatusString = "aborted";
+            								String tempString = new String(exitSatusString);
+            								Platform.runLater( () -> jobNodes.set( jobNodes.indexOf(tempJobNode),new JobNode(tempJobNode.id, tempString, tempJobNode.desc) ) );
+            								Platform.runLater( () -> saveJobList() );
+        								}
         							}
-        							//ここにsave_pid, save_jidを使ったチェックを書く
-        							/**
-        	    					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
-            	    					JSch jsch = new JSch();
-            	    					ChannelSftp c = null;
-            	    					Session sc = null;
-            	    					Channel channel = null;
-
-            	    					//workフォルダに保存した値から呼び出すように変更する
-        	    						ChannelExec channelexec = (ChannelExec) sc.openChannel("exec");
-        	    						if((new File(file_id_rsa)).exists()) {
-        	    							jsch.addIdentity(file_id_rsa, ppSetting.get("password"));
-        	    						}
-        	    						System.out.println("identity added ");
-        	    						sc = jsch.getSession(ppSetting.get("user"), ppSetting.get("hostname"), Integer.valueOf(ppSetting.get("port")));
-        	    						System.out.println("session created.");
-
-        	    						sc.setConfig("StrictHostKeyChecking", "no");
-        	    						sc.setPassword(ppSetting.get("password"));
-
-        	    						sc.connect();
-        	    						System.out.println("session connected.....");
-
-        	    						channelexec.setCommand("qstat -j `cat save...`");
-        	    						channelexec.connect();
-
-        	    						BufferedInputStream bin = null;
-        	    						//コマンド実行
-        	    						try {
-        	    							bin = new BufferedInputStream(channelexec.getInputStream());
-        	    							BufferedReader bufferedReader = new BufferedReader(
-        	    									new InputStreamReader(bin, StandardCharsets.UTF_8));
-
-        	    							String data;
-        	    							while ((data = bufferedReader.readLine()) != null) {
-        	    								System.out.println(data);
-        	    								String data2 = new String(data);
-        	    								Platform.runLater( () -> listRecords.add(data2) );
-        	    								//listRecords.add(data);
-        	    							}
-
-        	    							// 最後にファイルを閉じてリソースを開放する
-        	    							bufferedReader.close();
-        	    						} catch (Exception e) {
-        	    							System.err.println(e);
-        	    						} finally {
-        	    							if (bin != null) {
-        	    								try {
-        	    									bin.close();
-        	    								}
-        	    								catch (IOException e) {
-        	    								}
-        	    							}
-        	    						}
-        	    						channelexec.disconnect();
-        	    						int returnCode = channelexec.getExitStatus();
-        	    						
-
-        	    						//download results
-        	    						//channelSftp = (ChannelSftp) sc.openChannel("sftp");
-        	    						//channelSftp = c;
-        	    						//recursiveFolderDownload(workdir, saveFolder.toString()+"/"+"results",c);
-        	    						//        lsFolderRemove(workdir);
-        	    						//channelSftp.exit();
-        	    					}else {
-        	    						Process process = Runtime.getRuntime().exec("ps -p `cat save...`", null, new File(ppSetting.get("outputfolder")+"/"+workid+"/results/"));
-        	    						int returnCode = process.waitFor();
-
-        	    					}
-        	    					**/
 
         						}catch (Exception e2) {
         							System.out.println("download error: "+workdir);
@@ -1647,6 +1758,8 @@ public class JobWindowController {
 						privatekey.setText("");
 						user.setDisable(true);
 						user.setText("");
+						password.setDisable(true);
+						password.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
 						checkdelete.setDisable(true);
@@ -1660,6 +1773,8 @@ public class JobWindowController {
 						privatekey.setText("");
 						user.setDisable(true);
 						user.setText("");
+						password.setDisable(true);
+						password.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
 						checkdelete.setDisable(true);
@@ -1688,7 +1803,7 @@ public class JobWindowController {
 							hostname.setText("");
 							port.setText("22");
 							workfolder.setText("work");
-							imagefolder.setText("~/img");
+							imagefolder.setText("$HOME/img");
 							checkdelete.setSelected(true);
 						}
 						break;
@@ -1710,7 +1825,7 @@ public class JobWindowController {
 							hostname.setText("");
 							port.setText("22");
 							workfolder.setText("work");
-							imagefolder.setText("~/img");
+							imagefolder.setText("$HOME/img");
 							checkdelete.setSelected(true);
 						}
 						break;
@@ -1720,7 +1835,7 @@ public class JobWindowController {
 						//password.setDisable(true);
 						//password.setText("");
 						workfolder.setText("work");
-						imagefolder.setText("~/img");
+						imagefolder.setText("$HOME/img");
 						checkdelete.setSelected(true);
 						break;
 					case "shirokane":
@@ -1729,7 +1844,7 @@ public class JobWindowController {
 						//password.setDisable(true);
 						//password.setText("");
 						workfolder.setText("work");
-						imagefolder.setText("~/img");
+						imagefolder.setText("$HOME/img");
 						checkdelete.setSelected(true);
 						break;
 					case "WSL":
@@ -1772,6 +1887,8 @@ public class JobWindowController {
 						privatekey.setText("");
 						user.setDisable(true);
 						user.setText("");
+						password.setDisable(true);
+						password.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
 						checkdelete.setDisable(true);
@@ -1785,6 +1902,8 @@ public class JobWindowController {
 						privatekey.setText("");
 						user.setDisable(true);
 						user.setText("");
+						password.setDisable(true);
+						password.setText("");
 						workfolder.setDisable(true);
 						workfolder.setText("");
 						checkdelete.setDisable(true);
@@ -1822,7 +1941,7 @@ public class JobWindowController {
         	//FileWriter file = new FileWriter("jobs.json");
         	//PrintWriter pw = new PrintWriter(new BufferedWriter(file));
         	PrintWriter pw = new PrintWriter(new BufferedWriter
-                    (new OutputStreamWriter(new FileOutputStream("jobs.json"),"UTF-8")));
+                    (new OutputStreamWriter(new FileOutputStream(PPSetting.getBaseDir()+"jobs.json"),"UTF-8")));
 
         	pw.write(new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT).writeValueAsString(jobArrayNode));
         	pw.close();
@@ -1839,6 +1958,7 @@ public class JobWindowController {
 
     void searchScript(String scriptFolderPath, String scriptPathString, List<String> scriptcontList ) throws IOException {
 
+    	//「$scriptdir/」で書かれた子スクリプトを探す
         String scriptcontString = readAll(scriptFolderPath+"/"+scriptPathString);
         scriptcontString = scriptcontString.replaceAll("[ \t']", "\n");
         String[] scriptcontStrings = scriptcontString.split("\n");
@@ -1849,6 +1969,48 @@ public class JobWindowController {
         			searchScript(scriptFolderPath, scripti.substring(13), scriptcontList);
         		}
         	}
+        }
+        
+        //「PP_DO_CHILD」、「PP_ENV_CHILD」で書かれた子スクリプトを探す
+        scriptcontString = readAll(scriptFolderPath+"/"+scriptPathString);
+        scriptcontStrings = scriptcontString.split("\n");
+        for(String scripti: scriptcontStrings) {
+        	 String searchString = "PP_DO_CHILD";
+             // searchStringが含まれる位置を見つける
+             int index = scripti.indexOf(searchString);
+             if (index != -1) {
+                 // searchStringが見つかった場合、その文字列以降の部分を抜き出し、先頭の空白文字列を消す
+                 String result = scripti.substring(index + searchString.length()).replaceAll("^\\s+", "");;
+                 // スペースが最初に出てくる位置を見つける
+                 int spaceIndex = result.indexOf(' ');
+                 if (spaceIndex != -1) {
+                     // スペースの前の文字列を切り出す
+                     result = result.substring(0, spaceIndex);
+                 }
+        		if(!scriptcontList.contains(result)) {
+        			scriptcontList.add(result);
+        			searchScript(scriptFolderPath, result, scriptcontList);
+        		}
+             }
+             
+             searchString = "PP_ENV_CHILD";
+             // searchStringが含まれる位置を見つける
+             index = scripti.indexOf(searchString);
+             if (index != -1) {
+                 // searchStringが見つかった場合、その文字列以降の部分を抜き出し、先頭の空白文字列を消す
+                 String result = scripti.substring(index + searchString.length()).replaceAll("^\\s+", "");;
+                 // スペースが最初に出てくる位置を見つける
+                 int spaceIndex = result.indexOf(' ');
+                 if (spaceIndex != -1) {
+                     // スペースの前の文字列を切り出す
+                     result = result.substring(0, spaceIndex);
+                 }
+        		if(!scriptcontList.contains(result)) {
+        			scriptcontList.add(result);
+        			searchScript(scriptFolderPath, result, scriptcontList);
+        		}
+                 
+             }
         }
 
     }
@@ -1864,7 +2026,7 @@ public class JobWindowController {
     }
 
     void mkSymLinkOrCopy(String target, String link) {
-    	if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
+    	if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac")) {
     		try {
     			Files.createSymbolicLink(Paths.get(link+"/"+Paths.get(target).getFileName()), Paths.get(target).toAbsolutePath());
     		} catch (IOException e) {
@@ -1989,4 +2151,5 @@ public class JobWindowController {
     	}
     	return false;
     }
+
 }

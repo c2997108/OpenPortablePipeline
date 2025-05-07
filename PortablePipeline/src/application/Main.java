@@ -22,6 +22,7 @@ public class Main extends Application {
 	        primaryStage.getIcons().add( icon );
 			scene.getStylesheets().add(getClass().getResource("application.css").toExternalForm());
 			primaryStage.setScene(scene);
+			primaryStage.setOnCloseRequest(event -> {System.exit(0);});
 			primaryStage.show();
 		} catch(Exception e) {
 			e.printStackTrace();

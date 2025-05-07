@@ -26,6 +26,6 @@ if not ERRORLEVEL 0 (
  wsl -s PPUbuntu20
 )
 powershell.exe start-process bash -Wait -ArgumentList '-c \"cd @wslcurDir@; echo @password@ |sudo -S bash WSL-setup.sh\"'
-powershell.exe start-process bash -ArgumentList '-c \"echo Do not close this window.; echo @password@ |sudo -S bash service docker start; bash wrapper.sh\"'
-
+powershell.exe start-process bash -ArgumentList '-c \"echo @password@ |sudo -S bash service docker start; echo ; echo Password is OK. Do not close this window.; bash wrapper.sh\"'
+exit
 

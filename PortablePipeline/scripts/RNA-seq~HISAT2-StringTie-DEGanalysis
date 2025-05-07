@@ -419,14 +419,14 @@ echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.
 #ballgown
 echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~ballgown -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
 #Cuffdiff
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d "$opt_d" $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d '"'"$opt_d"'"' $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
 
 EOF
 
  DO_R bash run-DE.$g1.$g2.sh
 done|DOPARALLELONE
 
-WAITPARALLELONE
+WAITPARALLEL
 
 
 post_processing

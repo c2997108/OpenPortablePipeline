@@ -15,7 +15,7 @@ public class PPSetting {
 	public PPSetting() throws JsonProcessingException, IOException{
 		// TODO 自動生成されたコンストラクター・スタブ
         ObjectMapper mapper = new ObjectMapper();
-        node = mapper.readTree(new File("settings.json"));
+        node = mapper.readTree(new File(getBaseDir() + "settings.json"));
 	}
 	public PPSetting(String setting_file) throws JsonProcessingException, IOException{
 		// TODO 自動生成されたコンストラクター・スタブ
@@ -27,6 +27,7 @@ public class PPSetting {
 		if(node.get(param)==null) {
 			return "";
 		}else {
+			//System.out.println(node.get(param).asText());
 			return node.get(param).asText();
 		}
 	}
@@ -41,5 +42,21 @@ public class PPSetting {
 			e.printStackTrace();
 		}
 	}
+	
+
+    public static String getBaseDir() {
+        // 環境変数 "PP_BASE_DIR" の値を取得
+        String baseDir = System.getenv("PP_BASE_DIR");
+
+        // 環境変数がセットされているか確認
+        if (baseDir != null) {
+            if(!(new File(baseDir)).exists()) {
+            	(new File(baseDir)).mkdirs();
+            }
+        	return baseDir + File.separator;
+        } else {
+            return "";
+        }
+    }
 
 }

@@ -1,3 +1,3 @@
 #!/bin/bash
 cd `dirname $(readlink -f $0)`
-./jdk-21.0.1/bin/java --module-path "./javafx-sdk-21.0.1/lib/" --add-modules javafx.controls,javafx.fxml -jar PortablePipeline.jar
+./jre-21.0.7-full/bin/java -jar PortablePipeline.jar

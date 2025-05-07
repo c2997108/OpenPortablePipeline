@@ -1,0 +1,60 @@
+#!/bin/bash
+
+explanation='
+Remove reads with a quality score below a certain threshold and filter out reads corresponding to the lambda phage control sequence used in Nanopore sequencing.
+'
+inputdef='
+input_1:directory:FASTA/FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_q:Minimum quality score:10
+opt_l:Minimum alignment coverage (0-1):0.3
+opt_t:Trimming length from both ends of reads to remove the Nanopore sequencing adapter:60
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -l #opt_l# -t #opt_t# #input_1#"
+
+export IM_MINIMAP2="c2997108/minimap2:2.28_lambda-phage"
+export IM_PIGZ="rtibiocloud/pigz:v2.4_b243f9"
+export IM_CUTADAPT="quay.io/biocontainers/cutadapt:5.0--py310h1fe012e_0"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true`; do
+ if [ `echo "$i"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+  zcat "$i"
+ else
+  cat "$i"
+ fi
+done | awk -v qt=$opt_q '
+  {if(NR%4==1){q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)}}; if(q>=qt){vis=1}else{vis=0}}; if(vis==1){print $0}}
+ ' | DO_MINIMAP2 minimap2 -x map-ont -t $N_CPU /usr/local/lambda.fasta /dev/stdin | awk -v l="$opt_l" '$4-$3>=$2*l{print $1}' > lambda.reads
+
+for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true`; do
+ if [ `echo "$i"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+  zcat "$i"
+ else
+  cat "$i"
+ fi
+done | awk -v qt=$opt_q '
+  FILENAME==ARGV[1]{lam[$1]=1}
+  FILENAME==ARGV[2]{
+   if(FNR%4==1){
+    #lambdaにヒットしていたら除外
+    if(substr($1,2) in lam){vis=0}
+    #クオリティが低いと除外
+    else{q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)}}; if(q>=qt){vis=1}else{vis=0}}
+   };
+   if(vis==1){print $0}
+  }
+ ' lambda.reads /dev/stdin | DO_CUTADAPT cutadapt --cut $opt_t --cut -$opt_t /dev/stdin | DO_PIGZ pigz -p $N_CPU > cleaned.fastq.gz
+
+post_processing
+#<option detail>
+#<opt_q>
+#</opt_q>
+#</option detail>

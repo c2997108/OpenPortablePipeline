@@ -187,7 +187,7 @@ cat umi-find/"`basename $i`".fasta.blastn|awk -F'\t' -v p=0.9 'FILENAME==ARGV[1]
 seqkit fx2tab umi-find/"`basename $i`".fasta|awk '
  function rev(x,  i, str){for(i=length(x);i>0;i--){str=str""substr(x,i,1)}; return str}
  function comp(x){if(x=="A"){return "T"}else if(x=="C"){return "G"}else if(x=="G"){return "C"}else if(x=="T"){return "A"}
-  else if(x=="B"){return "V"}else if(x=="V"){return "B"}else if(x=="D"){return "V"}else if(x=="V"){return "D"}
+  else if(x=="B"){return "V"}else if(x=="V"){return "B"}else if(x=="D"){return "H"}else if(x=="H"){return "D"}
   else if(x=="K"){return "M"}else if(x=="M"){return "K"}else if(x=="R"){return "Y"}else if(x=="Y"){return "R"}
   else if(x=="S"){return "W"}else if(x=="W"){return "S"}else{return "N"}}
  function revcomp(x,  i, str, revx){revx=rev(x); for(i=1;i<=length(revx);i++){str=str""comp(substr(revx,i,1))}; return str}
@@ -201,6 +201,8 @@ done
 for i in $rgz; do
  echo $ENV_SEQKIT bash run-umifind.sh "$i" "$opt_a" "$opt_b" "$opt_e" "$opt_q"
 done) | DOPARALLELONE
+
+WAITPARALLEL
 
 cat umi-find/*.fasta.blastn.tsv2 > all.fasta.blastn.tsv2
 sort -k2,2 -t$'\t' all.fasta.blastn.tsv2 > all.fasta.blastn.tsv2.sort
@@ -234,6 +236,8 @@ done
 cd ../umi-correct
 for i in umi-*.fa; do echo "head -n 200 $i > $i.100; $ENV_MUSCLE muscle -in $i.100 -out $i.100.muscle; rm $i.100; $ENV_CONS cons -sequence $i.100.muscle -outseq $i.100.muscle.fasta"; done|DOPARALLELONE
 
+WAITPARALLEL
+
 cat << 'EOF' > run-medaka.sh
 i=$1 #umi-CTACAGTAGTATG-AAGGCAATCATC.fa
 
@@ -249,6 +253,8 @@ cat $i.100.muscle.fasta.rmn2.medaka/consensus.fasta|tail -n+2 >> $i.100.muscle.f
 EOF
 
 for i in umi-*-*.fa; do echo "$ENV_MEDAKA bash run-medaka.sh $i"; done|DOPARALLELONE
+
+WAITPARALLEL
 
 cat umi-*-*.fa.100.muscle.fasta.rmn2.medaka.fasta > umi-all.medaka
 DO_SEQKIT seqkit fx2tab umi-all.medaka|cut -f 2|awk '{print toupper($0)}'|sort|uniq -c|sort -nr|awk '{print ">"NR"_"$1; print $2}' > umi-all.medaka.umi.fa

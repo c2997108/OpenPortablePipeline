@@ -1,0 +1,80 @@
+#!/bin/bash
+
+explanation='
+This pipeline clusters Nanopore sequences and generates a consensus sequence for each cluster, making it a highly useful alternative to Sanger sequencing.
+'
+inputdef='
+input_1:directory:Nanopore FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_i:Identity threshold during clustering (0-1):0.9
+opt_k:Minimum read count per cluster for consensus generation:10
+opt_n:Maximum number of reads used for consensus sequence generation:30
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -n #opt_n# #input_1#"
+
+export IM_MUSCLE="c2997108/rocky9:dev_vsearch_muscle"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+r="`find $input_1/ |egrep '[.]f(ast|)q$' || echo ''`"
+rgz="`find $input_1/ |egrep '[.]f(ast|)q[.]gz$' || echo ''`"
+
+if [ "$r$rgz" = "" ]; then echo "Place fastq(.gz) files in input folder"; post_processing; fi
+
+cat << 'EOF' > run-consensus.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+i="$1"
+opt_i="$2" #0.9
+opt_k="$3" #10
+opt_n="$4" #30
+
+workdir=work/`basename $i`.dir
+mkdir -p "$workdir"
+vsearch --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
+seqkit fx2tab "$i"|awk -F'\t' -v dir="$workdir" -v minreads="$opt_k" '
+ FILENAME==ARGV[1]{seq[$1]=$2; q[$1]=$3}
+ FILENAME==ARGV[2]{if($1=="S"){s[$2]=$9}else if($1=="H"){c[$2]++; r[$2][c[$2]]=$9}}
+ END{
+  for(i in c){
+   if(c[i]+1>=minreads){
+    print i"\t"c[i]+1; print ">"s[i]"\n"seq[s[i]] > dir"/cluster"i"_"c[i]+1"reads.fasta";
+    for(j in r[i]){print ">"r[i][j]"\n"seq[r[i][j]] > dir"/cluster"i"_"c[i]+1"reads.fasta"}
+   }
+  }
+ }' /dev/stdin $workdir/vsearch-clusters.uc
+mkdir -p output
+for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
+ head -n $((10#$opt_n*2)) $j > $j.sub
+ muscle -align $j.sub -output $j.sub.muscle
+ cons -sequence $j.sub.muscle -outseq $j.sub.muscle.fa
+ sed 's/n//g' $j.sub.muscle.fa > $j.sub.muscle.fa.rmn
+ fastareformat $j.sub.muscle.fa.rmn > $j.sub.muscle.fa.rmn2
+ (echo ">consensus_"`basename $i`_`basename $j .fasta`; tail -n+2 $j.sub.muscle.fa.rmn2) > $j.sub.muscle.fa.rmn3
+ cat $j.sub.muscle.fa.rmn3 $j.sub > $j.sub.fa
+ muscle -align $j.sub.fa -output $j.sub.fa.muscle
+ cp $j.sub.muscle.fa.rmn3 output/`basename $i`_`basename $j`
+ cp $j.sub.fa.muscle output/`basename $i`_`basename $j`.muscle
+done
+
+EOF
+
+find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
+ echo $ENV_MUSCLE bash run-consensus.sh "$i" "$opt_i" "$opt_k" "$opt_n"
+done | DOPARALLEL
+
+WAITPARALLEL
+
+post_processing
+
+#<option detail>
+#</option detail>
+

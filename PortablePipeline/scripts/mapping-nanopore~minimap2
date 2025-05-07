@@ -4,7 +4,7 @@ explanation='
 Minimap mapping for single-end read.
 '
 inputdef='
-input_1::FASTA/FASTQ:*.fasta,*.fa,*.fna,*.fsa,*.fastq,*.fq,*.fastq.gz,*.fq.gz,*.fasta.gz,*.fa.gz,*.fna.gz,*.fsa.gz
+input_1:directory:FASTA/FASTQ:*.fasta,*.fa,*.fna,*.fsa,*.fastq,*.fq,*.fastq.gz,*.fq.gz,*.fasta.gz,*.fa.gz,*.fna.gz,*.fsa.gz
 input_2::FASTA:*.fa,*.fasta,*.fna,*.fsa
 '
 optiondef='
@@ -17,8 +17,8 @@ opt_l:Transdecoder.LongOrfs option (opt_e must be y to use):-m 100 -S
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -g #opt_g# -e #opt_e# -l #opt_l# #input_1# #input_2#"
 
-export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.24--h7132678_1"
-export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
+export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.28--h577a1d6_4"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.19--h50ea8bc_0"
 export IM_BEDTOOLS="biocontainers/bedtools:v2.28.0_cv2"
 export IM_KENT="c2997108/centos7:1-kentUtils"
 export IM_TRINOTATE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
@@ -31,9 +31,22 @@ set -o pipefail
 
 fq="$input_1"
 ref="$input_2"
-DO_MINIMAP2 minimap2 -t $N_CPU -a $opt_f "$ref" "$fq" | (DO_SAMTOOLS samtools sort -@ $N_CPU -o output.bam)
-DO_SAMTOOLS samtools index output.bam
 DO_SAMTOOLS samtools faidx "$ref"
+mkdir -p mapping.split
+
+for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.]f((ast|)(a|q)|na|sa)(|[.]gz)$' || true`; do
+ echo $ENV_MINIMAP2 minimap2 -t $N_CPU -a $opt_f $ref $i "| (" $ENV_SAMTOOLS samtools sort -@ $N_CPU -o mapping.split/`basename $i`.bam ")"
+done | DOPARALLEL
+
+WAITPARALLEL
+
+if [ `ls mapping.split | grep "[.]bam$" | wc -l` = 1 ];then
+ mv mapping.split/*.bam output.bam
+else
+ DO_SAMTOOLS samtools merge -f -@ $N_CPU --no-PG -c -o output.bam mapping.split/*.bam
+fi
+rm -rf mapping.split
+DO_SAMTOOLS samtools index output.bam
 
 if [ "$opt_g" = "y" ]; then
  DO_BEDTOOLS bedtools bamtobed -bed12 -i output.bam > output.bed

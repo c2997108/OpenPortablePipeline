@@ -1,27 +1,26 @@
 #!/bin/bash
 
 explanation='
-Create a graph of coverage and contig length to check the contamination of the assembled contig with bwa for short reads.
+Create a graph of coverage and contig length to check the contamination of the assembled contig with minimap2 for long reads.
 '
 inputdef='
 input_1::FASTA:*.fa,*.fasta
-input_2:directory option:paired-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
-input_3:directory option:single-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:directory option:single-end FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
 '
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_b:make a bam file (true/false):true
-opt_a:alignment coverage threshold:0.8
+opt_a:alignment coverage threshold:0.3
 opt_q:minimum mapping quality:0
 opt_s:contigs for genome size estimation:20
-opt_x:merge all fastq files (true/false):false
+opt_x:merge all fastq files (true/false):true
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -a #opt_a# -q #opt_q# -s #opt_s# -x #opt_x# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -a #opt_a# -q #opt_q# -s #opt_s# -x #opt_x# #input_1# #input_2#"
 
-export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h91753b0_3"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.19--h50ea8bc_0"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
-export IM_BWA="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
+export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.28--h577a1d6_4"
 export IM_R="c2997108/ubuntu20:R-2_gplots"
 export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
 
@@ -32,40 +31,16 @@ set -o pipefail
 
 
 ref=$input_1
-
-if [ ! -e "$ref".sa ]; then
- DO_BWA bwa index $ref
-fi
 if [ ! -e "$ref".fai ]; then
  DO_SAMTOOLS samtools faidx $ref
 fi
 
-(if [ "$input_2" != "" ]; then
- for i in `find $input_2/ -maxdepth 1 |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
-  if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
-   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
-  elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
-   j=`echo $i|sed 's/_R1/_R2/'`;
-  else
-   j=none
-  fi
-  i2=`basename $i`
-  if [ -e "$j" ]; then
-   samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$j' | awk -F'\t' 'substr(\$0,1,1)==\"@\"||\$4!=\"0\"' > '$i2.sam'"
-  else
-   samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' | awk -F'\t' 'substr(\$0,1,1)==\"@\"||\$4!=\"0\"' > '$i2.sam'"
-  fi
- done
-fi
-if [ "$input_3" != "" ]; then
- for i in `find $input_3/ -maxdepth 1 |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
+for i in `find $input_2/ -maxdepth 1 |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
   i2=`basename $i`
   samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-  echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' | awk -F'\t' 'substr(\$0,1,1)==\"@\"||\$4!=\"0\"' > '$i2.sam'"
- done
-fi) | DOPARALLEL
+  #supplementary alignment 0x800 , secondary alignment 0x100 フラグを除去
+  echo "$ENV_MINIMAP2 minimap2 -t $N_CPU -ax map-ont --sam-hit-only '$ref' '$i' | ( $ENV_SAMTOOLS samtools view -h -F 0x900 ) > '$i2.sam'"
+done | DOPARALLEL
 
 WAITPARALLEL
 
@@ -75,10 +50,17 @@ opt_a=$2
 opt_q=$3
 ref=$4
  grep -v "^@" $i|(awk -F'\t' -v cov=$opt_a -v minq=$opt_q '
-  $5>=minq {a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]};
-   for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}
+  $5>=minq {
+   a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0;
+   for(i in arr){map+=arr[i]};
+   b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]};
+   if(map/total>=cov){print map"\t"$0}
   }') > ${i}2
- awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{a[$4]+=$1} END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}' $ref.fai ${i}2 > ${i}2.cov
+ awk -F'\t' '
+  FILENAME==ARGV[1]{len[$1]=$2}
+  FILENAME==ARGV[2]{a[$4]+=$1}
+  END{for(i in a){print i"\t"a[i]/len[i]"\t"a[i]"\t"len[i]}}
+ ' $ref.fai ${i}2 > ${i}2.cov
  echo 'library(Cairo); a=read.table("'${i}2.cov'",sep="\t",row.names=1);
  CairoPNG(file="'${i}2.cov'.png",width=1000,height=1000); sunflowerplot(x=a[,1], y=a[,3], xlab="coverage [fold]", ylab="contig length [bp]", log="xy"); dev.off()' | (R --vanilla < /dev/stdin)
  (echo -e 'id\tcoverage\tmapped bases\tlength'; cat ${i}2.cov) > ${i}.coverage.txt
@@ -104,7 +86,7 @@ if [ "$opt_b" = "true" ]; then
  cat << 'EOF' > run-makebam.sh
 i=$1
 N_CPU=$2
-(samtools view -SH $i; cut -f 2- ${i}2)|(samtools view -Sb -@ $N_CPU -) | (samtools sort -T $i.clean -@ $N_CPU -o $i.clean.bam)
+(samtools view -SH $i; cut -f 2- ${i}2)|(samtools view -Sb -@ $N_CPU ) | (samtools sort -T $i.clean -@ $N_CPU -o $i.clean.bam)
 samtools index $i.clean.bam
 
 EOF
@@ -116,15 +98,14 @@ EOF
  WAITPARALLEL
 
  if [ "$opt_x" = "true" ]; then
-  cat *.sam|grep -v "^@"|(DO_AWK awk -F'\t' -v cov=$opt_a -v minq=$opt_q '$5>=minq{a=$6; gsub(/[0-9]+[^0-9M]/,"",a); split(a,arr,"M"); map=0; for(i in arr){map+=arr[i]}; b=$6; gsub(/[^0-9]/,",",b); split(b,arr,","); total=0; for(i in arr){total+=arr[i]}; for(i=12;i<=NF;i++){if($i~"^MD:Z:"){c=$i; gsub(/^MD:Z:/,"",c); gsub(/[0-9]/,"",c); if((map-length(c))/total>=cov){print map"\t"$0}}}}') > $outname.sam2
-  (DO_SAMTOOLS samtools view -SH `ls -S *.sam|head -n 1`; cut -f 2- $outname.sam2)|(DO_SAMTOOLS samtools view -Sb -@ $N_CPU -) | (DO_SAMTOOLS samtools sort -T $outname.clean -@ $N_CPU -o $outname.clean.bam)
-  DO_SAMTOOLS samtools index $outname.clean.bam
+  DO_SAMTOOLS samtools merge -f $outname.bam *.clean.bam
+  DO_SAMTOOLS samtools index $outname.bam
  fi
 fi
 
 rm -f *.sam *.sam2
 
-DO_SEQKIT seqkit stats `(find "$input_2" "$input_3" -maxdepth 1 2> /dev/null || true)| egrep '[.]f(ast|)q(|[.]gz)$'`|tail -n+2|sed 's/,//g'|awk '{a+=$5} END{print a}' > temp.txt
+DO_SEQKIT seqkit stats `(find "$input_2" -maxdepth 1 2> /dev/null || true)| egrep '[.]f(ast|)q(|[.]gz)$'`|tail -n+2|sed 's/,//g'|awk '{a+=$5} END{print a}' > temp.txt
 tail -n+2 $outname.output.txt|sort -k4,4nr -t $'\t'|awk -v n=$opt_s 'NR<=n{a+=$2} END{print a/n}' > temp2.txt
 awk -v total=`cat temp.txt` -v depth=`cat temp2.txt` -v n=$opt_s 'BEGIN{print "Total bases of input reads: "total" bp"; print "Average depth of the longest "n" contigs: "depth" x"; print "Estimated genome size: "total / depth" bp"}' > estimated_genomesize.txt
 rm -f temp.txt temp2.txt

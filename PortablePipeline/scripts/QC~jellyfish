@@ -4,7 +4,7 @@ explanation='
 Fast, Parallel k-mer Counting for genome size estimation
 '
 inputdef='
-input_1:directory:FASTQ(.gz):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_1:directory:FASTA/FASTQ(.gz):*.fasta,*.fa,*.fastq,*.fq,*.fasta.gz,*.fa.gz,*.fastq.gz,*.fq.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -24,9 +24,9 @@ set -o pipefail
 
 cd $input_1
 
-r1=`ls |egrep "[.]f(ast|)q([.]gz|)$" || echo ""`
+r1=`ls |egrep "[.]f(ast|)(a|q)([.]gz|)$" || echo ""`
 
-if [ "$r1" = "" ]; then echo Place fastq or fastq.gz files in this folder; exit; fi
+if [ "$r1" = "" ]; then echo Place fasta/fastq or fasta.gz/fastq.gz files in this folder; exit; fi
 
 set -x
 cmd="jellyfish count -o output -t $N_CPU $opt_j"
@@ -60,7 +60,44 @@ CairoPNG("kmer-base-histogram.png", width = 1000, height = 1000)
 barplot(t(d),xlab = "K-mer frequency section", ylab = "K-mer frequency x coverage")
 dev.off()'|(DO_R R --vanilla < /dev/stdin)
 
-DO_SEQKIT seqkit stats $r1
+DO_SEQKIT seqkit stats $r1 | tee reads.stats
+awk 'NR>1{gsub(/,/,"",$4); reads+=$4; gsub(/,/,"",$5); sum+=$5} END{print reads"\t"sum"\t"sum/reads}' reads.stats > reads.stats.txt
+
+awk '{
+  #通常はfreq=1の時がノイズにより最大値でいったん減少したのちにkmerピークが出てくる
+  if(tempmax==0){tempmax=$2}
+  #値が上昇していれば最大値を更新
+  else if($2>tempmax){tempmax=$2; localmax=tempmax; localfreq=$1}
+  #一度は上昇したことがあるけど、今回は上昇していなければピークを過ぎたと判断して過去の最大値の1/5より大きければ出力
+  else if(localmax>0){
+   if(localmax>pastlocalmax){print localfreq"\t"localmax; pastlocalmax=localmax};
+   localmax=0
+  }else{
+   #減少し続けているときは最大値を減らしておく
+   tempmax=$2
+  }
+ }' output.txt > peak.txt
+
+#ゲノムサイズ={全塩基数(=(リード数) x (リード長))} x {(リード長) - (k-merサイズ(デフォルトは21)) + 1} / (リード長) / (メインピークのカバレッジ)
+#シーケンスエラー分のkmerを削除。ノイズはポアソン分布を仮定
+#y2/y1=lambda/2, scale_a=y1/lambda/e^(-lambda), x>=1の合計kmer数:a*(1–e^(–lambda))
+
+echo 'Genome size = (read length) x reads x ( read length - k-mer length + 1 ) / (read length) / (k-mer frequency of main peak)'
+awk -v kmer=`echo "$opt_j"|awk '{for(i=1;i<=NF;i++){if($i=="-m"){a=1}else if(a==1){a=0; m=$i; break}}; print m}'` -F'\t' '
+ FILENAME==ARGV[1]{reads=$1; avg_len=$3}
+ FILENAME==ARGV[2]{peak=$1}
+ FILENAME==ARGV[3]{
+  split($0,arr," ");
+  if(arr[1]==1){y1=arr[1]*arr[2]}else if(arr[2]==2){y2=arr[1]*arr[2]; r=2*y2/y1; a=y1/r/exp(-r)}; cnt+=arr[1]*arr[2]
+ }
+ END{
+  OFMT="%.f";
+  print "Estimated genome size (bp):";
+  print avg_len * reads * ( avg_len - kmer + 1 ) / avg_len / peak
+  print "Estimated genome size with sequence errors removed (bp):"
+  print avg_len * reads * ( avg_len - kmer + 1 ) * (cnt-a*(1-exp(-r)))/cnt / avg_len / peak
+}
+' reads.stats.txt <(tail -n 1 peak.txt) output.txt | tee estimated.txt
 
 post_processing
 #<option detail>

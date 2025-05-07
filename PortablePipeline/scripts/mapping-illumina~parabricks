@@ -1,0 +1,87 @@
+#!/bin/bash
+
+explanation='
+NVIDIA Parabricks mapping tool. This tool needs NVIDIA GPU with over 16GB GPU memory.
+'
+inputdef='
+input_1:directory:paired-end FASTQ or single FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_3:directory option:bwa index:*.amb,*.ann,*.bwt,*.pac,*.sa
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_p:Parabricks pbrun options:--no-markdups
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -p #opt_p# #input_1# #input_2# #input_3#"
+
+export IM_BWA="quay.io/biocontainers/bwa:0.7.17--pl5.22.0_1"
+export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
+export IM_PARABRICKS="nvcr.io/nvidia/clara/clara-parabricks:4.1.0-1"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+
+if [ "$input_3" = "" ]; then
+ DO_BWA bwa index "$input_2"
+ ref="$input_2"
+else
+ ref="`ls -LS $input_3/*|grep [.]bwt$|head -n 1|sed 's/.bwt$//'||true`"
+fi
+
+mkdir -p output.bwa
+reads=$(ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" '
+  {file[$0]=1}
+  END{
+   PROCINFO["sorted_in"]="@ind_str_asc"
+   for(i in file){
+    if(flag[i]!=1){
+     r1=i;
+     r2="";
+     if(i~"_1[.]f(ast|)q(|[.]gz)$"){
+      flag[i]=1;
+      samplename=gensub(/_1[.]f(ast|)q(|[.]gz)$/,"",1,i);
+      j=gensub(/_1[.]f(ast|)q(|[.]gz)$/,"_2.f\\1q\\2",1,i);
+      if(j in file){
+       flag[j]=1;
+       r2=j;
+      }
+     }else if(i~"_R1(.*)[.]f(ast|)q(|[.]gz)$"){
+      flag[i]=1;
+      samplename=gensub(/_R1(.*)[.]f(ast|)q(|[.]gz)$/,"",1,i);
+      j=gensub(/_R1(.*)[.]f(ast|)q(|[.]gz)$/,"_R2\\1.f\\2q\\3",1,i);
+      if(j in file){
+       flag[j]=1;
+       r2=j;
+      }
+     }
+     if(flag[r2]==1){
+      print "--in-fq "input_1"/"r1" "input_1"/"r2
+     }else{
+      flag[r1]=0
+     }
+    }
+   }
+   for(i in file){
+    if(flag[i]!=1){
+     r1=i;
+     samplename=gensub(/[.]f(ast|)q(|[.]gz)$/,"",1,i);
+     flag[i]=1;
+     print "--in-se-fq "input_1"/"r1
+    }
+   }
+  }
+ ')
+
+DOGPU_PARABRICKS pbrun fq2bam --ref "$ref" $reads --out-bam output.parabricks.bam $opt_p
+
+post_processing
+#<option detail>
+#<opt_p>
+
+#</opt_p>
+#</option detail>
+

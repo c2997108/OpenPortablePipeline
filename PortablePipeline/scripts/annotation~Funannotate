@@ -1,0 +1,140 @@
+#!/bin/bash
+
+explanation='
+Funannotate is a genome prediction, annotation, and comparison software package.
+RNA-seq data will be used for the PASA-mediated "annotation comparison" to add UTRs and refine gene model predictions.
+'
+inputdef='
+input_1::reference genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2:directory:paired-end or single-end FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_3:option:GeneMark-ES/ET/EP LINUX 64 binary (http://exon.gatech.edu/genemark/license_download.cgi):gmes_linux_64*.tar.gz
+input_4:option:GeneMark-ES/ET/EP LINUX 64 license (http://exon.gatech.edu/genemark/license_download.cgi):gm_key_64.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_s:Species name (e.g. Homo sapiens):Species name
+opt_a:clean option:--minlen 1000
+opt_b:sort option:--minlen 1000
+opt_d:mask option:
+opt_t:train option:--stranded RF --jaccard_clip
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -a #opt_a# -b #opt_b# -d #opt_d# -t #opt_t# #input_1# #input_2# #input_3# #input_4#"
+
+export IM_FUNANNOTATE="nextgenusfs/funannotate:v1.8.17"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+if [ `basename "$input_3"|grep "gmes_linux_64.*[.]tar[.]gz"|wc -l` = 1 -a `basename "$input_4"` = "gm_key_64.gz" ]; then
+ mkdir -p fun/predict_misc/genemark
+ zcat "$input_4" > fun/predict_misc/genemark/.gm_key
+ rm -rf gmes_linux_64
+ tar vxf "$input_3"
+ mv `find . -maxdepth 1 -type d|grep gmes_linux_64` gmes_linux_64
+ sed -i '1s%/usr/bin/perl%/venv/bin/perl%' gmes_linux_64/*.pl
+ OPT_GENEMARK_PATH="--GENEMARK_PATH $PWD"/gmes_linux_64
+else
+ OPT_GENEMARK_PATH=""
+fi
+
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_FUNANNOTATE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+
+pppair1=()
+pppair2=()
+ppsingle=()
+while IFS= read i; do
+ if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
+  temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
+ else
+  temppair2=`echo "$i"|sed 's/_R1/_R2/'`
+ fi
+ if [ -e "$temppair2" ]; then
+  pppair1+=( "$i" )
+  pppair2+=( "$temppair2" )
+ else
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_2/" |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$')
+
+while IFS= read i; do
+ ppinputcheck=0
+ for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+  if [ "$j" = "$i" ]; then
+   ppinputcheck=1
+   break
+  fi
+ done
+ if [ $ppinputcheck = 0 ];then
+  ppsingle+=( "$i" )
+ fi
+done < <(find "$input_2/" |egrep '[.]f(ast|)q(|[.]gz)$')
+
+traininput=""
+if [ "${pppair1:-}" != "" ]; then
+ traininput="--left ${pppair1[@]} --right ${pppair2[@]}"
+fi
+if [ "${ppsingle:-}" != "" ]; then
+ traininput="$traininput --single ${ppsingle[@]}"
+fi
+
+DO_FUNANNOTATE funannotate clean -i "$input_1" -o genome.cleaned.fa $opt_a
+DO_FUNANNOTATE funannotate sort -b scaffold -i genome.cleaned.fa -o genome.cleaned.sorted.fa $opt_b
+DO_FUNANNOTATE funannotate mask -i genome.cleaned.sorted.fa --cpus $N_CPU -o MyAssembly.fa $opt_d
+DO_FUNANNOTATE funannotate train -i MyAssembly.fa -o fun --species "$opt_s" --cpus $N_CPU --memory "$N_MEM_G"G $opt_t $traininput
+DO_FUNANNOTATE funannotate predict $OPT_GENEMARK_PATH -i MyAssembly.fa -o fun -s "$opt_s" --cpus $N_CPU
+DO_FUNANNOTATE funannotate update -i fun --cpus $N_CPU
+DO_FUNANNOTATE funannotate annotate -i fun --cpus $N_CPU
+awk -F'\t' '
+ FILENAME==ARGV[1]{split($1,arr," "); name[length($2)][substr($2,1,100000)]=arr[1]}
+ FILENAME==ARGV[2]{print $1"\t"name[length($2)][substr($2,1,100000)]}
+' <(seqkit fx2tab genome.cleaned.fa) <(seqkit fx2tab genome.cleaned.sorted.fa) > rename.txt
+cat fun/annotate_results/*.gff3 | awk -F'\t' -v OFS="\t" 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{$1=name[$1]; print $0}' rename.txt /dev/stdin > funannotate.gff3
+
+
+post_processing
+
+#<option detail>
+#<opt_a>
+  -p, --pident   Percent identity of overlap. Default = 95
+  -c, --cov      Percent coverage of overlap. Default = 95
+  -m, --minlen   Minimum length of contig to keep. Default = 500
+  --exhaustive   Test every contig. Default is to stop at N50 value.
+#</opt_a>
+#<opt_b>
+  -s, --simplify Try to simplify the FASTA headers, split at first space.
+  -b, --base     Base name to relabel contigs. Default: scaffold
+  --minlen       Shorter contigs are discarded. Default: 0
+#</opt_b>
+#<opt_d>
+  -m, --method                 Method to use. Default: tantan [repeatmasker, repeatmodeler]
+  -s, --repeatmasker_species   Species to use for RepeatMasker
+  -l, --repeatmodeler_lib      Custom repeat database (FASTA format)
+  --debug                      Keep intermediate files
+#</opt_d>
+#<opt_t>
+  --stranded               If RNA-seq library stranded. [RF,FR,F,R,no]
+  --left_norm              Normalized left FASTQ reads (R1)
+  --right_norm             Normalized right FASTQ reads (R2)
+  --single_norm            Normalized single-ended FASTQ reads
+  --pacbio_isoseq          PacBio long-reads
+  --nanopore_cdna          Nanopore cDNA long-reads
+  --nanopore_mrna          Nanopore mRNA direct long-reads
+  --trinity                Pre-computed Trinity transcripts (FASTA)
+  --jaccard_clip           Turn on jaccard clip for dense genomes [Recommended for fungi]
+  --no_normalize_reads     Skip read Normalization
+  --no_trimmomatic         Skip Quality Trimming of reads
+  --memory                 RAM to use for Jellyfish. Default: 50G
+  -c, --coverage           Depth to normalize reads. Default: 50
+  -m, --min_coverage       Min depth for normalizing reads. Default: 5
+  --pasa_alignment_overlap PASA --stringent_alignment_overlap. Default: 30.0
+  --aligners               Aligners to use with PASA: Default: minimap2 blat [gmap]
+  --pasa_min_pct_aligned   PASA --MIN_PERCENT_ALIGNED. Default: 90
+  --pasa_min_avg_per_id    PASA --MIN_AVG_PER_ID. Default: 95
+  --pasa_num_bp_splice     PASA --NUM_BP_PERFECT_SPLICE_BOUNDARY. Default: 3
+  --max_intronlen          Maximum intron length. Default: 3000
+  --strain                 Strain name
+  --isolate                Isolate name
+  --no-progress            Do not print progress to stdout for long sub jobs
+#</opt_t>
+#</option detail>
+

@@ -1,0 +1,85 @@
+#!/bin/bash
+
+explanation='
+miRDeep2 mapping for small RNA reads.
+'
+inputdef='
+input_1:directory:FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2::FASTA:*.fa,*.fasta,*.fna,*.fsa
+input_3:directory option:bowtie index:*.1.ebwt,*.2.ebwt,*.3.ebwt,*.4.ebwt,*.rev.1.ebwt,*.rev.2.ebwt
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):32
+opt_d:miRDeep2 option (-k TGGAATTC for TruSeq Small RNA Library Preparation Kits TGGAATTC, -k AGTCGGAGGC for MGIEasy Small RNA Library Prep Kit):-i -j -k AGTCGGAGGC -l 18 -m -v -r 100 -u -n
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -d #opt_d# #input_1# #input_2# #input_3#"
+
+export IM_MIRDEEP2="c2997108/mirdeep2:1"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+if [ "$input_3" = "" ];then
+ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then
+  DO_MIRDEEP2 zcat "$input_2" > `basename "$input_2" .gz`;
+  input_2=`basename "$input_2" .gz`
+ fi
+ DO_MIRDEEP2 bowtie-build "$input_2" "$input_2"
+else
+ input_2="`ls -LS $input_3/*|grep [.]1[.]ebwt$|head -n 1|sed 's/.1.ebwt$//'||true`"
+fi
+
+mkdir -p fastq.gunzip
+
+for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)[.]gz$' || true`; do
+ echo $ENV_MIRDEEP2 "zcat $i > "fastq.gunzip/`basename "$i" .gz`
+done | DOPARALLEL
+
+WAITPARALLEL
+
+for i in `find "$input_1"/ fastq.gunzip/ -maxdepth 1 |grep -E '[.](fastq|fq)$' || true`; do
+ echo $ENV_MIRDEEP2 mapper.pl "$i" -e -h -p "$input_2" -s `basename $i`.reads_collapsed.fa -t `basename $i`.reads_vs_refdb.arf $opt_d
+done | DOPARALLEL
+
+WAITPARALLEL
+
+
+post_processing
+
+#<option detail>
+#<opt_d>
+Preprocessing/mapping:
+-g              three-letter prefix for reads (by default 'seq')
+-h              parse to fasta format
+-i              convert rna to dna alphabet (to map against genome)
+-j              remove all entries that have a sequence that contains letters
+                other than a,c,g,t,u,n,A,C,G,T,U,N
+-k seq          clip 3' adapter sequence
+-l int          discard reads shorter than int nts, default = 18
+-m              collapse reads
+
+-p genome       map to genome (must be indexed by bowtie-build). The 'genome'
+                string must be the prefix of the bowtie index. For instance, if
+                the first indexed file is called 'h_sapiens_37_asm.1.ebwt' then
+                the prefix is 'h_sapiens_37_asm'.
+-q              map with one mismatch in the seed (mapping takes longer)
+
+-r int          a read is allowed to map up to this number of positions in the genome
+                default is 5
+
+Output files:
+-s file         print processed reads to this file
+-t file         print read mappings to this file
+
+Other:
+-u              do not remove directory with temporary files
+-v              outputs progress report
+
+-n              overwrite existing files
+
+-o              number of threads to use for bowtie
+#</opt_d>
+#</option detail>

@@ -39,6 +39,11 @@ WAITPARALLEL
 
 bash "$scriptdir"/ZZZ~wait-10sec ./
 
+PP_DO_CHILD ZZZ~wait-10sec ./
+
+PP_ENV_CHILD ZZZ~wait-10sec ./ | DOPARALLELONE
+WAITPARALLEL
+
 post_processing
 #<option detail>
 #<opt_c>

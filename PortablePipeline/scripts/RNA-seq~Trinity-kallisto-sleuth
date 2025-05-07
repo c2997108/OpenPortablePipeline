@@ -93,7 +93,8 @@ for i in $r1 $r1gz; do
  fi
  #Mapping and quantification by kallisto
  #echo "#run kallisto quant of $i"
- echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i` -t 1 --pseudobam $i $j; $ENV_SAMTOOLS samtools sort -@ 1 -o kallisto.output/`basename $i`/pseudoalignments.sorted.bam kallisto.output/`basename $i`/pseudoalignments.bam; $ENV_KALLISTO rm -f kallisto.output/`basename $i`/pseudoalignments.bam; $ENV_KALLISTO mv kallisto.output/`basename $i`/pseudoalignments.sorted.bam output_bam/`basename $i`.bam; $ENV_SAMTOOLS samtools index output_bam/`basename $i`.bam; cd kallisto.output; tar zvcf `basename $i`.kallisto.tar.gz `basename $i`"
+ i_rm_gz=`echo $i|sed 's/[.]gz$//'`
+ echo "$ENV_KALLISTO kallisto quant $opt_k -i kallisto.index -o kallisto.output/`basename $i_rm_gz` -t 1 --pseudobam $i $j; $ENV_SAMTOOLS samtools sort -@ 1 -o kallisto.output/`basename $i_rm_gz`/pseudoalignments.sorted.bam kallisto.output/`basename $i_rm_gz`/pseudoalignments.bam; $ENV_KALLISTO rm -f kallisto.output/`basename $i_rm_gz`/pseudoalignments.bam; $ENV_KALLISTO mv kallisto.output/`basename $i_rm_gz`/pseudoalignments.sorted.bam output_bam/`basename $i_rm_gz`.bam; $ENV_SAMTOOLS samtools index output_bam/`basename $i_rm_gz`.bam; cd kallisto.output; tar zvcf `basename $i_rm_gz`.kallisto.tar.gz `basename $i_rm_gz`"
 done|DOPARALLELONE
 
 WAITPARALLEL
@@ -105,11 +106,17 @@ DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/support_scripts/get_Trinity_ge
 cd kallisto.output
 cp ../Trinity.fasta.gene_trans_map .
 DO_R /usr/local/trinityrnaseq-Trinity-v2.8.5/util/abundance_estimates_to_matrix.pl --est_method kallisto --gene_trans_map Trinity.fasta.gene_trans_map --out_prefix kallisto --name_sample_by_basedir */abundance.tsv
-mv kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.gene.counts.matrix kallisto.gene.TPM.not_cross_norm ..
- if [ -e kallisto.isoform.TMM.EXPR.matrix ]; then
+#mv kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.gene.counts.matrix kallisto.gene.TPM.not_cross_norm ..
+for i in kallisto.isoform.counts.matrix kallisto.isoform.TPM.not_cross_norm kallisto.gene.counts.matrix kallisto.gene.TPM.not_cross_norm; do
+ awk -F'\t' 'NR==1{OFS="\t"; for(i=2;i<=NF;i++){sub(/[.]gz$/,"",$i)}; print $0} NR>1{print $0}' $i > ../$i
+done
+if [ -e kallisto.isoform.TMM.EXPR.matrix ]; then
   #for 2 or more samples
-  mv kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix ..
- fi
+  #mv kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix ..
+  for i in kallisto.isoform.TMM.EXPR.matrix kallisto.gene.TMM.EXPR.matrix; do
+   awk -F'\t' 'NR==1{OFS="\t"; for(i=2;i<=NF;i++){sub(/[.]gz$/,"",$i)}; print $0} NR>1{print $0}' $i > ../$i
+  done
+fi
 cd ..
 
 bash "$scriptdir"/annotation~Trinotate -c $N_CPU -m $N_MEM Trinity.fasta Trinity.fasta.gene_trans_map
@@ -133,7 +140,7 @@ DO_MERGE merge_table.pl -k kallisto.go.counts.matrix.ren Trinotate.xls3.go > Tri
 
 #sample.txt
 if [ -e "$input_2" ]; then
- cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
+ cat "$input_2" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
 else
  touch sample.txt2
 fi
@@ -340,7 +347,7 @@ EOF
  DO_R bash run-DE.$g1.$g2.sh
 done|DOPARALLELONE
 
-WAITPARALLELONE
+WAITPARALLEL
 
 
 

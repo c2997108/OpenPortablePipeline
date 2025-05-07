@@ -70,7 +70,9 @@ if [ "$opt_f" = "" ]; then
  mkdir -p input.sleuth.extract.$g1.$g2
  for i in $input_5/*.kallisto.tar.gz; do tar zvxf $i -C input.sleuth.extract.$g1.$g2; done
 else
- ln -s "$opt_f" input.sleuth.extract.$g1.$g2
+ if [ ! -e input.sleuth.extract.$g1.$g2 ]; then
+  ln -s "$opt_f" input.sleuth.extract.$g1.$g2
+ fi
 fi
 
 
@@ -107,7 +109,7 @@ tail -n+2 $outputfile|cut -f 1 > $outputfile.id
 awk -F'\t' -v g1=$g1 '$2==g1{print $1}' $inputsamplematrix > $samplex
 awk -F'\t' -v g2=$g2 '$2==g2{print $1}' $inputsamplematrix > $sampley
 bash "$scriptdir"/statistics~scatter_with_variance -x $g1 -y $g2 $inputmatrix $outputfile.id $samplex $sampley
-awk -F'\t' 'NR==1{print "id\t"$0} NR>1{print $0}' $outputfile.tpm |
+awk -F'\t' 'NR==1{OFS="\t"; for(i=1;i<=NF;i++){sub(/[.]gz$/,"",$i)}; print "id\t"$0} NR>1{print $0}' $outputfile.tpm |
  awk -F'\t' 'FILENAME==ARGV[1]{x[$1]=1} FILENAME==ARGV[2]{y[$1]=1}
   FILENAME==ARGV[3]{if(FNR==1){for(i=2;i<=NF;i++){if(x[$i]==1){t[i]=1; xn++}else if(y[$i]==1){t[i]=2; yn++}else{t[i]=3}}}else{delete ave; for(i=2;i<=NF;i++){ave[t[i]]+=$i}; if(ave[1]/xn >= ave[2]/yn){print $1"\tx"}else{print $1"\ty"}}}
  ' $samplex $sampley /dev/stdin > $outputfile.tpm.xy

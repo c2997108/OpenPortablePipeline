@@ -98,7 +98,7 @@ public class JobCell extends ListCell<JobNode> {
 			});
         	Button button1 = new Button("", new ImageView(new Image("file:image/computer_folder.png", 20, 20, false, false)));
         	try {
-        		String outputdir = new PPSetting().get("outputfolder");
+        		String outputdir = PPSetting.getBaseDir() + new PPSetting().get("outputfolder");
         		button1.setOnAction((ActionEvent e) -> {
         			System.out.println(jNode.id);
         			final String OS_NAME = System.getProperty("os.name").toLowerCase();
@@ -126,34 +126,44 @@ public class JobCell extends ListCell<JobNode> {
         			System.out.println("stopping: "+jNode.id);
         			try {
 						PPSetting mainSetting = new PPSetting();
-                		String outputfolder = mainSetting.get("outputfolder");
+                		String outputfolder = PPSetting.getBaseDir() + mainSetting.get("outputfolder");
                 		String workfolder = mainSetting.get("workfolder");
                 		String workdir = workfolder+"/"+jNode.id;
                 		String outputdir = outputfolder + "/" + jNode.id;
+                		String keyFilePath = outputfolder+"/"+jNode.id+"/"+"id_rsa";
 						JsonNode node = new ObjectMapper().readTree(new File(outputdir+"/"+"settings.json"));
-						if(node.get("preset").asText().equals("shirokane")||node.get("preset").asText().equals("ddbj")||node.get("preset").asText().equals("direct (SGE)")) {
+						if(node.get("preset").asText().equals("shirokane") || node.get("preset").asText().equals("ddbj") || node.get("preset").asText().equals("ssh (SGE)")) {
 							ChannelSftp chsftp = ConnectSsh.getSftpChannel(node, outputdir);
 							chsftp.get(workdir+"/"+"save_jid.txt", outputdir+"/results/"+"save_jid.txt");
 
 							List<String> lines = Files.readAllLines(Paths.get(outputdir+"/results/"+"save_jid.txt"), StandardCharsets.UTF_8);
-		        	    	int jobId = Integer.valueOf(lines.get(0).split(" ")[2]);
-
-		        	    	ChannelExec chexec = ConnectSsh.getSshChannel(node, outputdir);
-		        	    	chexec.setCommand("if [ `find "+ workdir +" |grep /qsub.log$|wc -l` != 0 ];then cat `find . |grep /qsub.log$`; fi|awk '{print $3}'|xargs qdel; qdel "+jobId);
-		                    chexec.connect();
+		        	    	int jobId = Integer.valueOf(lines.get(0));
 
 		                    BufferedInputStream bin = null;
 		                    //コマンド実行
 		                    try {
-		                    	bin = new BufferedInputStream(chexec.getInputStream());
-		                    	BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(bin, StandardCharsets.UTF_8));
+		                    	List<String> listStr;
+			        	    	//ChannelExec chexec = ConnectSsh.getSshChannel(node, outputdir);
+								if(!node.get("preset").asText().equals("ddbj")) {
+									listStr = ConnectSsh.getSshCmdResult(node, keyFilePath, "if [ `find "+ workdir +" |grep /qsub.log$|wc -l` != 0 ];then cat `find . |grep /qsub.log$`; fi|awk '{print $3}'|xargs qdel; qdel "+jobId+" 2>&1");
+				        	    	//chexec.setCommand("if [ `find "+ workdir +" |grep /qsub.log$|wc -l` != 0 ];then cat `find . |grep /qsub.log$`; fi|awk '{print $3}'|xargs qdel; qdel "+jobId);
+								}else { //ddbjの時 基本的に分散処理はしないのでjob本体を終了させて終了
+									listStr = ConnectSsh.getSshCmdResult2StepSession(node, keyFilePath, "scancel "+jobId+" 2>&1");
+				        	    	//chexec.setCommand("ssh a001 scancel "+jobId);
+								}
+								listStr.forEach(item -> System.out.println(item));
+			                    //chexec.connect();
 
-		                    	String data;
-		                    	while ((data = bufferedReader.readLine()) != null) {
-		                    		System.out.println(data);
-		                    	}
-		                    	// 最後にファイルを閉じてリソースを開放する
-		                    	bufferedReader.close();
+		                    	//bin = new BufferedInputStream(chexec.getInputStream());
+		                    	//BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(bin, StandardCharsets.UTF_8));
+
+		                    	//String data;
+		                    	//while ((data = bufferedReader.readLine()) != null) {
+		                    	//	System.out.println(data);
+		                    	//}
+		                    	//// 最後にファイルを閉じてリソースを開放する
+		                    	//bufferedReader.close();
+			                    //chexec.disconnect();
 		                    } catch (Exception e) {
 		                        System.err.println(e);
 		                    } finally {
@@ -165,12 +175,13 @@ public class JobCell extends ListCell<JobNode> {
 		                            }
 		                        }
 		                        JobWindowController.recursiveFolderDownload(workdir, outputdir+"/"+"results", chsftp);
-        	                    JobWindowController.lsFolderRemove(workdir, chsftp);
+								if(node.get("checkdelete").asText().equals("true")) {
+	        	                    JobWindowController.lsFolderRemove(workdir, chsftp);
+								}
 
 		                    }
-		                    chexec.disconnect();
     	                    chsftp.exit();
-						}else if(node.get("preset").asText().equals("direct")) {
+						}else if(node.get("preset").asText().equals("ssh")) {
 							ChannelSftp chsftp = ConnectSsh.getSftpChannel(node, outputdir);
 							chsftp.get(workdir+"/"+"save_pid.txt", outputdir+"/results/"+"save_pid.txt");
 
@@ -204,7 +215,10 @@ public class JobCell extends ListCell<JobNode> {
 		                            }
 		                        }
 		                        JobWindowController.recursiveFolderDownload(workdir, outputdir+"/"+"results", chsftp);
-        	                    JobWindowController.lsFolderRemove(workdir, chsftp);
+								if(node.get("checkdelete").asText().equals("true")) {
+	        	                    JobWindowController.lsFolderRemove(workdir, chsftp);
+								}
+
 
 		                    }
 		                    chexec.disconnect();
@@ -213,7 +227,7 @@ public class JobCell extends ListCell<JobNode> {
 							List<String> lines = Files.readAllLines(Paths.get(outputdir+"/results/"+"save_pid.txt"), StandardCharsets.UTF_8);
 		        	    	int jobId = Integer.valueOf(lines.get(0));
 		        	    	Runtime.getRuntime().exec("bash.exe -c 'kill "+jobId+"'");
-						}else if(node.get("preset").asText().equals("Mac")) {
+						}else if(node.get("preset").asText().equals("Mac") || node.get("preset").asText().equals("Linux") || node.get("preset").asText().equals("Linux (SGE)")) {
 							List<String> lines = Files.readAllLines(Paths.get(outputdir+"/results/"+"save_pid.txt"), StandardCharsets.UTF_8);
 		        	    	int jobId = Integer.valueOf(lines.get(0));
 		        	    	Runtime.getRuntime().exec("kill "+jobId);

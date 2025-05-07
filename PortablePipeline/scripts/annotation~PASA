@@ -13,20 +13,23 @@ opt_m:memory limit (GB):64
 opt_p:prinseq option:-trim_tail_right 5 -trim_qual_right 20 -ns_max_p 20 -min_len 30 -trim_qual_window 5
 opt_b:hisat2-build option:
 opt_i:hisat2 option ("--rna-strandness RF" is for TruSeq Stranded mRNA Sample Preparation):--rna-strandness RF
-opt_r:BRAKER option:
-opt_l:GeneMark min_contig:50000
+opt_t:Trinity option:--genome_guided_max_intron 100000 --SS_lib_type RF
+opt_r:PASA alignAssembly option:--ALIGNER minimap2 --transcribed_is_aligned_orient
+opt_l:PASA annotCompare option:
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -r #opt_r# -l #opt_l# #input_1# #input_2#"
+runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -i #opt_i# -p #opt_p# -t #opt_t# -r #opt_r# -l #opt_l# #input_1# #input_2#"
 
 export IM_BASE="c2997108/ubuntu-18:braker2_hisat2_5"
 export IM_PRINSEQ="quay.io/biocontainers/prinseq:0.20.4"
-export IM_HISAT2="quay.io/biocontainers/hisat2:2.2.0--py36hf0b53f7_4"
-export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
-export IM_BRAKER="c2997108/braker:4"
+export IM_HISAT2="quay.io/biocontainers/hisat2:2.2.1--hdbdd923_6"
+export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.19--h50ea8bc_0"
+export IM_TRINITY="trinityrnaseq/trinityrnaseq:2.15.1"
+export IM_PASA="c2997108/pasapipeline:2.5.3_CGI"
 export IM_GFFREAD="quay.io/biocontainers/gffread:0.12.7--h9a82719_0"
 export IM_TRANSEQ="biocontainers/emboss:v6.6.0dfsg-7b1-deb_cv1"
 export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
 export IM_BLAST="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
+export IM_PASA="pasapipeline/pasapipeline:2.5.3"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -105,14 +108,60 @@ done)|DOPARALLEL
 
 WAITPARALLEL
 
-bamlist=`awk '{ORS=","; print $0}' bamlist|sed 's/^,//; s/,$//'`
+if [ `cat bamlist|wc -l` -gt 1 ];then
+ DO_SAMTOOLS samtools merge -o merged.bam --write-index `cat bamlist`
+else
+ ln -s `cat bamlist` merged.bam
+ ln -s `cat bamlist`.bai merged.bam.bai
+fi
 
 
-echo 'cp -rf /usr/share/augustus/config .
-sed "s/min_contig:   50000/min_contig:   '"$opt_l"'/" /opt/ETP/bin/gmes/gmes.cfg.back > /tmp/gmes.cfg #/opt/ETP/bin/gmes/gmes.cfg
-export AUGUSTUS_CONFIG_PATH='"'""$PWD""'"'/config
-braker.pl --genome='"'""$input_2""'"' --species=run1 --bam='"'""$bamlist""'"' '"'""$opt_r""'" > run-braker.sh
-DO_BRAKER bash run-braker.sh
+DO_TRINITY Trinity --genome_guided_bam merged.bam  --max_memory ${N_MEM_G}G --CPU $N_CPU $opt_t
+
+echo '## templated variables to be replaced exist as <__var_name__>
+# Pathname of an SQLite database
+# If the environment variable DSN_DRIVER=mysql then it is the name of a MySQL database
+DATABASE='"$PWD"'/output.sqlite
+#######################################################
+# Parameters to specify to specific scripts in pipeline
+# create a key = "script_name" + ":" + "parameter"
+# assign a value as done above.
+#script validate_alignments_in_db.dbi
+validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=75
+validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=95
+validate_alignments_in_db.dbi:--NUM_BP_PERFECT_SPLICE_BOUNDARY=0
+#script subcluster_builder.dbi
+subcluster_builder.dbi:-m=50' > alignAssembly.config
+
+echo '## templated variables to be replaced exist as <__var_name__>
+# Pathname of an SQLite database
+# If the environment variable DSN_DRIVER=mysql then it is the name of a MySQL database
+DATABASE='"$PWD"'/output.sqlite
+#######################################################
+# Parameters to specify to specific scripts in pipeline
+# create a key = "script_name" + ":" + "parameter"
+# assign a value as done above.
+#script cDNA_annotation_comparer.dbi
+cDNA_annotation_comparer.dbi:--MIN_PERCENT_OVERLAP=<__MIN_PERCENT_OVERLAP__>
+cDNA_annotation_comparer.dbi:--MIN_PERCENT_PROT_CODING=<__MIN_PERCENT_PROT_CODING__>
+cDNA_annotation_comparer.dbi:--MIN_PERID_PROT_COMPARE=<__MIN_PERID_PROT_COMPARE__>
+cDNA_annotation_comparer.dbi:--MIN_PERCENT_LENGTH_FL_COMPARE=<__MIN_PERCENT_LENGTH_FL_COMPARE__>
+cDNA_annotation_comparer.dbi:--MIN_PERCENT_LENGTH_NONFL_COMPARE=<__MIN_PERCENT_LENGTH_NONFL_COMPARE__>
+cDNA_annotation_comparer.dbi:--MIN_FL_ORF_SIZE=<__MIN_FL_ORF_SIZE__>
+cDNA_annotation_comparer.dbi:--MIN_PERCENT_ALIGN_LENGTH=<__MIN_PERCENT_ALIGN_LENGTH__>
+cDNA_annotation_comparer.dbi:--MIN_PERCENT_OVERLAP_GENE_REPLACE=<__MIN_PERCENT_OVERLAP_GENE_REPLACE__>
+cDNA_annotation_comparer.dbi:--STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE=<__STOMP_HIGH_PERCENTAGE_OVERLAPPING_GENE__>
+cDNA_annotation_comparer.dbi:--TRUST_FL_STATUS=<__TRUST_FL_STATUS__>
+cDNA_annotation_comparer.dbi:--MAX_UTR_EXONS=<__MAX_UTR_EXONS__>
+cDNA_annotation_comparer.dbi:--GENETIC_CODE=<__GENETIC_CODE__>' > annotCompare.config
+
+DO_PASA /usr/local/src/PASApipeline/Launch_PASA_pipeline.pl -c alignAssembly.config -C -R -g "$input_2" -t trinity_out_dir/Trinity-GG.fasta --CPU $N_CPU $opt_r
+#DO_PASA /usr/local/src/PASApipeline/scripts/Load_Current_Gene_Annotations.dbi -c alignAssembly.config -g "$input_2" -P output.sqlite.valid_minimap2_alignments.gff3
+#DO_PASA /usr/local/src/PASApipeline/Launch_PASA_pipeline.pl -c annotCompare.config -A -g "$input_2" -t trinity_out_dir/Trinity-GG.fasta --CPU $N_CPU $opt_l
+#DO_PASA /usr/local/src/PASApipeline/Launch_PASA_pipeline.pl -c annotCompare.config -A -g "$input_2" -t trinity_out_dir/Trinity-GG.fasta --CPU $N_CPU $opt_l
+
+post_processing
+
 #braker.pl --genome="$input_2" --species=run1 --bam="$bamlist" "$opt_r"
 rm -f braker/braker.exons.fasta
 DO_GFFREAD gffread -g "$input_2" -w braker/braker.exons.fasta braker/braker.gtf
@@ -122,7 +171,7 @@ rm -f tmp.braker.exons.aa.fasta
 DO_BLAST blastp -query braker/braker.exons.aa.fasta -db /usr/local/Trinotate-Trinotate-v3.1.1/db/uniprot_sprot.pep -num_threads $N_CPU -max_target_seqs 1 -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle" -evalue 1e-5 > braker/braker.exons.aa.fasta.uniprot.blastp
 DO_SEQKIT seqkit fx2tab braker/braker.exons.aa.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{print ">"$1" "name[$1]":"desc[$1]" evalue:"evalue[$1]; print $2}' braker/braker.exons.aa.fasta.uniprot.blastp /dev/stdin > braker/braker.exons.uniprot.aa.fasta
 DO_SEQKIT seqkit fx2tab braker/braker.exons.fasta | awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{split($1,arr," "); print ">"$1" "name[arr[1]]":"desc[arr[1]]" evalue:"evalue[arr[1]]; print $2}' braker/braker.exons.aa.fasta.uniprot.blastp /dev/stdin > braker/braker.exons.uniprot.fasta
-DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]&&!($1 in name){name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{if($3=="gene"){print $0}else{str=$9; str2=""; sub(/.*transcript_id "/,"",str); sub(/".*/,"",str); str2=str"_"name[str]"_"desc[str]"_evalue-"evalue[str]; gsub(/[ /()=]/,"_",str2); gsub(str,str2,$0); print $0}}' braker/braker.exons.aa.fasta.uniprot.blastp braker/braker.gtf > braker/braker.uniprot.gtf
+DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2; desc[$1]=$16; evalue[$1]=$13} FILENAME==ARGV[2]{if($3=="gene"){print $0}else{str=$9; str2=""; sub(/.*transcript_id "/,"",str); sub(/".*/,"",str); str2=str"_"name[str]"_"desc[str]"_evalue-"evalue[str]; gsub(/[ /()=]/,"_",str2); gsub(str,str2,$0); print $0}}' braker/braker.exons.aa.fasta.uniprot.blastp braker/braker.gtf > braker/braker.uniprot.gtf
 
 post_processing
 
@@ -255,192 +304,23 @@ Options (defaults in parentheses):
   -h/--help          print this usage message
 #</opt_i>
 #<opt_t>
-Assemble RNA-Seq alignments into potential transcripts.
- Options:
- --version : print just the version at stdout and exit
- -G reference annotation to use for guiding the assembly process (GTF/GFF3)
- --rf assume stranded library fr-firststrand
- --fr assume stranded library fr-secondstrand
- -l name prefix for output transcripts (default: STRG)
- -f minimum isoform fraction (default: 0.1)
- -m minimum assembled transcript length (default: 200)
- -o output path/file name for the assembled transcripts GTF (default: stdout)
- -a minimum anchor length for junctions (default: 10)
- -j minimum junction coverage (default: 1)
- -t disable trimming of predicted transcripts based on coverage
-    (default: coverage trimming is enabled)
- -c minimum reads per bp coverage to consider for transcript assembly
-    (default: 2.5)
- -v verbose (log bundle processing details)
- -g gap between read mappings triggering a new bundle (default: 50)
- -C output a file with reference transcripts that are covered by reads
- -M fraction of bundle allowed to be covered by multi-hit reads (default: 1.0)
- -p number of threads (CPUs) to use (default: 1)
- -A gene abundance estimation output file
- -B enable output of Ballgown table files which will be created in the
-    same directory as the output GTF (requires -G, -o recommended)
- -b enable output of Ballgown table files but these files will be
-    created under the directory path given as <dir_path>
- -e only estimate the abundance of given reference transcripts (requires -G)
- -x do not assemble any transcripts on the given reference sequence(s)
- -u no multi-mapping correction (default: correction enabled)
- -h print this usage message and exit
+#  --SS_lib_type <string>          :Strand-specific RNA-Seq read orientation.
+#                                   if paired: RF or FR,
+#                                   if single: F or R.   (dUTP method = RF)
+#                                   See web documentation.
+#  --min_contig_length <int>       :minimum assembled contig length to report
+#                                   (def=200, must be >= 100)
 #</opt_t>
-#<opt_l>
-cuffquant v2.2.1 (4237)
------------------------------
-Usage:   cuffdiff [options] <transcripts.gtf> <sample1_hits.sam> <sample2_hits.sam> [... sampleN_hits.sam]
-   Supply replicate SAMs as comma separated lists for each condition: sample1_rep1.sam,sample1_rep2.sam,...sample1_repM.sam
-General Options:
-  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
-  -M/--mask-file               ignore all alignment within transcripts in this file  [ default:   NULL ]
-  -b/--frag-bias-correct       use bias correction - reference fasta required        [ default:   NULL ]
-  -u/--multi-read-correct      use 'rescue method' for multi-reads                   [ default:  FALSE ]
-  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
-  --library-type               Library prep used for input reads                     [ default:  below ]
-
-Advanced Options:
-  -m/--frag-len-mean           average fragment length (unpaired reads only)         [ default:    200 ]
-  -s/--frag-len-std-dev        fragment length std deviation (unpaired reads only)   [ default:     80 ]
-  -c/--min-alignment-count     minimum number of alignments in a locus for testing   [ default:   10 ]
-  --max-mle-iterations         maximum iterations allowed for MLE calculation        [ default:   5000 ]
-  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
-  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
-  --seed                       value of random number generator seed                 [ default:      0 ]
-  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
-  --max-bundle-frags           maximum fragments allowed in a bundle before skipping [ default: 500000 ]
-  --max-frag-multihits         Maximum number of alignments allowed per fragment     [ default: unlim  ]
-  --no-effective-length-correction   No effective length correction                  [ default:  FALSE ]
-  --no-length-correction       No length correction                                  [ default:  FALSE ]
-
-Debugging use only:
-  --read-skip-fraction         Skip a random subset of reads this size               [ default:    0.0 ]
-  --no-read-pairs              Break all read pairs                                  [ default:  FALSE ]
-  --trim-read-length           Trim reads to be this long (keep 5' end)              [ default:   none ]
-  --no-scv-correction          Disable SCV correction                                [ default:  FALSE ]
-
-Supported library types:
-        ff-firststrand
-        ff-secondstrand
-        ff-unstranded
-        fr-firststrand
-        fr-secondstrand
-        fr-unstranded (default)
-        transfrags
-#</opt_l>
-#<opt_n>
-cuffnorm v2.2.1 (4237)
------------------------------
-Usage:   cuffnorm [options] <transcripts.gtf> <sample1_expr.cxb> <sample2_expr.cxb> [... sampleN_expr.cxb]
-   Supply replicate CXB files as comma separated lists for each condition: sample1_rep1.cxb,sample1_rep2.cxb,...sample1_repM.cxb
-General Options:
-  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
-  -L/--labels                  comma-separated list of condition labels
-  --norm-standards-file        Housekeeping/spike genes to normalize libraries       [ default:   NULL ]
-  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
-  --library-type               Library prep used for input reads                     [ default:  below ]
-  --library-norm-method        Method used to normalize library sizes                [ default:  below ]
-  --output-format              Format for output tables                              [ default:  below ]
-
-Advanced Options:
-  --compatible-hits-norm       count hits compatible with reference RNAs only        [ default:   TRUE ]
-  --total-hits-norm            count all hits for normalization                      [ default:  FALSE ]
-  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
-  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
-  --seed                       value of random number generator seed                 [ default:      0 ]
-  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
-
-Supported library types:
-        ff-firststrand
-        ff-secondstrand
-        ff-unstranded
-        fr-firststrand
-        fr-secondstrand
-        fr-unstranded (default)
-        transfrags
-
-Supported library normalization methods:
-        classic-fpkm
-        geometric (default)
-        geometric
-        quartile
-
-Supported output formats:
-        cuffdiff
-        simple-table (default)
-#</opt_n>
-#<opt_d>
-cuffdiff v2.2.1 (4237)
------------------------------
-Usage:   cuffdiff [options] <transcripts.gtf> <sample1_hits.sam> <sample2_hits.sam> [... sampleN_hits.sam]
-   Supply replicate SAMs as comma separated lists for each condition: sample1_rep1.sam,sample1_rep2.sam,...sample1_repM.sam
-General Options:
-  -o/--output-dir              write all output files to this directory              [ default:     ./ ]
-  -L/--labels                  comma-separated list of condition labels
-  --FDR                        False discovery rate used in testing                  [ default:   0.05 ]
-  -M/--mask-file               ignore all alignment within transcripts in this file  [ default:   NULL ]
-  -C/--contrast-file           Perform the constrasts specified in this file         [ default:   NULL ]
-  -b/--frag-bias-correct       use bias correction - reference fasta required        [ default:   NULL ]
-  -u/--multi-read-correct      use 'rescue method' for multi-reads                   [ default:  FALSE ]
-  -p/--num-threads             number of threads used during quantification          [ default:      1 ]
-  --no-diff                    Don't generate differential analysis files            [ default:  FALSE ]
-  --no-js-tests                Don't perform isoform switching tests                 [ default:  FALSE ]
-  -T/--time-series             treat samples as a time-series                        [ default:  FALSE ]
-  --library-type               Library prep used for input reads                     [ default:  below ]
-  --dispersion-method          Method used to estimate dispersion models             [ default:  below ]
-  --library-norm-method        Method used to normalize library sizes                [ default:  below ]
-
-Advanced Options:
-  -m/--frag-len-mean           average fragment length (unpaired reads only)         [ default:    200 ]
-  -s/--frag-len-std-dev        fragment length std deviation (unpaired reads only)   [ default:     80 ]
-  -c/--min-alignment-count     minimum number of alignments in a locus for testing   [ default:   10 ]
-  --max-mle-iterations         maximum iterations allowed for MLE calculation        [ default:   5000 ]
-  --compatible-hits-norm       count hits compatible with reference RNAs only        [ default:   TRUE ]
-  --total-hits-norm            count all hits for normalization                      [ default:  FALSE ]
-  -v/--verbose                 log-friendly verbose processing (no progress bar)     [ default:  FALSE ]
-  -q/--quiet                   log-friendly quiet processing (no progress bar)       [ default:  FALSE ]
-  --seed                       value of random number generator seed                 [ default:      0 ]
-  --no-update-check            do not contact server to check for update availability[ default:  FALSE ]
-  --emit-count-tables          print count tables used to fit overdispersion         [    DEPRECATED   ]
-  --max-bundle-frags           maximum fragments allowed in a bundle before skipping [ default: 500000 ]
-  --num-frag-count-draws       Number of fragment generation samples                 [ default:    100 ]
-  --num-frag-assign-draws      Number of fragment assignment samples per generation  [ default:     50 ]
-  --max-frag-multihits         Maximum number of alignments allowed per fragment     [ default: unlim  ]
-  --min-outlier-p              Min replicate p value to admit for testing            [    DEPRECATED   ]
-  --min-reps-for-js-test       Replicates needed for relative isoform shift testing  [ default:      3 ]
-  --no-effective-length-correction   No effective length correction                  [ default:  FALSE ]
-  --no-length-correction       No length correction                                  [ default:  FALSE ]
-  -N/--upper-quartile-norm     Deprecated, use --library-norm-method                 [    DEPRECATED   ]
-  --geometric-norm             Deprecated, use --library-norm-method                 [    DEPRECATED   ]
-  --raw-mapped-norm            Deprecated, use --library-norm-method                 [    DEPRECATED   ]
-  --poisson-dispersion         Deprecated, use --dispersion-method                   [    DEPRECATED   ]
-
-Debugging use only:
-  --read-skip-fraction         Skip a random subset of reads this size               [ default:    0.0 ]
-  --no-read-pairs              Break all read pairs                                  [ default:  FALSE ]
-  --trim-read-length           Trim reads to be this long (keep 5' end)              [ default:   none ]
-  --no-scv-correction          Disable SCV correction                                [ default:  FALSE ]
-
-Supported library types:
-        ff-firststrand
-        ff-secondstrand
-        ff-unstranded
-        fr-firststrand
-        fr-secondstrand
-        fr-unstranded (default)
-        transfrags
-
-Supported dispersion methods:
-        blind
-        per-condition
-        poisson
-        pooled (default)
-
-Supported library normalization methods:
-        classic-fpkm
-        geometric (default)
-        geometric
-        quartile
-#</opt_d>
+#<opt_r>
+# // spliced alignment settings
+# --ALIGNERS <string>   aligners (available options include: gmap, blat, minimap2... can run using several, ie. 'gmap,blat,minimap2')
+# -N <int>              max number of top scoring alignments (default: 1)
+# --MAX_INTRON_LENGTH|-I  <int>         (max intron length parameter passed to GMAP or BLAT)  (default: 100000)
+# Misc:
+# --TRANSDECODER   flag, run transdecoder to identify candidate full-length coding transcripts
+# -d               flag, Debug
+# --INVALIDATE_SINGLE_EXON_ESTS    :invalidates single exon ests so that none can be built into pasa assemblies.
+# --transcribed_is_aligned_orient   flag for strand-specific RNA-Seq assemblies, the aligned orientation should correspond to the transcribed orientation.
+#</opt_r>
 #</option detail>
 

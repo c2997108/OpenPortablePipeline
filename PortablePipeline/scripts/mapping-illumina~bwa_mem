@@ -35,6 +35,7 @@ mkdir -p output.bwa
 ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_BWA="$ENV_BWA" -v opt_b="$opt_b" -v N_CPU="$N_CPU" -v ref="$ref" -v ENV_SAMTOOLS="$ENV_SAMTOOLS" '
   {file[$0]=1}
   END{
+   PROCINFO["sorted_in"]="@ind_str_asc"
    for(i in file){
     if(flag[i]!=1){
      r1=i;
@@ -56,8 +57,10 @@ ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_B
        r2=j;
       }
      }
-     if(flag[i]==1){
-      print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' '"'"'"input_1"/"r2"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam";
+     if(flag[r2]==1){
+      print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' '"'"'"input_1"/"r2"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam\n";
+     }else{
+      flag[r1]=0
      }
     }
    }
@@ -66,7 +69,7 @@ ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_B
      r1=i;
      samplename=gensub(/[.]f(ast|)q(|[.]gz)$/,"",1,i);
      flag[i]=1;
-     print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam";
+     print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam\n";
     }
    }
   }

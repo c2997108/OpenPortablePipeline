@@ -164,7 +164,7 @@
                                  </children>
                               </HBox>
                               <Button fx:id="savesetting" mnemonicParsing="false" onAction="#onButtonSave" text="Save" visible="false" GridPane.columnIndex="3" GridPane.rowIndex="12" />
-                              <Label fx:id="label_workfolder" text="Work folder (absolute or relative path in the server)" GridPane.columnIndex="2" GridPane.rowIndex="5" />
+                              <Label fx:id="label_workfolder" text="SSH work folder (absolute or relative path from the login directory)" GridPane.columnIndex="2" GridPane.rowIndex="5" />
                               <TextField fx:id="workfolder" GridPane.columnIndex="3" GridPane.rowIndex="5" />
                               <Label fx:id="label_imagefolder" text="Singularity image folder (absolute path in the server)" GridPane.columnIndex="2" GridPane.rowIndex="6" />
                               <TextField fx:id="imagefolder" GridPane.columnIndex="3" GridPane.rowIndex="6" />

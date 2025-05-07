@@ -1,7 +1,7 @@
 #!/bin/bash
 
 explanation='
-Fast and accurate de novo assembler for single molecule sequencing reads
+This will separate the sequencing data by barcode from PCR products amplified using primers with unique barcodes. Barcode length must be at least 4 bp.
 '
 inputdef='
 input_1:directory:FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
@@ -10,12 +10,16 @@ input_3::sample table (Sample name[tab]Forward read name[tab]Reverse read name[t
 input_4:option:sequencing_summary_XXX.txt:sequencing_summary*.txt
 '
 optiondef='
-opt_c:cpu threads:8
+opt_c:cpu threads:16
 opt_m:memory limit (GB):32
-opt_f:adapter alignment length threshold:0.7
-opt_i:identity threshold (%):90
+opt_p:Solve condensed bases in primers (y|n):y
+opt_f:Adapter alignment length percentage threshold of a whole read:0.4
+opt_i:Identity threshold of a whole read (%):80
+opt_b:Consider hits below the threshold to suppress chimeras. (y|n):n
+opt_a:Adapter alignment length percentage threshold of a barcode:0.9
+opt_j:Identity threshold of a barcode (%):90
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -f #opt_f# -i #opt_i# -s #input_4# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -p #opt_p# -f #opt_f# -i #opt_i# -b #opt_b# -a #opt_a# -j #opt_j# -s #input_4# #input_1# #input_2# #input_3#"
 
 export IM_BLAST="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-mitofish2"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
@@ -30,147 +34,334 @@ set -o pipefail
 input_4="${opt_s:-}"
 
 primers="$input_2"
-DO_BLAST makeblastdb -in "$primers" -dbtype nucl
+list="$input_3"
+
+cat "$primers" | sed 's/\t/ /g; s/\r//g'| DO_SEQKIT seqkit fx2tab |awk -F'\t' '{split($1,arr," "); a=toupper($2); gsub(/[^ACGTBVDHKMRYSWN]/,"",a); print ">"arr[1]"\n"a}' > primer-clean.fa
+primers=primer-clean.fa
+
+cat "$list" | sed 's/\t\+/\t/g' | awk -F'\t' '$1!=""&&$2!=""&&$3!=""&&$4!=""&&$5!=""&&$5>$4{print $0}' > samplelist-clean.txt
+list=samplelist-clean.txt
+
+#プライマーの縮重塩基を解消
+if [ "$opt_p" = "y" ]; then
+DO_SEQKIT seqkit fx2tab "$primers"|(awk -F'\t' '
+BEGIN{
+D["R"][1]="A"; D["R"][2]="G";
+D["M"][1]="A"; D["M"][2]="C";
+D["W"][1]="A"; D["W"][2]="T";
+D["S"][1]="C"; D["S"][2]="G";
+D["Y"][1]="C"; D["Y"][2]="T";
+D["K"][1]="G"; D["K"][2]="T";
+D["H"][1]="A"; D["H"][2]="T"; D["H"][3]="C";
+D["B"][1]="G"; D["B"][2]="T"; D["B"][3]="C";
+D["D"][1]="G"; D["D"][2]="A"; D["D"][3]="T";
+D["V"][1]="A"; D["V"][2]="C"; D["V"][3]="G";
+D["N"][1]="A"; D["N"][2]="C"; D["N"][3]="G"; D["N"][4]="T"
+}
+{str=toupper($(NF-1)); a[1]="";
+ for(n=1;n<=length(str);n++){
+  k=0;
+  tempchar=substr(str,n,1);
+  for(i in a){
+   if(length(D[tempchar])==0){
+    k++; b[k]=a[i]tempchar
+   }else{
+    for(j in D[tempchar]){k++; b[k]=a[i]D[tempchar][j]}
+   }
+  };
+  for(i=1;i<=k;i++){a[i]=b[i]}
+ };
+ for(i=1;i<=k;i++){print ">"$1"#_#"i; print a[i]}
+ delete a
+}
+') > "$primers".solved.fa
+else
+ cp "$primers" "$primers".solved.fa
+fi
+
+DO_BLAST makeblastdb -in "$primers".solved.fa -dbtype nucl
 DO_SAMTOOLS samtools faidx "$primers"
 
-list="$input_3"
+DO_BLAST seqkit fx2tab "$primers"|awk -F'\t' '
+ function rev(x,  i, str){for(i=length(x);i>0;i--){str=str""substr(x,i,1)}; return str}
+ function comp(x){if(x=="A"){return "T"}else if(x=="C"){return "G"}else if(x=="G"){return "C"}else if(x=="T"){return "A"}
+  else if(x=="B"){return "V"}else if(x=="V"){return "B"}else if(x=="D"){return "H"}else if(x=="H"){return "D"}
+  else if(x=="K"){return "M"}else if(x=="M"){return "K"}else if(x=="R"){return "Y"}else if(x=="Y"){return "R"}
+  else if(x=="S"){return "W"}else if(x=="W"){return "S"}
+  else{return "N"}
+ }
+ function revcomp(x,  i, str, revx){revx=rev(x); for(i=1;i<=length(revx);i++){str=str""comp(substr(revx,i,1))}; return str}
+
+ {key=substr($2,1,8); cnt[key]++; f[key][cnt[key]][1]=$1; f[key][cnt[key]][2]=$2}
+ END{
+  #プライマーの5側8bpを検索し同一の配列をグループにする
+  for(key in f){
+   commonseq=f[key][1][2];
+   for(i in f[key]){seq=f[key][i][2]; tempseq="";
+    for(j=1;j<=length(seq)&&j<=length(commonseq);j++){
+     if(substr(commonseq,j,1)==substr(seq,j,1)){tempseq=tempseq""substr(seq,j,1)}
+     else{break}
+    }
+    commonseq=tempseq
+   }
+   #print key"\t"commonseq
+   disflag=0
+   for(i in f[key]){
+    f2[key][i][2]=revcomp(substr(f[key][i][2],length(commonseq)+1))
+    if(length(f2[key][i][2])<8){
+     disflag = 1
+    }
+   }
+   #8bpよりも残った配列が短いならば元の配列のままにしておく
+   if(disflag==1){
+    for(i in f[key]){
+     f2[key][i][2]=revcomp(f[key][i][2])
+    }
+   }
+  }
+  for(key in f){
+   for(i in f[key]){
+    key2=substr(f2[key][i][2],1,8); cnt2[key2]++; r[key2][cnt2[key2]][1]=f[key][i][1]; r[key2][cnt2[key2]][2]=f2[key][i][2]
+   }
+  }
+  #プライマーの3側8bpを検索し同一の配列をグループにする
+  for(key in r){
+   commonseq=r[key][1][2];
+   for(i in r[key]){seq=r[key][i][2]; tempseq="";
+    for(j=1;j<=length(seq)&&j<=length(commonseq);j++){
+     if(substr(commonseq,j,1)==substr(seq,j,1)){tempseq=tempseq""substr(seq,j,1)}
+     else{break}
+    }
+    commonseq=tempseq
+   }
+   #print key"\t"commonseq
+   disflag=0
+   for(i in r[key]){
+    r2[key][i][2]=revcomp(substr(r[key][i][2],length(commonseq)+1))
+    if(length(r2[key][i][2])<8){
+     disflag = 1
+    }
+   }
+   if(disflag==1){
+    for(i in r[key]){
+     r2[key][i][2]=revcomp(r[key][i][2])
+    }
+   }
+  }
+  for(key in r){
+   for(i in r[key]){
+    print ">"r[key][i][1]"\n"r2[key][i][2]
+   }
+  }
+ }' > primer-tags.fa
+
+DO_BLAST makeblastdb -in primer-tags.fa -dbtype nucl
+
+
+cat << 'EOF' > run-blast.sh
+#!/bin/bash
+
+i="$1" #xxx.fastq.gz
+primers="$2" #primers.fa
+list="$3" #sample.txt
+opt_f="$4" #0.7
+opt_i="$5" #90
+opt_b="$6" #y
+opt_a="$7" #0.9
+opt_j="$8" #90
+
+set -eux
+set -o pipefail
+
+seqkit fq2fa "$i" > "$i".fasta
+blastn -db "$primers".solved.fa -query "$i".fasta -num_threads 1 -word_size 4 -outfmt 6 -max_target_seqs 10000 | sed 's/#_#[0-9]\+//' > "$i".fasta.blastn
+#縮重塩基表示を解消していた場合の番号を消している
+blastn -db primer-tags.fa -query "$i".fasta -num_threads 1 -word_size 4 -outfmt 6 > "$i".fasta.tagblastn
+
+cat "$i".fasta.blastn| awk -F'\t' '
+  function merge_same_reads(narrlen, arrlen, arrlenid, data, x1, x2, x4, x5,   n2, i){
+   delete data2;
+   m=0;
+   PROCINFO["sorted_in"]="@ind_num_desc";
+   for(bit in narrlen){
+    PROCINFO["sorted_in"]="@val_num_desc";
+    for(ilen in arrlen[bit]){
+     vis=1
+     n2=arrlenid[bit][ilen];
+     for(x in data2){if(x1[n2]>=data2[x][1]&&x2[n2]<=data2[x][2]){vis=0; break}}
+     if(vis==1){m++; data2[m][1]=x1[n2]; data2[m][2]=x2[n2]; data2[m][3]=data[n2]; data2[m][4]=x4[n2]; data2[m][5]=x5[n2]}
+    }
+   }
+   for(i in data2){
+    n3++; data3[n3]=data2[i][3]; x3_1[n3]=data2[i][1]; x3_2[n3]=data2[i][2]; x3_4[n3]=data2[i][4]; x3_5[n3]=data2[i][5];
+    narrlen3[data2[i][4]]++; arrlen3[data2[i][4]][narrlen3[data2[i][4]]]=data2[i][5];#念のためアライメント長でもソートするため
+    arrlenid3[data2[i][4]][narrlen3[data2[i][4]]]=n3
+   }
+  }
+  function merge_hits(){
+   for(i in n){ #subject名ごとに重複ヒットをマージ
+    merge_same_reads(narrlen[i], arrlen[i], arrlenid[i], data[i], x1[i], x2[i], x4[i], x5[i])
+   }
+   #リード単位で最良のsubjectヒットにマージ
+   delete data4;
+   m=0;
+   PROCINFO["sorted_in"]="@ind_num_desc";
+   for(bit in narrlen3){
+    PROCINFO["sorted_in"]="@val_num_desc";
+    for(ilen in arrlen3[bit]){
+     vis=1
+     n4=arrlenid3[bit][ilen];
+     for(x in data4){if(x3_1[n4]>=data4[x][1]&&x3_2[n4]<=data4[x][2]){vis=0; break}}
+     if(vis==1){m++; data4[m][1]=x3_1[n4]; data4[m][2]=x3_2[n4]; data4[m][3]=data3[n4]; data4[m][4]=x3_4[n4]; data4[m][5]=x3_5[n4]; pos4[m]=x3_1[n4]}
+    }
+   }
+   PROCINFO["sorted_in"]="@val_num_asc";
+   for(i in pos4){
+    print data4[i][3]
+   }
+   delete x3_1
+   delete x3_2
+   delete x3_4
+   delete x3_5
+   delete narrlen3
+   delete arrlen3
+   delete arrlenid3
+   delete pos4
+  }
+
+  {
+   if(old!=$1){
+    if(FNR>1){
+     merge_hits()
+    }
+    old=$1
+    delete n
+    delete data
+    delete x1
+    delete x2
+    delete x4
+    delete x5
+    delete narrlen
+    delete arrlen
+    delete arrlenid
+   }
+   n[$2]++; data[$2][n[$2]]=$0; x1[$2][n[$2]]=$7; x2[$2][n[$2]]=$8; x4[$2][n[$2]]=$12; x5[$2][n[$2]]=$8-$7;
+   narrlen[$2][$12]++; arrlen[$2][$12][narrlen[$2][$12]]=$8-$7;#念のためアライメント長でもソートするため
+   arrlenid[$2][$12][narrlen[$2][$12]]=n[$2]
+  }
+  END{
+   merge_hits()
+  }' > "$i".fasta.blastn.dedup
+
+awk -F'\t' -v align="$opt_a" -v ident="$opt_j" '
+ FILENAME==ARGV[1]{len[$1]=length($2)}
+ FILENAME==ARGV[2]{if($3>=ident&&$8-$7+1>=len[$2]*align){n[$1][$2]++; for(i=1;i<=4;i++){data[$1][$2][n[$1][$2]][i]=$(i+6)}}}
+ FILENAME==ARGV[3]{
+  flag=0
+  if($1 in data && $2 in data[$1]){
+   for(m in data[$1][$2]){ #data[リード名][プライマー名]
+    for(i=1;i<=4;i++){x[i]=data[$1][$2][m][i]}
+    #リードの中のプライマーのヒットすべてを順にみて、バーコードがプライマーの中に存在し、向きも一致していたら1をつけて出力
+    if($7<=x[1]&&$8>=x[1]&&$7<=x[2]&&$8>=x[2]&&(($10-$9)*(x[4]-x[3])>0)){
+     print $0"\t1"
+     flag=1
+     break
+    }
+   }
+  }
+  #バーコードが読めていない場合は0をつけて出力
+  if(flag==0){
+   print $0"\t0"
+  }
+ }
+' <(seqkit fx2tab primer-tags.fa) "$i".fasta.tagblastn "$i".fasta.blastn.dedup > "$i".fasta.blastn.dedup.filterd
+
+awk -F'\t' -v align="$opt_f" -v ident="$opt_i" -v supchim="$opt_b" '
+ FILENAME==ARGV[1]{len[$1]=length($2)}
+ FILENAME==ARGV[2]{f[$1]=$2; r[$1]=$3; tempmin=$4+0; tempmax=$5+0; min[$1]=tempmin;
+                   if(tempmax!=0){max[$1]=tempmax}else{max[$1]=1000*1000*1000}; name[$2][$3]=$1; fname[$2]=1; rname[$3]=1}
+ FILENAME==ARGV[3]{
+  if($3>=ident&&$8-$7+1>=len[$2]*align){g1=1}else{g1=0}
+  if(old==$1){
+   if(g0==1&&g1==1&&oldflag==1&&$13==1){
+    if(x0[9]<x0[10] && $10<$9){
+     if(x0[2] in fname && $2 in rname && $2 in name[x0[2]]){
+      templen=$8-x0[7]+1
+      if(templen>=min[name[x0[2]][$2]]&&templen<=max[name[x0[2]][$2]]){
+       n++
+       print $1"\t"n"\t"name[x0[2]][$2]"\t"x0[2]"\t"$2"\t"x0[8]+1"\t"$7-1"\t1"
+      }
+     }else if($2 in fname && x0[2] in rname && x0[2] in name[$2]){
+      templen=$8-x0[7]+1
+      if(templen>=min[name[$2][x0[2]]]&&templen<=max[name[$2][x0[2]]]){
+       n++
+       print $1"\t"n"\t"name[$2][x0[2]]"\t"x0[2]"\t"$2"\t"x0[8]+1"\t"$7-1"\t-1"
+      }
+     }
+    }
+   }
+  }else{n=0}
+  if(supchim=="y" || (supchim!="y" && g1==1)){
+   old=$1
+   for(i=1;i<=NF;i++){x0[i]=$i}
+   g0=g1
+   oldflag=$13
+  }
+ }
+' <(seqkit fx2tab primer-clean.fa) "$list" "$i".fasta.blastn.dedup.filterd | awk -F'\t' '$7>=$6' > "$i".fasta.blastn.dedup.filterd.tag_position
+
+awk -F'\t' -v file="$i" '
+ function rev(x,  i, str){for(i=length(x);i>0;i--){str=str""substr(x,i,1)}; return str}
+ function comp(x){if(x=="A"){return "T"}else if(x=="C"){return "G"}else if(x=="G"){return "C"}else if(x=="T"){return "A"}
+  else if(x=="B"){return "V"}else if(x=="V"){return "B"}else if(x=="D"){return "H"}else if(x=="H"){return "D"}
+  else if(x=="K"){return "M"}else if(x=="M"){return "K"}else if(x=="R"){return "Y"}else if(x=="Y"){return "R"}
+  else if(x=="S"){return "W"}else if(x=="W"){return "S"}
+  else{return "N"}
+ }
+ function revcomp(x,  i, str, revx){revx=rev(x); for(i=1;i<=length(revx);i++){str=str""comp(substr(revx,i,1))}; return str}
+ FILENAME==ARGV[1]{n++; seq[$1]=$2; qual[$1]=$3}
+ FILENAME==ARGV[2]{
+  m++
+  n3[$3]++
+  if($8==1){
+   print $3"\t"$1":"$2":"$4":"$5":"$6":"$7":"$8"\t"substr(seq[$1],$6,$7-$6+1)"\t"substr(qual[$1],$6,$7-$6+1)
+  }else{
+   print $3"\t"$1":"$2":"$4":"$5":"$6":"$7":"$8"\t"revcomp(substr(seq[$1],$6,$7-$6+1))"\t"rev(substr(qual[$1],$6,$7-$6+1))
+  }
+ }
+ END{
+  print "Total: "n" reads" > file".stats"
+  print " Demultiplexed: "m" reads" >> file".stats"
+  for(i in n3){
+   print "  "i": "n3[i]" reads" >> file".stats"
+  }
+ }
+' <(seqkit fx2tab "$i" | awk -F'\t' '{split($1,arr," "); print arr[1]"\t"$2"\t"$3}') "$i".fasta.blastn.dedup.filterd.tag_position > "$i".fasta.blastn.dedup.filterd.tag_position.tsv
+
+EOF
+
 (for i in `find $input_1/|egrep "[.]f(ast|)q(|[.]gz)$"||true`; do
- echo $ENV_BLAST "seqkit fq2fa $i > $i.fasta"
+ echo $ENV_BLAST "bash run-blast.sh $i $primers $list $opt_f $opt_i $opt_b $opt_a $opt_j"
 done) |DOPARALLELONE
 
 WAITPARALLEL
 
-for i in $input_1/*.fasta; do echo $ENV_BLAST blastn -db "$primers" -query $i -num_threads 1 -word_size 4 -outfmt 6 ">" $i.blastn; done|DOPARALLELONE
 
-WAITPARALLEL
+#サンプルごとに分割したFASTQファイル出力
+mkdir -p output
+cat "$input_1"/*.fasta.blastn.dedup.filterd.tag_position.tsv | awk -F'\t' '{print "@"$2"\n"$3"\n+\n"$4 > "output/"$1".fq"}'
+cat "$input_1"/*.stats|awk '$1=="Total:"{t+=$2} $1=="Demultiplexed:"{d+=$2} END{print "Total: "t" reads, Demultiplexed: "d" reads"}' | tee output.stats
+DO_SEQKIT seqkit stats output/*.fq | tee -a output.stats
 
-#元々1リード中に複数ヒットしていることを前提にしていたようだけど、複数ヒットをスコア順に処理できていなかったので最もスコアの合計の高いものだけを抽出するように変更
-cat $input_1/*.blastn|awk -F'\t' -v thr=$opt_f -v identity=$opt_i '
- FILENAME==ARGV[1]{len[$1]=$2}
- FILENAME==ARGV[2]{if($4>=len[$2]*thr&&$3>=identity){print $0}}
-' "$primers".fai /dev/stdin | awk -F'\t' '
- FILENAME==ARGV[1]{f[$2]=1; r[$3]=1; minlen[$1]=$4; maxlen[$1]=$5; pair[$2][$3]=$1}
- FILENAME==ARGV[2]{
-  if($1!=old){
-   for(i=1;i<=nf;i++){
-    for(j=1;j<=nr;j++){
-     if(namef[i] in pair && namer[j] in pair[namef[i]]){
-      #pair[namef[i]][namer[j]]はサンプル名
-      #そのリードのペアがありうる組み合わせなら
-      if(orientf[i]==1 && orientr[j]==-1){
-       #順向きのペア
-       len_frag = rendr[j] - rstartf[i] + 1
-       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
-        nsum[scoref[i]+scorer[j]]++
-        if(scoref[i]+scorer[j]>maxscore){
-         maxscore=scoref[i]+scorer[j]
-         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendf[i]+1"\t"rstartr[j]-1"\t1\t"scoref[i]+scorer[j]
-        }
-       }
-      }else if(orientf[i]==-1 && orientr[j]==1){
-       #逆向きのペア
-       len_frag = rendf[i] - rstartr[j] + 1
-       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
-        nsum[scoref[i]+scorer[j]]++
-        if(scoref[i]+scorer[j]>maxscore){
-         maxscore=scoref[i]+scorer[j]
-         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendr[j]+1"\t"rstartf[i]-1"\t-1\t"scoref[i]+scorer[j]
-        }
-       }
-      }
-     }
-    }
-   }
-   if(maxscore>0 && nsum[maxscore]==1){
-    print data
-   }
-   delete namef
-   delete namer
-   nf=0
-   nr=0
-   n=0
-   maxscore=0
-   delete nsum
-   old=$1
-  }
-  if($2 in f){nf++; namef[nf]=$2; scoref[nf]=$12; rstartf[nf]=$7; rendf[nf]=$8; if($9<$10){orientf[nf]=1}else{orientf[nf]=-1}}
-  else if($2 in r){nr++; namer[nr]=$2; scorer[nr]=$12; rstartr[nr]=$7; rendr[nr]=$8; if($9<$10){orientr[nr]=1}else{orientr[nr]=-1}}
- }
- END{
-  #最後に同じ処理
-   for(i=1;i<=nf;i++){
-    for(j=1;j<=nr;j++){
-     if(namef[i] in pair && namer[j] in pair[namef[i]]){
-      #pair[namef[i]][namer[j]]はサンプル名
-      #そのリードのペアがありうる組み合わせなら
-      if(orientf[i]==1 && orientr[j]==-1){
-       #順向きのペア
-       len_frag = rendr[j] - rstartf[i] + 1
-       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
-        nsum[scoref[i]+scorer[j]]++
-        if(scoref[i]+scorer[j]>maxscore){
-         maxscore=scoref[i]+scorer[j]
-         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendf[i]+1"\t"rstartr[j]-1"\t1\t"scoref[i]+scorer[j]
-        }
-       }
-      }else if(orientf[i]==-1 && orientr[j]==1){
-       #逆向きのペア
-       len_frag = rendf[i] - rstartr[j] + 1
-       if(len_frag >= minlen[pair[namef[i]][namer[j]]] && len_frag <= maxlen[pair[namef[i]][namer[j]]]){
-        nsum[scoref[i]+scorer[j]]++
-        if(scoref[i]+scorer[j]>maxscore){
-         maxscore=scoref[i]+scorer[j]
-         data=pair[namef[i]][namer[j]]"\t"old"\t"namef[i]"\t"namer[j]"\t"rendr[j]+1"\t"rstartf[i]-1"\t-1\t"scoref[i]+scorer[j]
-        }
-       }
-      }
-     }
-    }
-   }
-   if(maxscore>0 && nsum[maxscore]==1){
-    print data
-   }
- }
-' "$list" /dev/stdin > tag_position.txt
-
-(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
- cat $i
+for i in output/*.fq; do
+ DO_SEQKIT seqkit fx2tab $i | awk -F'\t' -v x=1.1 -v y=80 '{seq=$2; len=length(seq); a = log(len / 100) / log(x); b=int(a); if(b<0){b=-1}else if(b>y){b=y+1}; n[b]++; bp[b]+=len} END{print "id\tlower\treads\tbps"; print "under100bp\t0\t"n[-1]+0"\t"bp[-1]+0; for(i=0;i<=y;i++){print "bin"i"\t"int(100*x^i)"\t"n[i]+0"\t"bp[i]+0}; print "over"100*x^(y+1)-1"bp\t"100*x^(y+1)"\t"n[i]+0"\t"bp[i]+0}' > $i.hist
 done
-for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
- zcat $i
-done)|awk -F'\t' '
- function rev(x,  i, str){for(i=length(x);i>0;i--){str=str""substr(x,i,1)}; return str}
- function comp(x){if(x=="A"){return "T"}else if(x=="C"){return "G"}else if(x=="G"){return "C"}else if(x=="T"){return "A"}else{return "N"}}
- function revcomp(x,  i, str, revx){revx=rev(x); for(i=1;i<=length(revx);i++){str=str""comp(substr(revx,i,1))}; return str}
- FILENAME==ARGV[1]{name[$2]=$1; s[$2]=$5; e[$2]=$6; strand[$2]=$7; info[$2]=$5":"$6":"$7":"$3":"$4}
- FILENAME==ARGV[2]{
-  n++;
-  if(FNR%4==1){split($1,arr," "); id=substr(arr[1],2)};
-  if(name[id]!=""){
-   n2++;
-   if(FNR%4==1){
-    n3[name[id]]++;
-    print "@"id":"info[id] > name[id]".fq"
-   }else if(FNR%4==2){
-    if(strand[id]==1){print substr($0,s[id],e[id]-s[id]+1) > name[id]".fq"}
-    else{print revcomp(substr($0,s[id],e[id]-s[id]+1)) > name[id]".fq"}
-   }else if(FNR%4==0){
-    if(strand[id]==1){print substr($0,s[id],e[id]-s[id]+1) > name[id]".fq"}
-    else{print rev(substr($0,s[id],e[id]-s[id]+1)) > name[id]".fq"}
-   }else{print "+" > name[id]".fq"}
-  }
- }
- END{
-  print "Total: "n/4" reads"
-  print " Demultiplexed: "n2/4" reads"
-  for(i in n3){
-   print "  "i": "n3[i]" reads"
-  }
- }
-' tag_position.txt /dev/stdin
+awk -F'\t' '{b=FILENAME; sub("output/","",b); sub("[.]hist$","",b); sub("[.]fq$","",b); a[b][FNR][1]=$3; a[b][FNR][2]=$4; name[FNR]=$2} END{PROCINFO["sorted_in"]="@ind_str_asc"; ORS=""; print name[1]; for(i in a){print "\t"i}; print "\n"; for(j=2;j<=FNR;j++){print name[j]; for(i in a){print "\t"a[i][j][1]}; print "\n"}}' output/*.hist > output.reads.hist
+awk -F'\t' '{b=FILENAME; sub("output/","",b); sub("[.]hist$","",b); sub("[.]fq$","",b); a[b][FNR][1]=$3; a[b][FNR][2]=$4; name[FNR]=$2} END{PROCINFO["sorted_in"]="@ind_str_asc"; ORS=""; print name[1]; for(i in a){print "\t"i}; print "\n"; for(j=2;j<=FNR;j++){print name[j]; for(i in a){print "\t"a[i][j][2]}; print "\n"}}' output/*.hist > output.bps.hist
 
+#統計情報があればグラフ作成
 if [ "$input_4" != "" ];then
- for i in *.fq; do
+ for i in output/*.fq; do
   DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' '{split($1,arr,":"); print arr[1]"\t"length($2)}'|
    awk -F'\t' '
     BEGIN{print "read_id\tlength\tmean_qscore"}
@@ -189,12 +380,13 @@ ggMarginal(g, type = "density", margins = "both", size = 4)
 dev.off()' > $i.R
   echo "$ENV_R Rscript $i.R"
  done | DOPARALLELONE
- WAITPARALLELONE
+ WAITPARALLEL
 fi
 
 post_processing
 #<option detail>
-#<opt_f>
-#</opt_f>
+#<opt_b>
+If you are amplifying two or more genes with different primers, the primer sequences often have weak homology to other genes, so please turn off this option.
+#</opt_b>
 #</option detail>
 

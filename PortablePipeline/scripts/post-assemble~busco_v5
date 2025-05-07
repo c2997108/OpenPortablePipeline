@@ -10,11 +10,11 @@ input_1::An assembled genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
-opt_b:orthofinder options:-l eukaryota_odb10 -m genome
+opt_b:BUSCO options (If you want to use a specific DB, specify like "-l eukaryota_odb10" instead of "--auto-lineage"):--auto-lineage -m genome -f
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1#"
 
-export IM_BUSCO="ezlabgva/busco:v5.3.2_cv1"
+export IM_BUSCO="ezlabgva/busco:v5.8.0_cv1"
 export IM_BASE="c2997108/centos7:metacor7"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh

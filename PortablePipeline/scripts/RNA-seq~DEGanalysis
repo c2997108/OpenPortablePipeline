@@ -236,7 +236,7 @@ EOF
  DO_R bash run-DE.$g1.$g2.sh
 done|DOPARALLELONE
 
-WAITPARALLELONE
+WAITPARALLEL
 
 rm -rf input.ballgown input.cuffdiff
 
