@@ -1,5 +1,6 @@
 # 次回予告
-- assemble~oatkを追加
+- ```assemble~oatk```を追加
+- ```nanopore~get-consensus```でマルチプルアライメントの作成をmuscleから高速でCPU数を指定可能なmafftへ変更
 
 # 1.5.0 (2025/05/07)
 - DDBJスパコンがSGE→SLURMに変更となり、ジョブの投げ方が変わったため対応した。
