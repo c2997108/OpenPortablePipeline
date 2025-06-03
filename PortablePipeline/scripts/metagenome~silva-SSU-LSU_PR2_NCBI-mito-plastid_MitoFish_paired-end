@@ -258,7 +258,7 @@ echo -e "No Hit\t"`expr $n0 - $cnt` >> $j.blast.filtered.name.lca.cnt2
 EOS
 
 find split -mindepth 2 -maxdepth 2|grep -E "(_R1.*|_1)[.]part_[0-9]*[.](fasta|fa)[.]gz$"|while read i; do
- echo $ENV_PR2 bash run-blast.sh "$i" "$opt_d" "$opt_t" 1 "'$opt_b'"
+ echo $ENV_PR2 bash run-blast.sh "$i" "$opt_d" "$opt_t" $N_CPU "'$opt_b'"
 done|DOPARALLEL
 
 WAITPARALLEL

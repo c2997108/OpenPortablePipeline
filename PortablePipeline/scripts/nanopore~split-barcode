@@ -336,7 +336,7 @@ awk -F'\t' -v file="$i" '
    print "  "i": "n3[i]" reads" >> file".stats"
   }
  }
-' <(seqkit fx2tab "$i" | awk -F'\t' '{split($1,arr," "); print arr[1]"\t"$2"\t"$3}') "$i".fasta.blastn.dedup.filterd.tag_position > "$i".fasta.blastn.dedup.filterd.tag_position.tsv
+' <(if [[ "$i" == *.gz ]]; then zcat "$i"; else cat "$i"; fi|sed 's/\t/ /g'|seqkit fx2tab | awk -F'\t' '{split($1,arr," "); print arr[1]"\t"$2"\t"$3}') "$i".fasta.blastn.dedup.filterd.tag_position > "$i".fasta.blastn.dedup.filterd.tag_position.tsv
 
 EOF
 

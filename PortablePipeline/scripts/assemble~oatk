@@ -1,0 +1,138 @@
+#!/bin/bash
+
+explanation='
+An organelle genome assembly toolkit for HiFi reads.
+By including the genome file as input, a FASTA file is generated in which incomplete organelle genomes are removed and complete organelle genomes are added.
+'
+inputdef='
+input_1:directory:HiFi reads (FASTQ):*.fastq,*.fq,*.fastq.gz,*.fq.gz
+input_2:option:An assembled genome file:*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+'
+optiondef='
+opt_c:cpu threads:8
+opt_m:memory limit (GB):64
+opt_a:Oatk option:
+opt_t:Oatk mitochondrion:dikarya_mito.fam
+opt_p:Oatk plastid (e.g. embryophyta_pltd.fam for chloroplast):
+'
+runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -t #opt_t# -p #opt_p# -f #input_2# #input_1#"
+
+export IM_OATK="c2997108/oatk:1.0"
+export IM_SEQKIT="quay.io/biocontainers/seqkit:2.6.1--h9ee0642_0"
+export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.28--h577a1d6_4"
+
+source $(dirname `readlink -f $0 || echo $0`)/common.sh
+
+set -eux
+set -o pipefail
+
+#HiFi reads
+input_hifi=""
+while read i; do
+ if [ "$input_hifi" = "" ];then
+  input_hifi="$i"
+ else
+  input_hifi="$input_hifi $i"
+ fi
+done < <(find "$input_1/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
+
+echo HiFi reads: "$input_hifi"
+
+optpltd=""
+if [ "$opt_p" != "" ];then optpltd="-p /usr/local/oatkdb/$opt_p"; fi
+DO_OATK oatk -o oatk.asm -t $N_CPU -m /usr/local/oatkdb/$opt_t $optpltd $opt_a $input_hifi
+
+if [ "$input_2" != "" ]; then
+ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_HELIXER gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+ awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > "$input_2".ref.fa
+ input_2="$input_2".ref.fa
+
+ cat oatk.asm.mito.ctg.fasta|sed 's/\t/ /g'|DO_SEQKIT seqkit fx2tab|awk -F'\t' '{print ">mitochondrion_"$1"\n"$2}' > plastid.fa
+ if [ -e oatk.asm.pltd.ctg.fasta ]; then
+  cat oatk.asm.pltd.ctg.fasta|sed 's/\t/ /g'|DO_SEQKIT seqkit fx2tab|awk -F'\t' '{print ">chloroplast_"$1"\n"$2}' >> plastid.fa
+ fi
+ DO_MINIMAP2 minimap2 -x asm10 plastid.fa "$input_2" -t $N_CPU > plastid.fa.minimap2
+ cat plastid.fa.minimap2|awk -F'\t' '{len[$1]=$2; n[$1]++; hit1[$1][n[$1]]=$3; hit2[$1][n[$1]]=$4} END{for(i in n){PROCINFO["sorted_in"]="@val_num_asc"; oldstart=-1; oldend=-1; alignlen=0; for(j in hit1[i]){if(hit1[i][j]<oldend){oldend=hit2[i][j]}else{alignlen+=oldend-oldstart; oldstart=hit1[i][j]; oldend=hit2[i][j]}}; alignlen+=oldend-oldstart; percent=alignlen/len[i]; if(percent>0.5){contami=1}else{contami=0}; print i"\t"len[i]"\t"alignlen"\t"percent"\t"contami}}'|sort -k1,1 > plastid.fa.minimap2.contami
+ DO_SEQKIT seqkit fx2tab "$input_2" |awk -F'\t' 'FILENAME==ARGV[1]&&$5==1{contami[$1]=1} FILENAME==ARGV[2]&&contami[$1]!=1{print ">"$1"\n"$2}' plastid.fa.minimap2.contami /dev/stdin > `basename "$input_2"`.rem.fa
+ cat `basename "$input_2"`.rem.fa plastid.fa > `basename "$input_2"`.cleaned.fa
+fi
+
+post_processing
+#<option detail>
+#<opt_a>
+Options:
+  Input/Output:
+    -o FILE              prefix of output files [./oatk.asm]
+    -t INT               number of threads [1]
+    -G                   using input FILE as assembly graph file instead of raw reads for Syncasm
+    -M                   run minicircle mode for small animal mitochondria or plasmid
+    -v INT               verbose level [0]
+    --version            show version number
+  Syncasm:
+    -k INT               kmer size [1001]
+    -s INT               smer size (no larger than 31) [31]
+    -c INT               minimum kmer coverage [30]
+    -a FLOAT             minimum arc coverage [0.35]
+    -D INT               maximum amount of data to use; suffix K/M/G recognized [0]
+    --max-bubble  INT    maximum bubble size for assembly graph clean [100000]
+    --max-tip     INT    maximum tip size for assembly graph clean [10000]
+    --weak-cross  FLOAT  maximum relative edge coverage for weak crosslink clean [0.30]
+    --unzip-round INT    maximum round of assembly graph unzipping [3]
+    --no-read-ec         do not do read error correction
+  Annotation:
+    -m FILE              mitochondria gene annotation HMM profile database [NULL]
+    -p FILE              plastid gene annotation HMM profile database [NULL]
+    -b INT               batch size [100000]
+    -T DIR               temporary directory [NULL]
+    --nhmmscan STR       nhmmscan executable path [nhmmscan]
+  Pathfinder:
+    -f FLOAT             prefer circular path to longest if >= FLOAT sequence covered [0.90]
+    -S FLOAT             minimum annotation score of a core gene [300.0]
+    -e FLOAT             maximum E-value of a core gene [1.000e-06]
+    -g INT[,INT]         minimum number of core gene gain; the second INT for mitochondria [3,1]
+    -l INT               minimum length of a singleton sequence to keep [10000]
+    -q FLOAT             minimum coverage of a sequence compared to the subgraph average [0.20]
+    -C INT               maximum copy number to consider [10]
+    --include-trn        include tRNA genes for sequence classification
+    --include-rrn        include rRNA genes for sequence classification
+    --no-graph-clean     do not do assembly graph clean
+    --edge-c-tag STR     edge coverage tag in the GFA file [EC:i]
+    --kmer-c-tag STR     kmer coverage tag in the GFA file [KC:i]
+    --seq-c-tag  STR     sequence coverage tag in the GFA file [SC:f]#</opt_a>
+#<opt_p>
+
+acrogymnospermae_pltd.fam
+anthocerotophyta_pltd.fam
+bryophyta_pltd.fam
+embryophyta_pltd.fam
+lycopodiopsida_pltd.fam
+magnoliopsida_pltd.fam
+marchantiophyta_pltd.fam
+polypodiopsida_pltd.fam
+#</opt_p>
+#<opt_t>
+acrogymnospermae_mito.fam
+actinopterygii_mito.fam
+amphibia_mito.fam
+anthocerotophyta_mito.fam
+araneae_mito.fam
+aves_mito.fam
+bryophyta_mito.fam
+crocodylia_mito.fam
+dikarya_mito.fam
+embryophyta_mito.fam
+hymenoptera_mito.fam
+insecta_mito.fam
+lepidosauria_mito.fam
+lycopodiopsida_mito.fam
+magnoliopsida_mito.fam
+mammalia_mito.fam
+marchantiophyta_mito.fam
+mollusca_mito.fam
+nematoda_mito.fam
+polypodiopsida_mito.fam
+serpentes_mito.fam
+testudines_mito.fam
+#</opt_t>
+#</option detail>
+

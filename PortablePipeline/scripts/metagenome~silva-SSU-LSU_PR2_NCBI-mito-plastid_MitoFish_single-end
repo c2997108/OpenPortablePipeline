@@ -136,7 +136,7 @@ EOS
 
 
 find split -mindepth 2 -maxdepth 2|grep -E "[.]part_[0-9]*[.](fasta|fa)[.]gz$"|while read i; do
- echo $ENV_PR2 bash run-blast.sh "$i" "$opt_d" "$opt_t" 1 "'$opt_b'" "$opt_a" "$opt_i" "$opt_l"
+ echo $ENV_PR2 bash run-blast.sh "$i" "$opt_d" "$opt_t" $N_CPU "'$opt_b'" "$opt_a" "$opt_i" "$opt_l"
 done|DOPARALLEL
 
 WAITPARALLEL

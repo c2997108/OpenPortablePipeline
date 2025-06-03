@@ -1,7 +1,7 @@
 #!/bin/bash
 
 explanation='
-This pipeline clusters Nanopore sequences and generates a consensus sequence for each cluster, making it a highly useful alternative to Sanger sequencing.
+This pipeline clusters Nanopore sequences and generates a consensus sequence for each cluster, making it a highly useful alternative to Sanger sequencing with MAFFT.
 '
 inputdef='
 input_1:directory:Nanopore FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
@@ -9,13 +9,13 @@ input_1:directory:Nanopore FASTQ(.gz) files:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):64
-opt_i:Identity threshold during clustering (0-1):0.9
+opt_i:Identity threshold during clustering (0-1):0.97
 opt_k:Minimum read count per cluster for consensus generation:10
 opt_n:Maximum number of reads used for consensus sequence generation:30
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -n #opt_n# #input_1#"
 
-export IM_MUSCLE="c2997108/rocky9:dev_vsearch_muscle"
+export IM_MAFFT="c2997108/rocky9:dev_vsearch_muscle_mafft"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -33,15 +33,19 @@ set -eux
 set -o pipefail
 
 i="$1"
-opt_i="$2" #0.9
+opt_i="$2" #0.97
 opt_k="$3" #10
-opt_n="$4" #30
+N_CPU="$4"
 
 workdir=work/`basename $i`.dir
 mkdir -p "$workdir"
-vsearch --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
-seqkit fx2tab "$i"|awk -F'\t' -v dir="$workdir" -v minreads="$opt_k" '
- FILENAME==ARGV[1]{seq[$1]=$2; q[$1]=$3}
+vsearch --threads $N_CPU --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
+if [[ "$i" == *.gz ]]; then
+ zcat "$i"
+else
+ cat "$i"
+fi | sed 's/\t/ /g'|seqkit fx2tab |awk -F'\t' -v dir="$workdir" -v minreads="$opt_k" '
+ FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2; q[arr[1]]=$3}
  FILENAME==ARGV[2]{if($1=="S"){s[$2]=$9}else if($1=="H"){c[$2]++; r[$2][c[$2]]=$9}}
  END{
   for(i in c){
@@ -51,30 +55,120 @@ seqkit fx2tab "$i"|awk -F'\t' -v dir="$workdir" -v minreads="$opt_k" '
    }
   }
  }' /dev/stdin $workdir/vsearch-clusters.uc
+
+EOF
+
+find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
+ echo $ENV_MAFFT bash run-consensus.sh "$i" "$opt_i" "$opt_k" "$N_CPU"
+done | DOPARALLEL
+
+WAITPARALLEL
+
 mkdir -p output
-for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
+
+cat << 'EOF' > run-consensus2.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+j="$1"
+i="$2"
+opt_n="$3" #30
+N_CPU="$4"
+workdir="$5"
+
+#for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
  head -n $((10#$opt_n*2)) $j > $j.sub
- muscle -align $j.sub -output $j.sub.muscle
- cons -sequence $j.sub.muscle -outseq $j.sub.muscle.fa
- sed 's/n//g' $j.sub.muscle.fa > $j.sub.muscle.fa.rmn
- fastareformat $j.sub.muscle.fa.rmn > $j.sub.muscle.fa.rmn2
- (echo ">consensus_"`basename $i`_`basename $j .fasta`; tail -n+2 $j.sub.muscle.fa.rmn2) > $j.sub.muscle.fa.rmn3
- cat $j.sub.muscle.fa.rmn3 $j.sub > $j.sub.fa
- muscle -align $j.sub.fa -output $j.sub.fa.muscle
- cp $j.sub.muscle.fa.rmn3 output/`basename $i`_`basename $j`
- cp $j.sub.fa.muscle output/`basename $i`_`basename $j`.muscle
+ mafft --thread $N_CPU --auto $j.sub > $j.sub.mafft
+ #muscle -align $j.sub -output $j.sub.muscle
+ cons -sequence $j.sub.mafft -outseq $j.sub.mafft.fa
+ sed 's/n//g' $j.sub.mafft.fa > $j.sub.mafft.fa.rmn
+ fastareformat $j.sub.mafft.fa.rmn > $j.sub.mafft.fa.rmn2
+ (echo ">consensus_"`basename $i`_`basename $j .fasta`; tail -n+2 $j.sub.mafft.fa.rmn2) > $j.sub.mafft.fa.rmn3
+ cat $j.sub.mafft.fa.rmn3 $j.sub > $j.sub.fa
+ mafft --thread $N_CPU --auto $j.sub.fa > $j.sub.fa.mafft
+ #muscle -align $j.sub.fa -output $j.sub.fa.muscle
+ cp $j.sub.mafft.fa.rmn3 "$workdir"/round1/`basename $i`_`basename $j`
+ cp $j.sub.fa.mafft "$workdir"/round1/`basename $i`_`basename $j`.mafft
+#done
+
+EOF
+
+find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
+ workdir=work/`basename $i`.dir
+ mkdir -p $workdir/round1
+ for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
+  echo $ENV_MAFFT bash run-consensus2.sh "$j" "$i" "$opt_n" "$N_CPU" "$workdir"
+ done
+done | DOPARALLEL
+
+WAITPARALLEL
+
+cat << 'EOF' > run-consensus3.sh
+#!/bin/bash
+set -eux
+set -o pipefail
+
+j="$1"
+opt_i="$2" #0.97
+N_CPU="$3"
+workdir="$4"
+i="$5"
+
+vsearch --threads $N_CPU --cluster_fast "$j" --id "$opt_i" --centroids "$workdir"/round2/vsearch-center.fasta --uc "$workdir"/round2/vsearch-clusters.uc
+awk -F'\t' '{a=$9; sub(/.*_cluster/,"",a); sub(/reads/,"",a); split(a,arr,"_"); reads=arr[2]} $1=="S"{data[$9][$9]=reads; total[$9]+=reads} $1=="H"{data[$10][$9]=reads; total[$10]+=reads} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in total){for(j in data[i]){print i"\t"total[i]"\t"j; break}}}' "$workdir"/round2/vsearch-clusters.uc > "$workdir"/round2/vsearch-clusters.uc.summary
+#コンセンサス配列のクラスタリングの結果で同一クラスターと判定されたround1の配列数を足してround2の結果としてコピー
+cat "$workdir"/round2/vsearch-clusters.uc.summary | awk -F'\t' -v dir="$workdir" '{print "cp "dir"/round1/"substr($3,11)".fasta "dir"/round2/cluster"NR"_"$2"reads.fasta"}'|bash
+cat "$workdir"/round2/vsearch-clusters.uc.summary | awk -F'\t' -v dir="$workdir" '{print "cp "dir"/round1/"substr($3,11)".fasta.mafft "dir"/round2/cluster"NR"_"$2"reads.fasta.mafft"}'|bash
+for k in "$workdir"/round2/cluster*_*reads.fasta; do
+ i2=`basename $i|sed 's/[.]gz$//; s/[.]\(fastq\|fq\)$//'`_`basename $k .fasta`
+ (echo ">"$i2; tail -n+2 $k) > output/$i2.fasta
+ cat $k.mafft |sed 's/>consensus_.*_cluster.*_.*reads/>consensus/' > output/$i2.fasta.mafft
 done
 
 EOF
 
 find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
- echo $ENV_MUSCLE bash run-consensus.sh "$i" "$opt_i" "$opt_k" "$opt_n"
+ workdir=work/`basename $i`.dir
+ mkdir -p "$workdir"/round2
+ if [ "`ls $workdir/round1`" ]; then
+  cat "$workdir"/round1/*.fasta > "$workdir"/round1/all.fa
+  echo $ENV_MAFFT bash run-consensus3.sh "$workdir"/round1/all.fa "$opt_i" "$N_CPU" "$workdir" "$i"
+ fi
 done | DOPARALLEL
 
 WAITPARALLEL
+
+cat output/*.fasta > output-all.fasta
+DO_MAFFT vsearch --threads $N_CPU --cluster_fast output-all.fasta --id "$opt_i" --centroids output-all-center.fasta --uc output-all-clusters.uc
+DO_MAFFT awk -F'\t' '
+ {
+  a=$9; sub(/_cluster[0-9]+_[0-9]+reads/,"",a); sample[a]=1;
+  b=$9; sub(/.*_cluster[0-9]+_/,"",b); sub(/reads$/,"",b);
+  if($1=="S"){id[$9]=1; data[$9][a]+=b; sum[$9]+=b}else if($1=="H"){data[$10][a]+=b; sum[$10]+=b}
+ }
+ END{
+  ORS=""
+  PROCINFO["sorted_in"]="@ind_str_asc"
+  print "id"
+  for(j in sample){
+   print "\t"j
+  }
+  print "\n"
+  PROCINFO["sorted_in"]="@val_num_desc"
+  for(i in sum){
+   print i
+   PROCINFO["sorted_in"]="@ind_str_asc"
+   for(j in sample){
+    print "\t"data[i][j]+0
+   }
+   print "\n"
+  }
+ }
+' output-all-clusters.uc > output-all-table.txt
+
 
 post_processing
 
 #<option detail>
 #</option detail>
-
