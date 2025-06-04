@@ -81,10 +81,25 @@ import javafx.scene.layout.GridPane;
 import javafx.stage.FileChooser;
 import javafx.stage.FileChooser.ExtensionFilter;
 import javafx.stage.Stage;
+import javafx.scene.Scene;
+import javafx.scene.control.TextArea;
 import javafx.util.Callback;
-import javafx.util.Duration;
+import java.io.IOException;
+import java.nio.file.Files;
+// NOTE: Removed RichTextFX and related imports (Matcher, Pattern, Collection, Collections, WindowEvent, java.time.Duration)
+// For example, java.util.regex.Pattern and Matcher might still be used elsewhere, so careful inspection is needed.
+// Assuming they are not used by other parts of THIS class after this revert.
+// If they are, they should NOT be removed from the import list by this operation.
+// For this operation, we assume they are solely for the removed highlighting.
+import java.nio.file.Paths;
+import javafx.scene.control.Alert;
+
 
 public class JobWindowController {
+
+    public static JobWindowController instance;
+
+    // Removed RichTextFX Patterns and Keyword arrays
 
     @FXML
     private BorderPane bp;
@@ -762,6 +777,7 @@ public class JobWindowController {
 
     @FXML
     void initialize() {
+        instance = this;
         assert hostname != null : "fx:id=\"hostname\" was not injected: check your FXML file 'JobWindow.fxml'.";
         assert port != null : "fx:id=\"port\" was not injected: check your FXML file 'JobWindow.fxml'.";
         assert user != null : "fx:id=\"user\" was not injected: check your FXML file 'JobWindow.fxml'.";
@@ -1410,7 +1426,7 @@ public class JobWindowController {
         );
 
         //timer
-        Timeline timer = new Timeline(new KeyFrame(Duration.millis(30*1000), new EventHandler<ActionEvent>() {
+        Timeline timer = new Timeline(new KeyFrame(javafx.util.Duration.millis(30*1000), new EventHandler<ActionEvent>() {
 		@Override
 		public void handle(ActionEvent event) {
 			if(!isSending) {
@@ -2191,4 +2207,44 @@ public class JobWindowController {
 	return false;
     }
 
+    public void showSourceCodeWindow(String scriptName, String sourceCode) {
+        Stage newStage = new Stage();
+        newStage.setTitle("[Source code]: "+scriptName);
+        TextArea textArea = new TextArea(); // Reverted to TextArea
+        textArea.setEditable(false);
+        if (sourceCode != null) {
+            textArea.setText(sourceCode);
+        } else {
+            textArea.setText("");
+        }
+        Scene scene = new Scene(textArea, 600, 400); // Set a default size for the window
+        // newStage.setOnCloseRequest removed as it was for 'cleanup.unsubscribe()'
+        newStage.setScene(scene);
+        newStage.show();
+    }
+
+    // Removed computeHighlighting method
+
+    public void handleShowSourceCode(String scriptName) {
+        try {
+            String scriptFolderPath = new PPSetting().get("scriptfolder");
+            String scriptPath = Paths.get(scriptFolderPath, scriptName).toString();
+            String sourceCode = readAll(scriptPath); // Assuming readAll can throw IOException
+            showSourceCodeWindow(scriptName, sourceCode);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("Could not read script file");
+            alert.setContentText("The file " + scriptName + " could not be read.\n" + e.getMessage());
+            alert.showAndWait();
+        } catch (Exception e) { // Catch other potential exceptions from PPSetting
+            e.printStackTrace();
+            Alert alert = new Alert(Alert.AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("Error retrieving script folder path");
+            alert.setContentText(e.getMessage());
+            alert.showAndWait();
+        }
+    }
 }

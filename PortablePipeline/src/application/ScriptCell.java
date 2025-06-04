@@ -8,7 +8,13 @@ import javafx.scene.control.ListCell;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.Background;
+import javafx.scene.layout.BackgroundFill;
+import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.HBox;
+import javafx.scene.paint.Color;
+import javafx.geometry.Insets;
 
 public class ScriptCell extends ListCell<ScriptNode> {
 	//private HBox hbox1;
@@ -81,12 +87,44 @@ public class ScriptCell extends ListCell<ScriptNode> {
 
             hBox.getChildren().add(button1);
 
+            Button buttonSource = new Button(); // Text removed later
+            buttonSource.setText(""); // Set empty text for icon button
+            Image sourceIcon = new Image("file:image/scode.png", 16, 16, false, false); // Consistent with button1
+            ImageView sourceIconView = new ImageView(sourceIcon);
+            buttonSource.setGraphic(sourceIconView);
+
+            Tooltip tooltipButtonSource = new Tooltip("View source code"); // Tooltip name changed for clarity
+            Tooltip.install(buttonSource, tooltipButtonSource);
+            buttonSource.setOnAction((ActionEvent e) -> {
+                if (jNode != null && jNode.filename != null) {
+                    // Ensure JobWindowController.instance is not null if used directly
+                    if (JobWindowController.instance != null) {
+                        JobWindowController.instance.handleShowSourceCode(jNode.filename);
+                    } else {
+                        // Fallback or error handling if controller instance is not available
+                        System.err.println("JobWindowController instance is not available.");
+                        // Optionally show an alert to the user
+                    }
+                }
+            });
+            hBox.getChildren().add(buttonSource);
+
 		label1.setMinWidth(300d); // Consider adjusting if space is tight with icon
 		label2.setMaxHeight(15d);
 		Tooltip tooltip = new Tooltip(jNode.explanation);
 		Tooltip.install(hBox, tooltip); // Tooltip on HBox might be broad, consider on label1 or label2
             hBox.getChildren().add(label1);
             hBox.getChildren().add(label2);
+
+            // Add mouse event handlers for background change
+            hBox.setOnMouseEntered((MouseEvent event) -> {
+                hBox.setBackground(new Background(new BackgroundFill(Color.LIGHTBLUE, CornerRadii.EMPTY, Insets.EMPTY)));
+            });
+
+            hBox.setOnMouseExited((MouseEvent event) -> {
+                hBox.setBackground(null); // Reset to default background
+            });
+
 		setGraphic(hBox);
         }
 	}

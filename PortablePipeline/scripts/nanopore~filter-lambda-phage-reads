@@ -31,7 +31,7 @@ for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true
   cat "$i"
  fi
 done | awk -v qt=$opt_q '
-  {if(NR%4==1){q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)}}; if(q>=qt){vis=1}else{vis=0}}; if(vis==1){print $0}}
+  {if(NR%4==1){q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)+0}}; if(q>=qt){vis=1}else{vis=0}}; if(vis==1){print $0}}
  ' | DO_MINIMAP2 minimap2 -x map-ont -t $N_CPU /usr/local/lambda.fasta /dev/stdin | awk -v l="$opt_l" '$4-$3>=$2*l{print $1}' > lambda.reads
 
 for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true`; do
@@ -47,7 +47,7 @@ done | awk -v qt=$opt_q '
     #lambdaにヒットしていたら除外
     if(substr($1,2) in lam){vis=0}
     #クオリティが低いと除外
-    else{q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)}}; if(q>=qt){vis=1}else{vis=0}}
+    else{q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)+0}}; if(q>=qt){vis=1}else{vis=0}}
    };
    if(vis==1){print $0}
   }
