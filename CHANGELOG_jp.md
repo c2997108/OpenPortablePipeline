@@ -1,4 +1,5 @@
 # 次回予告
+- ```nanopore~filter-lambda-phage-reads```でトリミング後のリード長が0bpの場合は除去するように設定。
 
 # 1.5.1 (2025/06/04)
 - ```assemble~oatk```を追加
