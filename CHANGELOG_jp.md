@@ -1,6 +1,7 @@
 # 次回予告
 - ```nanopore~filter-lambda-phage-reads```でトリミング後のリード長が0bpの場合は除去するように設定
 - ```assemble~hifiasm```でhifiasmのバージョンをv0.25.0にアップデート
+- armネイティブなdockerコンテナも併せて登録する方針に変更。`assemble~megahit`,`QC~jellyfish`,`assemble~hifiasm`,`nanopore~get-consensus`
 
 # 1.5.1 (2025/06/04)
 - ```assemble~oatk```を追加
