@@ -454,8 +454,8 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 
 ### Mac用
 - dockerを/usr/local/binにインストールし、Homebrewでcoreutils, gnu-sedを/usr/local/xxx/gnubinにインストールする必要あり。
-  coreutils, gnu-sedが無いと、readlink, sed等が意図したように動いてくれない。=>一部対策済み
-- Macにもともと入っているawkは二次元配列に非対応
+  coreutils, gnu-sedが無いと、readlink, sed, xargs等が意図したように動いてくれない。=>一部対策済み
+- Macにもともと入っているawkは二次元配列に非対応。ファイル出力では`print "AA" > ("output"".txt")`のようにファイル名の連結をする場合は`()`で囲む必要あり。
 - sedは-iオプションが違うのと、\(aa\|bb\)のような記述には非対応
 - dockerで2つ以上のimageを並列ダウンロードすると仮想PCがメモリを異常に使用して固まる
 - フォルダの名前が「.bam」などで終わる場合、ファイル選択ダイアログで「*.bam」に限定していると、そのフォルダの中に入れなくなる。
