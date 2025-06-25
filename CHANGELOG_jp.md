@@ -2,6 +2,7 @@
 - ```nanopore~filter-lambda-phage-reads```でトリミング後のリード長が0bpの場合は除去するように設定
 - ```assemble~hifiasm```でhifiasmのバージョンをv0.25.0にアップデート
 - armネイティブなdockerコンテナも併せて登録しておき、arm CPUの場合はネイティブのコンテナイメージを使用する方針に変更。強制的に`linux/amd64`イメージをロードするようにしていたけど、その指定を外した。`assemble~megahit`,`QC~jellyfish`,`assemble~hifiasm`,`nanopore~get-consensus`,`ZZZ~hello-world`,`ZZZ~wait-10sec`,`ZZZ~wait-1min`,`nanopore~split-barcode`
+- MacでHomebrewを使用しない環境での実行サポートを強化。xargsによる並列化対応。
 
 # 1.5.1 (2025/06/04)
 - ```assemble~oatk```を追加
