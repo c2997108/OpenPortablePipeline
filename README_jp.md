@@ -37,14 +37,23 @@ https://suikou.fs.a.u-tokyo.ac.jp/pp/
 
 ### Windowsユーザ
 
-INTEL/AMD系のCPUであれば、`PortablePipeline-windows-amd64-vx.x.x.zip`を、ARM系のCPUであれば`PortablePipeline-windows-aarch64-vx.x.x.zip`をダウンロードしてzipファイルを解凍する。日本語のフォルダやスペースを含むフォルダの中に解凍しないこと。
+INTEL/AMD系のCPUであれば、`PortablePipeline-windows-amd64-vx.x.x.zip`を、ARM系のCPUであれば`PortablePipeline-windows-aarch64-vx.x.x.zip`をダウンロードしてzipファイルを解凍する（ファイルを右クリックして「すべて展開」をクリックし、開いたダイアログで「次へ」をクリック）。日本語のフォルダやスペースを含むフォルダの中に解凍しないこと。
 
-![image](https://github.com/user-attachments/assets/561d67ac-6d00-4f46-b612-8be663217394)
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/561d67ac-6d00-4f46-b612-8be663217394" />
 
 <img width="252" alt="image" src="https://github.com/user-attachments/assets/52caadb8-f406-41ab-9cfd-83103756a7b5" />
 
+![image](https://github.com/user-attachments/assets/28c8d5e0-b3d0-464a-9b8e-df72b3e1b275)
+
 解凍されたファイルの中で、「PortablePipeline.bat」をダブルクリックして起動する。
+
+![image](https://github.com/user-attachments/assets/aae0f918-bc15-4ff3-8d97-dd33e0a05c3f)
+
 Windowsユーザはジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。管理者権限を許可しない場合でも起動は可能だが、解析を実行する際に入力ファイルのジャンクションが作れずコピーするため、ディスク容量がより必要になる。
+
+![image](https://github.com/user-attachments/assets/779477bd-20a8-451b-8560-d3f38390030d)
+
+![image](https://github.com/user-attachments/assets/83194a11-5f95-4495-b455-0b7bf737b620)
 
 ### Macユーザ(M1プロセッサ以降)
 
