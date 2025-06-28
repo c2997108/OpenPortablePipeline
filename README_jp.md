@@ -67,7 +67,7 @@ Windowsユーザはジャンクションファイルの作成に管理者権限�
 
 さらに確認の画面が出るので、指紋認証やパスワードを入力するなどして認証する。
 
-<img width="251" alt="image" src="https://github.com/user-attachments/assets/bc786f26-0370-45fc-9dcc-00f4117790da" />
+<img width="239" alt="image" src="https://github.com/user-attachments/assets/d945ad9b-66d1-4b1a-b68e-e09c18441e64" />
 
 ## 解析実行方法
 
