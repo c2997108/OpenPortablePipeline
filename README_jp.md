@@ -61,6 +61,10 @@ Windowsユーザはジャンクションファイルの作成に管理者権限�
 
 <img width="367" alt="image" src="https://github.com/user-attachments/assets/8354e5ea-bbf8-4037-b9f2-c430f7079509" />
 
+#### 起動画面
+
+![image](https://github.com/user-attachments/assets/3f183d9d-739a-4a73-9cbd-8aecf4c1fe2f)
+
 ### Macユーザ(M1プロセッサ以降)
 
 `PortablePipeline-x.x.x.dmg`をダウンロードし、
