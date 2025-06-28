@@ -14,15 +14,15 @@ https://suikou.fs.a.u-tokyo.ac.jp/pp/
 
 ## 必要なシステム要件
 ### クライアント (GUI操作を行う端末)
-- Windows 10, 11 もしくは Mac
+- Java 21以降が稼働するWindows、Mac、Linux
 - ストレージ：たくさん　解析にもよるが1TBくらいあると安心。
 
 ### サーバ (データ解析を行うコンピュータ)
-下記のいずれかが必要
+開発者がテストしているのはメモリ64GB、ディスク500GBの環境。データによってはそれよりも少なくても動くこともあるし、それより多く必要なこともある。下記のいずれかのサーバが必要
 #### 自前のサーバ
-メモリ64GBの環境でテストしている。データによってはそれよりも少なくても動くこともあるし、それより多く必要なこともある。推奨順としては、
-- Linuxサーバ: Docker, PodmanもしくはSingularityインストール済みでPython3以降がインストール済みのLinuxサーバ (リモートサーバとして使用する場合はSSHログイン可能な状態に設定しておく) [Linuxサーバセットアップ方法](#Linuxサーバのセットアップ方法)
-- Windows WSL: Windows 10以降のWindows Subsystem for Linuxを利用したUbuntu : [WSLサーバセットアップ方法](#WSLサーバのセットアップ方法) 設定でWSLを選択すれば自動でWSLのセットアップ、UbuntuにDockerのインストールを行い環境を整えるようになっている。注意事項としてWSLではディスクアクセスを並列に行うことができないケースがあるようで、CPU数を1にしないとエラーになることがある。WSLの仮想マシンは仮想ディスクサイズが100GB程度と少ないので、容量が少なくて動かないスクリプトがある。
+推奨順としては、
+- Linuxサーバ: Docker, Podman, Singularity, Apptainerいずれかをインストール済み、かつPython3以降がインストール済みのLinuxサーバ (リモートサーバとして使用する場合はSSHログイン可能な状態に設定しておく) [Linuxサーバセットアップ方法](#Linuxサーバのセットアップ方法)
+- Windows WSL: Windows 10以降のWindows Subsystem for Linuxを利用したUbuntu : [WSLサーバセットアップ方法](#WSLサーバのセットアップ方法) 設定でWSLを選択すれば自動でWSLのセットアップを行い、WSLのUbuntuにDockerのインストールを行い自動で環境を整える。注意事項としてWSLではディスクアクセスを並列に行うことができないケースがあるようで、CPU数を1にしないとエラーになることがある。WSLの仮想マシンは仮想ディスクサイズが100GB程度と少ないので、容量が少なくて動かないスクリプトがある。
 - MacでHomebrewのcoreutilsなどとDocker Desktop for MacをインストールしたMac : [Macサーバセットアップ方法](#macをサーバとして使用する場合のセットアップ方法-intel-mac)。Dockerの仮想マシンの仮想ディスクが少ないので、容量が少なくて動かないスクリプトがある。
 
 #### スパコン (無料アカウントあり）
@@ -30,41 +30,68 @@ https://suikou.fs.a.u-tokyo.ac.jp/pp/
 - 遺伝研DDBJスパコン https://sc.ddbj.nig.ac.jp/ja
 - 東大ヒトゲノム解析センタースパコン https://supcom.hgc.jp/japanese/
 
-## 操作方法
-1. 最新のPortablePipelineのリリースをダウンロードして解凍する。 日本語のフォルダやスペースを含むフォルダの中に解凍しないでください。
-  
+## クライアントインストール方法
+最新のPortablePipelineのリリースを下記のページよりダウンロードする。 
+
   https://github.com/c2997108/OpenPortablePipeline/releases
 
-```
-  Win: PortablePipeline-win-vXXX.zip
-  Mac: PortablePipeline-mac-vXXX.tar.gz
-  Linux: PortablePipeline-linux-vXXX.tar.gz
-```
+### Windowsユーザ
 
-2. 解凍されたファイルの中で、Windowsならば「PortablePipeline.bat」を、Macであれば「PortablePipeline.command」をダブルクリックして起動する。Linuxであれば「PortablePipeline.sh」を右クリックして「Run as a program」などを選択して実行する。
-Windowsユーザは、ジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。Macユーザは初回起動時のみ、「開発元が未確認のため開けません」というメッセージが出るので、「システム設定」→「プライバシーとセキュリティ」→下の方にある「セキュリティ」の箇所に「開発元を確認できないため、使用がブロックされました。」の下にある「このまま開く」をクリックして、実行を許可する必要がある。
+INTEL/AMD系のCPUであれば、`PortablePipeline-windows-amd64-vx.x.x.zip`を、ARM系のCPUであれば`PortablePipeline-windows-aarch64-vx.x.x.zip`をダウンロードしてzipファイルを解凍する。日本語のフォルダやスペースを含むフォルダの中に解凍しないこと。
+解凍されたファイルの中で、「PortablePipeline.bat」をダブルクリックして起動する。
+Windowsユーザはジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。管理者権限を許可しない場合でも起動は可能だが、解析を実行する際に入力ファイルのジャンクションが作れずコピーするため、ディスク容量がより必要になる。
 
-3. ソフトウェアが起動したら、「Settings」タブを開いて、Linuxサーバに接続するか(「ssh」を選択)、スパコンに接続するか(「ddbj」、「shirokane」を選択)、Windows単体で解析まで実行するか(「WSL」を選択)、Mac単体で解析まで実行するか(「Mac」を選択)、Linuxで直接実行するか(「Linux」を選択)を選択する。サーバに接続する場合は、必要なアカウント情報を入力する。
+### Macユーザ(M1プロセッサ以降)
+
+`PortablePipeline-x.x.x.dmg`をダウンロードし、
+
+<img width="520" alt="image" src="https://github.com/user-attachments/assets/3eea167c-ed52-4169-a4b8-7196e6b76ff7" />
+
+ダウンロードしたdmgファイルを開いて「PortablePipeline」を「Applications」フォルダにコピーする。
+
+<img width="488" alt="image" src="https://github.com/user-attachments/assets/f3ffd060-62b8-4d16-b525-b986cc2aaa0f" />
+
+アプリケーションフォルダにコピーしたPortablePipelineをダブルクリックして起動しようとすると、
+
+<img width="582" alt="image" src="https://github.com/user-attachments/assets/adb0c8a0-716b-4698-8027-95b62b50dc16" />
+
+<img width="247" alt="image" src="https://github.com/user-attachments/assets/bdf1d392-54ca-468a-aaa7-dd67a25c01a6" />
+
+「"PortablePipeline"は開いていません」というエラーが出るので、「完了」を押し、システム設定を開いて、「プライバシーとセキュリティ」タブの中を下にスクロールすると、「PortablePipelineがブロックされました」と書かれている横にある「このまま開く」をクリックする。
+
+<img width="712" alt="image" src="https://github.com/user-attachments/assets/3a2275db-605a-4eda-a00e-845f0a911bdd" />
+
+もう一度警告が出るので、「このまま開く」をクリックする。
+
+<img width="251" alt="image" src="https://github.com/user-attachments/assets/b0deb036-3e8c-4650-ae2f-2c46d1776767" />
+
+さらに確認の画面が出るので、指紋認証やパスワードを入力するなどして認証する。
+
+<img width="251" alt="image" src="https://github.com/user-attachments/assets/bc786f26-0370-45fc-9dcc-00f4117790da" />
+
+## 解析実行方法
+
+1. ソフトウェアが起動したら、「Settings」タブを開いて、Linuxサーバに接続するか(「ssh」を選択)、スパコンに接続するか(「ddbj」、「shirokane」を選択)、Windows単体で解析まで実行するか(「WSL」を選択)、Mac単体で解析まで実行するか(「Mac」を選択)、Linuxで直接実行するか(「Linux」を選択)を選択する。サーバに接続する場合は、必要なアカウント情報を入力する。
 例としてDDBJスパコンを使用する際の設定例を示す。
 ![image](https://user-images.githubusercontent.com/5350508/79914247-e95a7300-845f-11ea-8dc9-57f97d761ccd.png)
 
-4. 「Analysis Scripts」タブを選択し、解析したいスクリプトを選ぶと、入力ファイル、オプションを入力する画面が表示される。入力ファイルは、「input_1」などと書かれたボタンをクリックしてから選択し、オプションで変更する必要がある箇所は変更してから、画面下の「Run」ボタンを押すと実行される。
+2. 「Analysis Scripts」タブを選択し、解析したいスクリプトを選ぶと、入力ファイル、オプションを入力する画面が表示される。入力ファイルは、「input_1」などと書かれたボタンをクリックしてから選択し、オプションで変更する必要がある箇所は変更してから、画面下の「Run」ボタンを押すと実行される。
 例としてHello Worldとサーバ上で表示させてみるだけのテストプログラムを実行してみる場合の手順を示す。
 ![image](https://user-images.githubusercontent.com/5350508/79914547-769dc780-8460-11ea-86da-dcfc864fa67a.png)
 
-5. 「Run」ボタンが押された後、サーバにデータを転送するので、恐らくしばらく時間がかかる。進捗はJavaとは別にパワーシェルかターミナルが開いているはずで、そちらにデータの転送状況が表示される。「Job List」のステータスが「Running」に変わったら、本ソフトウェアをいったん終了しても大丈夫。立ち上げていれば、30秒おきにサーバに進捗を確認しに行く。
+3. 「Run」ボタンが押された後、サーバにデータを転送するので、恐らくしばらく時間がかかる。進捗はJavaとは別にパワーシェルかターミナルが開いているはずで、そちらにデータの転送状況が表示される。「Job List」のステータスが「Running」に変わったら、本ソフトウェアをいったん終了しても大丈夫。立ち上げていれば、30秒おきにサーバに進捗を確認しに行く。
 例として、ジョブを投げたときのサーバ上のログを確認する画面と
 ![image](https://user-images.githubusercontent.com/5350508/79914860-ec099800-8460-11ea-8630-7c8567f6a137.png)
 クライアントとサーバのファイルのやり取りを示すパワーシェルのスクリーンショットはこんな感じ。
 ![image](https://user-images.githubusercontent.com/5350508/79914912-ffb4fe80-8460-11ea-9390-02ad5b745189.png)
 
-6. Statusがfinishedになれば解析が終わっているので、「open results」をクリックして解析結果ファイル一覧を見てみる。
+4. Statusがfinishedになれば解析が終わっているので、「open results」をクリックして解析結果ファイル一覧を見てみる。
 ![image](https://user-images.githubusercontent.com/5350508/79915563-232c7900-8462-11ea-97f0-fcffd17e2877.png)
 結果ファイル一覧の例は下記のような感じ。下記は単にサーバ上でHello Worldを表示させただけなので、log.txtファイルにその痕跡が残っているだけだけど、マッピングなどを行えばここにbamファイルなどが表示される。
 ![image](https://user-images.githubusercontent.com/5350508/79915687-64248d80-8462-11ea-884f-46dc0047c7c6.png)
 
-## コマンドラインでの操作方法（Linux上でのみ使用可能）
-1. DockerとPython3をインストールしておく。Dockerはsudoなしで実行できるように`sudo usermod -aG docker $USER`を実行して再ログインしておく。
+## コマンドラインでの解析方法（Linux上でのみ使用可能）
+1. Docker/Podman/Singularity/ApptainerとPython3をインストールしておく。Dockerであればsudoなしで実行できるように`sudo usermod -aG docker $USER`を実行して再ログインしておく。
 
 2. GitHubからソースコード一式をダウンロードする。
 
