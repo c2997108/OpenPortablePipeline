@@ -49,11 +49,17 @@ INTEL/AMD系のCPUであれば、`PortablePipeline-windows-amd64-vx.x.x.zip`を�
 
 ![image](https://github.com/user-attachments/assets/aae0f918-bc15-4ff3-8d97-dd33e0a05c3f)
 
-Windowsユーザはジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。管理者権限を許可しない場合でも起動は可能だが、解析を実行する際に入力ファイルのジャンクションが作れずコピーするため、ディスク容量がより必要になる。
+初回起動時はDefenderが起動を停止してくるので、「詳細情報」を開いて
 
 ![image](https://github.com/user-attachments/assets/779477bd-20a8-451b-8560-d3f38390030d)
 
+「実行」をクリックする。
+
 ![image](https://github.com/user-attachments/assets/83194a11-5f95-4495-b455-0b7bf737b620)
+
+Windowsユーザはジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれるのでOKを押す。管理者権限を許可しない場合でも起動は可能だが、解析を実行する際に入力ファイルのジャンクションが作れずコピーするため、ディスク容量がより必要になる。
+
+<img width="367" alt="image" src="https://github.com/user-attachments/assets/8354e5ea-bbf8-4037-b9f2-c430f7079509" />
 
 ### Macユーザ(M1プロセッサ以降)
 
