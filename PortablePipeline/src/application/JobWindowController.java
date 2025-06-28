@@ -460,30 +460,30 @@ public class JobWindowController {
 					}
 					//transfer the script file
 					List<String> scriptcontList = new ArrayList<String>();
-					searchScript(ppSetting.get("scriptfolder"), selectedScript, scriptcontList);
+					searchScript(ppBinDir + "/" + ppSetting.get("scriptfolder"), selectedScript, scriptcontList);
 
 					if(!selectedPreset.equals("WSL") && !selectedPreset.equals("Mac") && !selectedPreset.equals("Linux") && !selectedPreset.equals("Linux (SGE)")) {
 						System.out.println("sending...  "+selectedScript);
-						csftp.put(ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
+						csftp.put(ppBinDir + "/" + ppSetting.get("scriptfolder")+"/"+selectedScript, workdir);
 						System.out.println("sending...  "+"common.sh");
-						csftp.put(ppSetting.get("scriptfolder")+"/common.sh", workdir);
+						csftp.put(ppBinDir + "/" + ppSetting.get("scriptfolder")+"/common.sh", workdir);
 						System.out.println("sending...  "+"pp.py");
-						csftp.put(ppSetting.get("scriptfolder")+"/pp.py", workdir);
+						csftp.put(ppBinDir + "/" + ppSetting.get("scriptfolder")+"/pp.py", workdir);
 						for(String scripti: scriptcontList) {
 							System.out.println("sending...  "+scripti);
-							csftp.put(ppSetting.get("scriptfolder")+"/"+scripti, workdir);
+							csftp.put(ppBinDir + "/" + ppSetting.get("scriptfolder")+"/"+scripti, workdir);
 						}
 					}
 
 					String target;
 					String link=resultdir;
-					target=ppSetting.get("scriptfolder")+"/"+selectedScript;
+					target=ppBinDir + "/" + ppSetting.get("scriptfolder")+"/"+selectedScript;
 					Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
 					new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
-					target=ppSetting.get("scriptfolder")+"/common.sh";
+					target=ppBinDir + "/" + ppSetting.get("scriptfolder")+"/common.sh";
 					Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
 					new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
-					target=ppSetting.get("scriptfolder")+"/pp.py";
+					target=ppBinDir + "/" + ppSetting.get("scriptfolder")+"/pp.py";
 					Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
 					new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
 					//シンボリックリンクよりもログのために実体をコピーしておく。
@@ -492,7 +492,7 @@ public class JobWindowController {
 					//mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/pp.py", resultdir);
 					for(String scripti: scriptcontList) {
 						//mkSymLinkOrCopy(ppSetting.get("scriptfolder")+"/"+scripti, resultdir);
-						target=ppSetting.get("scriptfolder")+"/"+scripti;
+						target=ppBinDir + "/" + ppSetting.get("scriptfolder")+"/"+scripti;
 					Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
 					new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
 					}
@@ -794,16 +794,16 @@ public class JobWindowController {
 				jsonGenerator.writeStringField("password","your_wsl_password");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("preset","WSL");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-				jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
+				jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
 				}else if(OS_NAME.startsWith("mac")) {
 					jsonGenerator.writeStringField("preset","Mac");jsonGenerator.writeRaw("\n");
 					jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-					jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
+					jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
 				}else if(OS_NAME.startsWith("linux")) {
 				jsonGenerator.writeStringField("imagefolder","$HOME/img");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("preset","Linux");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-				jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
+				jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
 				}else {
 				jsonGenerator.writeStringField("hostname","m208.s");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("port","22");jsonGenerator.writeRaw("\n");
@@ -813,7 +813,7 @@ public class JobWindowController {
 				jsonGenerator.writeStringField("workfolder","work");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("preset","ssh");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-				jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
+				jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("imagefolder","$HOME/img");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("checkdelete", "true");jsonGenerator.writeRaw("\n");
 				}
@@ -847,7 +847,7 @@ public class JobWindowController {
             outputfolder.setText(ppSetting.get("outputfolder"));
         }
         if(ppSetting.get("scriptfolder").equals("")) {
-		scriptfolder.setText(ppBinDir + "/scripts");
+		scriptfolder.setText("scripts");
         }else {
             scriptfolder.setText(ppSetting.get("scriptfolder"));
         }
@@ -1069,7 +1069,7 @@ public class JobWindowController {
             // Optionally, load a fallback built-in icon or use null
         }
 
-        File[] scriptFiles = new File(ppSetting.get("scriptfolder")).listFiles();
+        File[] scriptFiles = new File(ppBinDir + "/" + ppSetting.get("scriptfolder")).listFiles();
         if (scriptFiles != null) {
             java.util.Arrays.sort(scriptFiles, new java.util.Comparator<File>() {
 			public int compare(File file1, File file2){
@@ -1159,7 +1159,7 @@ public class JobWindowController {
 
 			//スクリプトファイルを読み取ってInput, Optionを設定する
 			try {
-			    BufferedReader br = new BufferedReader(new FileReader(new PPSetting().get("scriptfolder")+"/"+selectedScript));
+			    BufferedReader br = new BufferedReader(new FileReader(ppBinDir + "/" + new PPSetting().get("scriptfolder")+"/"+selectedScript));
 			    try {
 				boolean inputfield = false;
 				boolean optionfield = false;
@@ -2160,7 +2160,7 @@ public class JobWindowController {
 
     public void handleShowSourceCode(String scriptName) {
         try {
-            String scriptFolderPath = new PPSetting().get("scriptfolder");
+            String scriptFolderPath = ppBinDir + "/" + new PPSetting().get("scriptfolder");
             String scriptPath = Paths.get(scriptFolderPath, scriptName).toString();
             String sourceCode = readAll(scriptPath); // Assuming readAll can throw IOException
             showSourceCodeWindow(scriptName, sourceCode);
