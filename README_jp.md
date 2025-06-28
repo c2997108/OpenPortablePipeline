@@ -1,10 +1,10 @@
 # PortablePipeline
 
 PortablePipelineは手元のコンピュータもしくはリモートのサーバ、スパコン上で、NGSの解析をGUIで行うことを可能にするソフトウェアです(Windows, Mac, Linuxクライアント対応)。Windows単体の場合はWSL+dockerで、Mac単体の場合はhomebrew+docker、Linuxサーバでグリッドエンジンを使う場合はSGEに対応しており、白金スパコン、遺伝研スパコンにジョブを分散実行可能です。また、本ソフトウェアの仕様に従って記述されたスクリプトは、CUIからも容易に呼び出せます。
-![pp](https://user-images.githubusercontent.com/5350508/69688721-35e88f00-110a-11ea-8260-520f7554935f.png)
+
+![image](https://github.com/user-attachments/assets/3f183d9d-739a-4a73-9cbd-8aecf4c1fe2f)
 
 ## 解析結果例
-https://suikou.fs.a.u-tokyo.ac.jp/pp/
 
 代表的な解析結果例
 
