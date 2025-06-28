@@ -1,7 +1,8 @@
 #!/bin/bash
 
 explanation='
-Remove reads with a quality score below a certain threshold and filter out reads corresponding to the lambda phage control sequence used in Nanopore sequencing.
+Remove reads with a quality score below a certain threshold and filter out reads corresponding to the lambda phage control sequence used in Nanopore sequencing. By default, 60 bp are trimmed from both the 5′ and 3′ ends of each read to remove the nanopore adapters.
+When you base-call with standalone Dorado, the FASTQ file includes a qs:f: tag that records the read-level quality, so you can filter reads directly using that tag. For FASTQ files produced by MinKNOW or other tools that do not contain a qs:f: tag, this pipeline will calculate the read quality by averaging the per-base quality scores on the fourth line of each FASTQ record before filtering. Keep in mind that, with nanopore data, these per-base quality scores are typically almost twice as high as the read-level quality value stored in the qs:f: tag, so interpret them with caution.
 '
 inputdef='
 input_1:directory:FASTA/FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
@@ -31,8 +32,18 @@ for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true
   cat "$i"
  fi
 done | awk -v qt=$opt_q '
-  {if(NR%4==1){q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)+0}}; if(q>=qt){vis=1}else{vis=0}}; if(vis==1){print $0}}
- ' | DO_MINIMAP2 minimap2 -x map-ont -t $N_CPU /usr/local/lambda.fasta /dev/stdin | awk -v l="$opt_l" '$4-$3>=$2*l{print $1}' > lambda.reads
+  BEGIN{for(i=33;i<=126;i++){S=S sprintf("%c",i)}} #ASCIIエンコーディングphredスコアの文字列を作成
+  {
+   if(NR%4==1){q=-1; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)+0; break}; s1=$0}}; #リード名の行にqs:f:タグのクオリティがあれば使用
+   if(NR%4==2){s2=$0};
+   if(NR%4==3){s3=$0};
+   if(NR%4==0){
+    if(q==-1){
+     sum=0;for(i=1;i<=length($0);i++){sum+=index(S,substr($0,i,1))-1}; q=sum/length($0); #qs:f:タグがなければ塩基クオリティから計算
+    }
+    if(q>=qt){print s1"\n"s2"\n"s3"\n"$0}
+   }
+  }' | DO_MINIMAP2 minimap2 -x map-ont -t $N_CPU /usr/local/lambda.fasta /dev/stdin | awk -v l="$opt_l" '$4-$3>=$2*l{print $1}' > lambda.reads
 
 for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true`; do
  if [ `echo "$i"|grep "[.]gz$"|wc -l||true` = 1 ]; then
@@ -41,17 +52,32 @@ for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true
   cat "$i"
  fi
 done | awk -v qt=$opt_q '
+  BEGIN{for(i=33;i<=126;i++){S=S sprintf("%c",i)}} #ASCIIエンコーディングphredスコアの文字列を作成
   FILENAME==ARGV[1]{lam[$1]=1}
   FILENAME==ARGV[2]{
    if(FNR%4==1){
     #lambdaにヒットしていたら除外
     if(substr($1,2) in lam){vis=0}
     #クオリティが低いと除外
-    else{q=99; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)+0}}; if(q>=qt){vis=1}else{vis=0}}
+    else{
+     vis=1
+     q=-1; for(i=1;i<=NF;i++){if($i~"^qs:f:"){q=substr($i,6)+0; break}; s1=$0}
+    }
    };
-   if(vis==1){print $0}
+   if(FNR%4==2){s2=$0};
+   if(FNR%4==3){s3=$0};
+   if(FNR%4==0){
+    if(vis==1){
+     if(q==-1){
+      sum=0;for(i=1;i<=length($0);i++){sum+=index(S,substr($0,i,1))-1}; q=sum/length($0); #qs:f:タグがなければ塩基クオリティから計算
+      if(q>=qt){print s1" baq:"q"\n"s2"\n"s3"\n"$0}
+     }else{
+      if(q>=qt){print s1"\n"s2"\n"s3"\n"$0}
+     }
+    }
+   }
   }
- ' lambda.reads /dev/stdin | DO_CUTADAPT cutadapt --cut $opt_t --cut -$opt_t /dev/stdin | DO_PIGZ pigz -p $N_CPU > cleaned.fastq.gz
+ ' lambda.reads /dev/stdin | DO_CUTADAPT cutadapt -m 1 --cut $opt_t --cut -$opt_t /dev/stdin | DO_PIGZ pigz -p $N_CPU > cleaned.fastq.gz
 
 post_processing
 #<option detail>

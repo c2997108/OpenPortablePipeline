@@ -12,10 +12,12 @@ opt_m:memory limit (GB):64
 opt_i:Identity threshold during clustering (0-1):0.97
 opt_k:Minimum read count per cluster for consensus generation:10
 opt_n:Maximum number of reads used for consensus sequence generation:30
+opt_v:vsearch option (If you want to search the complementary strand as well, use --strand both):
+opt_f:mafft option (If you want to search the complementary strand as well, use --adjustdirection):
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -n #opt_n# #input_1#"
 
-export IM_MAFFT="c2997108/rocky9:dev_vsearch_muscle_mafft"
+export IM_MAFFT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_1"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -36,10 +38,11 @@ i="$1"
 opt_i="$2" #0.97
 opt_k="$3" #10
 N_CPU="$4"
+opt_v="$5"
 
 workdir=work/`basename $i`.dir
 mkdir -p "$workdir"
-vsearch --threads $N_CPU --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
+vsearch $opt_v --threads $N_CPU --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
 if [[ "$i" == *.gz ]]; then
  zcat "$i"
 else
@@ -59,7 +62,7 @@ fi | sed 's/\t/ /g'|seqkit fx2tab |awk -F'\t' -v dir="$workdir" -v minreads="$op
 EOF
 
 find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
- echo $ENV_MAFFT bash run-consensus.sh "$i" "$opt_i" "$opt_k" "$N_CPU"
+ echo $ENV_MAFFT bash run-consensus.sh "$i" "$opt_i" "$opt_k" "$N_CPU" "'$opt_v'"
 done | DOPARALLEL
 
 WAITPARALLEL
@@ -76,17 +79,18 @@ i="$2"
 opt_n="$3" #30
 N_CPU="$4"
 workdir="$5"
+opt_f="$6"
 
 #for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
  head -n $((10#$opt_n*2)) $j > $j.sub
- mafft --thread $N_CPU --auto $j.sub > $j.sub.mafft
+ mafft $opt_f --thread $N_CPU --auto $j.sub > $j.sub.mafft
  #muscle -align $j.sub -output $j.sub.muscle
  cons -sequence $j.sub.mafft -outseq $j.sub.mafft.fa
  sed 's/n//g' $j.sub.mafft.fa > $j.sub.mafft.fa.rmn
  fastareformat $j.sub.mafft.fa.rmn > $j.sub.mafft.fa.rmn2
  (echo ">consensus_"`basename $i`_`basename $j .fasta`; tail -n+2 $j.sub.mafft.fa.rmn2) > $j.sub.mafft.fa.rmn3
  cat $j.sub.mafft.fa.rmn3 $j.sub > $j.sub.fa
- mafft --thread $N_CPU --auto $j.sub.fa > $j.sub.fa.mafft
+ mafft $opt_f --thread $N_CPU --auto $j.sub.fa > $j.sub.fa.mafft
  #muscle -align $j.sub.fa -output $j.sub.fa.muscle
  cp $j.sub.mafft.fa.rmn3 "$workdir"/round1/`basename $i`_`basename $j`
  cp $j.sub.fa.mafft "$workdir"/round1/`basename $i`_`basename $j`.mafft
@@ -98,7 +102,7 @@ find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
  workdir=work/`basename $i`.dir
  mkdir -p $workdir/round1
  for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
-  echo $ENV_MAFFT bash run-consensus2.sh "$j" "$i" "$opt_n" "$N_CPU" "$workdir"
+  echo $ENV_MAFFT bash run-consensus2.sh "$j" "$i" "$opt_n" "$N_CPU" "'$workdir'" "'$opt_f'"
  done
 done | DOPARALLEL
 
@@ -114,8 +118,9 @@ opt_i="$2" #0.97
 N_CPU="$3"
 workdir="$4"
 i="$5"
+opt_v="$6"
 
-vsearch --threads $N_CPU --cluster_fast "$j" --id "$opt_i" --centroids "$workdir"/round2/vsearch-center.fasta --uc "$workdir"/round2/vsearch-clusters.uc
+vsearch $opt_v --threads $N_CPU --cluster_fast "$j" --id "$opt_i" --centroids "$workdir"/round2/vsearch-center.fasta --uc "$workdir"/round2/vsearch-clusters.uc
 awk -F'\t' '{a=$9; sub(/.*_cluster/,"",a); sub(/reads/,"",a); split(a,arr,"_"); reads=arr[2]} $1=="S"{data[$9][$9]=reads; total[$9]+=reads} $1=="H"{data[$10][$9]=reads; total[$10]+=reads} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in total){for(j in data[i]){print i"\t"total[i]"\t"j; break}}}' "$workdir"/round2/vsearch-clusters.uc > "$workdir"/round2/vsearch-clusters.uc.summary
 #コンセンサス配列のクラスタリングの結果で同一クラスターと判定されたround1の配列数を足してround2の結果としてコピー
 cat "$workdir"/round2/vsearch-clusters.uc.summary | awk -F'\t' -v dir="$workdir" '{print "cp "dir"/round1/"substr($3,11)".fasta "dir"/round2/cluster"NR"_"$2"reads.fasta"}'|bash
@@ -133,14 +138,15 @@ find "$input_1/" | grep -E "[.]f(ast|)q(|[.]gz)$" | while read i; do
  mkdir -p "$workdir"/round2
  if [ "`ls $workdir/round1`" ]; then
   cat "$workdir"/round1/*.fasta > "$workdir"/round1/all.fa
-  echo $ENV_MAFFT bash run-consensus3.sh "$workdir"/round1/all.fa "$opt_i" "$N_CPU" "$workdir" "$i"
+  echo $ENV_MAFFT bash run-consensus3.sh "$workdir"/round1/all.fa "$opt_i" "$N_CPU" "'$workdir'" "$i" "'$opt_v'"
  fi
 done | DOPARALLEL
 
 WAITPARALLEL
 
 cat output/*.fasta > output-all.fasta
-DO_MAFFT vsearch --threads $N_CPU --cluster_fast output-all.fasta --id "$opt_i" --centroids output-all-center.fasta --uc output-all-clusters.uc
+DO_MAFFT vsearch $opt_v --threads $N_CPU --cluster_fast output-all.fasta --id "$opt_i" --centroids output-all-center.fasta --uc output-all-clusters.uc
+DO_MAFFT mafft $opt_f --thread $N_CPU --auto output-all-center.fasta > output-all-center.fasta.mafft
 DO_MAFFT awk -F'\t' '
  {
   a=$9; sub(/_cluster[0-9]+_[0-9]+reads/,"",a); sample[a]=1;
@@ -171,4 +177,27 @@ DO_MAFFT awk -F'\t' '
 post_processing
 
 #<option detail>
+#<opt_v>
+ Parameters (most searching options also apply)
+  --cons_truncate             do not ignore terminal gaps in MSA for consensus
+  --id REAL                   reject if identity lower, accepted values: 0-1.0
+  --iddef INT                 id definition, 0-4=CD-HIT,all,int,MBL,BLAST (2)
+  --qmask none|dust|soft      mask seqs with dust, soft or no method (dust)
+  --sizein                    propagate abundance annotation from input
+  --strand plus|both          cluster using plus or both strands (plus)
+  --usersort                  indicate sequences not pre-sorted by length
+  --minsize INT               minimum abundance (unoise only) (8)
+  --unoise_alpha REAL         alpha parameter (unoise only) (2.0)
+#</opt_v>
+#<opt_f>
+By default, the sequences are re-ordered according to similarity.  To keep the input order,
+% mafft-sparsecore.rb -i in -o inputorder > out
+If the input data contains reverse complementary sequences (nucleotide only),
+
+% mafft-sparsecore.rb -i in -D '--adjustdirection' > out
+To specify the seed of random numbers,
+
+% mafft-sparsecore.rb -i in -s seed > out
+seed=0 by default.
+#</opt_f>
 #</option detail>

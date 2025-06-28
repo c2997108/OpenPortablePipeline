@@ -46,7 +46,8 @@ public class PPSetting {
 
     public static String getBaseDir() {
         // 環境変数 "PP_BASE_DIR" の値を取得
-        String baseDir = System.getenv("PP_BASE_DIR");
+        //String baseDir = System.getenv("PP_BASE_DIR");
+        String baseDir = System.getProperty("PP_OUT_DIR");
 
         // 環境変数がセットされているか確認
         if (baseDir != null) {

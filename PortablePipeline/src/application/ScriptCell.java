@@ -22,6 +22,8 @@ public class ScriptCell extends ListCell<ScriptNode> {
 	//	hbox1 = new HBox();
 	//}
 
+    String ppBinDir = System.getProperty("PP_BIN_DIR");
+    
 	@Override
     protected void updateItem(ScriptNode jNode, boolean empty) {
 
@@ -58,7 +60,7 @@ public class ScriptCell extends ListCell<ScriptNode> {
 
 		String baseUrl = "http://suikou.fs.a.u-tokyo.ac.jp/pp/";
 		// Consider making the icon size for the button consistent (e.g., 16x16)
-		Button button1 = new Button("", new ImageView(new Image("file:image/iconmonstr-share-8-24.png", 16, 16, false, false)));
+		Button button1 = new Button("", new ImageView(new Image("file:"+ ppBinDir + "/image/iconmonstr-share-8-24.png", 16, 16, false, false)));
 		try {
 			button1.setOnAction((ActionEvent e) -> {
 				System.out.println(jNode.filename);
@@ -82,14 +84,14 @@ public class ScriptCell extends ListCell<ScriptNode> {
 		}catch(Exception e) {
 			e.printStackTrace();
 		}
-		Tooltip tooltipbutton1 = new Tooltip("Open an exapmle"); // example, not exapmle
+		Tooltip tooltipbutton1 = new Tooltip("Open an example"); // example, not exapmle
 		Tooltip.install(button1, tooltipbutton1);
 
             hBox.getChildren().add(button1);
 
             Button buttonSource = new Button(); // Text removed later
             buttonSource.setText(""); // Set empty text for icon button
-            Image sourceIcon = new Image("file:image/scode.png", 16, 16, false, false); // Consistent with button1
+            Image sourceIcon = new Image("file:"+ ppBinDir + "/image/scode.png", 16, 16, false, false); // Consistent with button1
             ImageView sourceIconView = new ImageView(sourceIcon);
             buttonSource.setGraphic(sourceIconView);
 

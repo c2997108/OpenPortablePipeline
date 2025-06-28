@@ -14,7 +14,7 @@ opt_o:megahit option:
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -o #opt_o# #input_1# #input_2#"
 
-export IM_MEGAHIT="quay.io/biocontainers/megahit:1.2.9--h8b12597_0"
+export IM_MEGAHIT="c2997108/biocontainers:megahit_1.2.9"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 

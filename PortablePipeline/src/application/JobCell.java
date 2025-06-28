@@ -8,9 +8,12 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Comparator;
 import java.util.List;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jcraft.jsch.ChannelExec;
@@ -36,6 +39,8 @@ public class JobCell extends ListCell<JobNode> {
 	//	hbox1 = new HBox();
 	//}
 
+    String ppBinDir = System.getProperty("PP_BIN_DIR");
+    
 	@Override
     protected void updateItem(JobNode jNode, boolean empty) {
 
@@ -57,20 +62,20 @@ public class JobCell extends ListCell<JobNode> {
         	Button stopButton = new Button("Stop");
     		switch(jNode.status) {
     			case "preparing":
-    				iconImage1 = new Image("file:image/pato_lamp_on_blue.png", 30, 30, false, false);
+    				iconImage1 = new Image("file:"+ ppBinDir + "/image/pato_lamp_on_blue.png", 30, 30, false, false);
     				imageView1 = new ImageView(iconImage1);
     				break;
     			case "running":
-    				iconImage1 = new Image("file:image/pato_lamp_on_blue.png", 30, 30, false, false);
+    				iconImage1 = new Image("file:"+ ppBinDir + "/image/pato_lamp_on_blue.png", 30, 30, false, false);
     				imageView1 = new ImageView(iconImage1);
     				break;
     			case "finished":
-    				iconImage1 = new Image("file:image/pato_lamp_on_green.png", 30, 30, false, false);
+    				iconImage1 = new Image("file:"+ ppBinDir + "/image/pato_lamp_on_green.png", 30, 30, false, false);
     				imageView1 = new ImageView(iconImage1);
     				stopButton.setDisable(true);
     				break;
     			default:
-    				iconImage1 = new Image("file:image/pato_lamp_on_red.png", 30, 30, false, false);
+    				iconImage1 = new Image("file:"+ ppBinDir + "/image/pato_lamp_on_red.png", 30, 30, false, false);
     				imageView1 = new ImageView(iconImage1);
     				stopButton.setDisable(true);
     		}
@@ -96,7 +101,7 @@ public class JobCell extends ListCell<JobNode> {
         			}
         		}
 			});
-        	Button button1 = new Button("", new ImageView(new Image("file:image/computer_folder.png", 20, 20, false, false)));
+        	Button button1 = new Button("", new ImageView(new Image("file:"+ ppBinDir + "/image/computer_folder.png", 20, 20, false, false)));
         	try {
         		String outputdir = PPSetting.getBaseDir() + new PPSetting().get("outputfolder");
         		button1.setOnAction((ActionEvent e) -> {
@@ -106,7 +111,8 @@ public class JobCell extends ListCell<JobNode> {
         				Runtime rt = Runtime.getRuntime();
         				String cmd = "";
         				if(OS_NAME.startsWith("windows")) {
-        					cmd = "explorer "+outputdir+"\\"+jNode.id+"\\results";
+        					cmd = "explorer "+outputdir.replaceAll("/", "\\\\")+"\\"+jNode.id+"\\results";
+        					cmd = cmd.replaceAll("\\\\+", "\\\\"); //Explorerでは.\\outputなど\の2回連続は許されない
         				}else if(OS_NAME.startsWith("mac")) {
         					cmd = "open -a Finder "+outputdir+"/"+jNode.id+"/results";
         				}else if(OS_NAME.startsWith("linux")) {
@@ -247,7 +253,7 @@ public class JobCell extends ListCell<JobNode> {
         		});
         	}catch (Exception e) {
 			}
-        	Button deleteButton = new Button("", new ImageView(new Image("file:image/gomibako_full.png", 20, 20, false, false)));
+        	Button deleteButton = new Button("", new ImageView(new Image("file:"+ ppBinDir + "/image/gomibako_full.png", 20, 20, false, false)));
 
         	try {
         		deleteButton.setOnAction(ae -> {
@@ -255,6 +261,36 @@ public class JobCell extends ListCell<JobNode> {
 					Platform.runLater( () -> {
 						jobNodes.remove(jNode);
 						JobWindowController.saveJobList();
+						try {
+							PPSetting mainSetting = new PPSetting();
+	                		String outputfolder = PPSetting.getBaseDir() + mainSetting.get("outputfolder");
+	                		String outputdir = outputfolder + "/" + jNode.id;
+
+	                        Path target = Paths.get(outputdir);   // ① 対象ディレクトリ
+
+	                            /*  
+	                             * ② まず深い階層から順にファイル → ディレクトリの順で削除する
+	                             *    Files.walk() は Stream<Path> を返すので、
+	                             *    reverseOrder で子 → 親の順序に並べ替えるのがポイント
+	                             */
+	                            try (var stream = Files.walk(target)) {
+	                                stream
+	                                    .sorted(Comparator.reverseOrder())
+	                                    .forEach(path -> {
+	                                        try {
+	                                            Files.delete(path);
+	                                        } catch (IOException e) {
+	                                            // 削除に失敗した箇所をログに出すなど
+	                                            System.err.println("Cannot delete: " + path + " (" + e + ")");
+	                                        }
+	                                    });
+	                            }
+
+	                            System.out.println(outputdir + " was deleted.");
+
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
 					} );
         		});
         	}catch (Exception e) {

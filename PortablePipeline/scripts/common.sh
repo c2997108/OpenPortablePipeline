@@ -56,6 +56,9 @@ if [ "$N_SCRIPT" = 1 ]; then
  rm -f "$workdir"/qsub.log
 fi
 
+#Macの場合はdocker desktopのみを想定し、起動しておく
+if [ `uname -s` = "Darwin" ]; then docker desktop start || (echo Please install Docker Desktop; exit 1); fi
+
 #本当はPWDをrealpathに変換してから-v -wをしたほうがよいかも
 #CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
 #CON_DOCKERはENV_XXXのほうで使用され、FUNC_RUN_DOCKERのほうはDO_XXXのほうで使用される
@@ -152,7 +155,7 @@ if [ ! -e "$workdir"/pp-singularity-flag -a `docker images 2> /dev/null |head -n
  for i in $IMS; do
   if [ `echo "$TEMPDOCIMG"|grep "^$i$"|wc -l` = 0 ]; then
    set -ex
-   docker pull --platform=linux/amd64 $i
+   docker pull $i #docker pull --platform=linux/amd64 $i
    set +ex
   fi
  done
@@ -166,7 +169,7 @@ elif [ ! -e "$workdir"/pp-singularity-flag -a `podman images 2> /dev/null |head 
   i=`echo "$i"|awk -F'/' '{if(NF==2){$0="docker.io/"$0}; print $0}'`
   if [ `echo "$TEMPDOCIMG"|grep "^$i$"|wc -l` = 0 ]; then
    set -ex
-   podman pull --platform=linux/amd64 $i
+   podman pull $i #podman pull --platform=linux/amd64 $i
    set +ex
   fi
  done
@@ -407,9 +410,18 @@ EOF
   #alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; lastjob=`awk "END{print \\$3}" $workdir/qsub.log`; mkdir -p pp_log_$lastjob; awk -v prefix=`echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` "{print prefix\".o\"\$3}" $workdir/qsub.log|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; mv $i pp_log_$lastjob; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x;'
  else
   #ddbjもしくはpp -gがついていないかGUIでdirect, sshなどのSGEを使わない場合
-  alias DOPARALLELONE='xargs -d'"'"'\n'"'"' -I {} -P $N_CPU bash -c "{}"'
-  alias DOPARALLEL='xargs -d'"'"'\n'"'"' -I {} -P 1 bash -c "{}"'
-  alias WAITPARALLEL=''
+  #xargs -d'\n'はtr '\n' '\0'|xargs -0と同じ。Macではxargs -d'\n'が使えないので。
+  if [ `uname -s` = "Darwin" -a `which xargs` = "/usr/bin/xargs" ]; then
+   #Mac標準のxargsの場合、文字列が長すぎるとエラーになるから-Sオプションで長くしておく
+   alias DOPARALLELONE='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -S 100000000 -I {} -P $N_CPU bash -c "{}"'
+   alias DOPARALLEL='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -S 100000000 -I {} -P 1 bash -c "{}"'
+   alias WAITPARALLEL=''
+  else
+   #Mac標準以外
+   alias DOPARALLELONE='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -I {} -P $N_CPU bash -c "{}"'
+   alias DOPARALLEL='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -I {} -P 1 bash -c "{}"'
+   alias WAITPARALLEL=''
+  fi
  fi
 }
 
@@ -494,15 +506,28 @@ done
 #input file realpath check
 echo "Checking the realpath of input files."
 
+#realpath -sがmacでは使えないので、シンボリックリンクを展開しないで絶対パスに変換する関数
+function pp_realpath(){
+ local target="$1"
+ local abs_target
+ case $target in
+  /*) abs_target="$target" ;;
+  *)  abs_target="$PWD/$target" ;;
+ esac
+ local abs_dir=$(dirname -- "$abs_target")
+ local parent_dir
+ parent_dir=$(cd -- "$abs_dir" && pwd) || parent_dir="$abs_dir"
+ printf '%s\n' "$parent_dir"/$(basename "$target")| sed 's/\/\+/\//g'
+}
 #-followオプションはリンク先情報を使って判定するが、今回はおそらく不要。ディレクトリ中のファイルが深すぎると結果がたくさんあるときの再実行に時間がかかるので2階層(input_*/*/*)までに限定して調べる
-find . -follow -maxdepth 2 | while read i; do realpath -s $PWD/$i; done|
+find . -follow -maxdepth 2 | while read i; do pp_realpath $PWD/$i; done|
  awk -F/ '{path=""; for(i=2;i<=NF;i++){path=path"/"$i; print path}}'|
  sort|uniq|while read i; do if [ -L $i ]; then
   PP_BINDS_TEMP=`readlink "$i"`
   if [[ $PP_BINDS_TEMP =~ ^/ ]]; then
-   realpath -s "$PP_BINDS_TEMP"
+   pp_realpath "$PP_BINDS_TEMP"
   else
-   realpath -s `dirname "$i"`"/$PP_BINDS_TEMP"
+   pp_realpath `dirname "$i"`"/$PP_BINDS_TEMP"
   fi
  fi; done|sort|uniq > pp_symlink_list
 
@@ -515,9 +540,9 @@ function find_link_path_recursive () {
   sort|uniq|while read i; do if [ -L $i ]; then
    PP_BINDS_PATH=`readlink "$i"`
    if [[ $PP_BINDS_PATH =~ ^/ ]]; then
-    realpath -s "$PP_BINDS_PATH"
+    pp_realpath "$PP_BINDS_PATH"
    else
-    realpath -s `dirname "$i"`"/$PP_BINDS_PATH"
+    pp_realpath `dirname "$i"`"/$PP_BINDS_PATH"
    fi
   fi; done|sort|uniq > pp_symlink_list_temp2
 
@@ -541,9 +566,9 @@ PPSINGBINDS=`cat pp_bind_dir | awk '{ORS=" "; print " -B "$0":"$0}'`
 
 
 #N_CPU=`cat /proc/cpuinfo 2> /dev/null |grep ^processor|wc -l` #all CPU
-N_CPU=`nproc`
+N_CPU=`nproc` || N_CPU=0
 if [ "$N_CPU" = "0" ]; then
- N_CPU=`getconf _NPROCESSORS_ONLN`
+ N_CPU=`getconf _NPROCESSORS_ONLN` #for mac
 fi
 N_MEM=`free -k 2> /dev/null |awk 'NR==1{if($6=="available"){flag=1}} NR==2&&flag==1{print $7}'` #free MEM (kB)
 if [ "$N_MEM" = "" ]; then
@@ -585,7 +610,7 @@ export N_SCRIPT
 
 workdir="$PWD"
 scriptdir=$(dirname `readlink -f "$0" || echo "$0"`)
-export IM_CENTOS6=centos:centos6
+#export IM_CENTOS6=centos:centos6
 begintrap
 container_setup
 parallel_setup

@@ -217,6 +217,9 @@ public class JobWindowController {
     String[] settingPresetKey = {"ssh","ssh (SGE)","ddbj","shirokane","WSL","Mac","Linux","Linux (SGE)"};
     String[] settingItemKey = {"hostname", "port", "user", "password", "privatekey", "workfolder", "imagefolder"};
 
+    String ppBinDir = System.getProperty("PP_BIN_DIR");
+    String ppOutDir = System.getProperty("PP_OUT_DIR");
+    
     @FXML
     @SuppressWarnings("deprecation")
     void onButtonSave(ActionEvent event) {
@@ -623,23 +626,25 @@ public class JobWindowController {
 
 						String templateFile = "";
 						if(selectedPreset.equals("ssh")) {
-							templateFile="templates/ssh-wrapper.sh";
+							templateFile=ppBinDir + "/templates/ssh-wrapper.sh";
 							cmdString = "cd "+workdir+"; bash wrapper.sh";
 						}else if(selectedPreset.equals("shirokane")) {
-							templateFile="templates/shirokane-wrapper.sh";
+							templateFile=ppBinDir + "/templates/shirokane-wrapper.sh";
 							//2>&1を>の前に書くことで、標準出力のみsave_jid.txtに保存し、標準エラー出力を標準出力として出力
 							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh 2>&1 > save_jid.txt";
 						}else if(selectedPreset.equals("ddbj")) {
-							templateFile="templates/ddbj-wrapper.sh";
+							templateFile=ppBinDir + "/templates/ddbj-wrapper.sh";
 							cmdString = "cd "+workdir+"; sbatch --parsable wrapper.sh 2>&1 > save_jid.txt";
 						}else if(selectedPreset.equals("ssh (SGE)")) {
-							templateFile="templates/sshsge-wrapper.sh";
+							templateFile=ppBinDir + "/templates/sshsge-wrapper.sh";
 							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh 2>&1 > save_jid.txt";
 						}else if(selectedPreset.equals("WSL")){
 							String curDir = new File(PPSetting.getBaseDir() + ".").getAbsoluteFile().getParent();
 							String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
 							wslcurDir = wslcurDir.replaceAll("\\\\", "/");
-							try (BufferedReader reader = new BufferedReader(new FileReader("templates/WSL-wrapper.bat"));
+							// ppBinDirはPP_BIN_DIRのシステムプロパティで書きかえないファイル
+							// getBaseDir()は結局PP_OUT_DIRのシステムプロパティで書きかえるファイル
+							try (BufferedReader reader = new BufferedReader(new FileReader(ppBinDir + "/templates/WSL-wrapper.bat"));
 					             BufferedWriter writer = new BufferedWriter(new FileWriter(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat"))) {
 								String line;
 								while ((line = reader.readLine()) != null) {
@@ -649,16 +654,16 @@ public class JobWindowController {
 								}
 							}
 
-							templateFile="templates/WSL-wrapper.sh";
-							cmdString = "cmd.exe /c start cmd.exe /k wrapper.bat";
+							templateFile=ppBinDir + "/templates/WSL-wrapper.sh";
+							cmdString = "cmd.exe /c start cmd.exe /k "+ ppBinDir.replaceAll("/", "\\\\")+"\\wrapper.bat";
 						}else if(selectedPreset.equals("Mac")){
-							templateFile="templates/Mac-wrapper.sh";
+							templateFile=ppBinDir + "/templates/Mac-wrapper.sh";
 							cmdString = "bash wrapper.sh";
 						}else if(selectedPreset.equals("Linux")){
-							templateFile="templates/Linux-wrapper.sh";
+							templateFile=ppBinDir + "/templates/Linux-wrapper.sh";
 							cmdString = "bash wrapper.sh";
 						}else if(selectedPreset.equals("Linux (SGE)")) {
-							templateFile="templates/Linuxsge-wrapper.sh";
+							templateFile=ppBinDir + "/templates/Linuxsge-wrapper.sh";
 							cmdString = "bash wrapper.sh";
 						}
 
@@ -699,42 +704,6 @@ public class JobWindowController {
 							cmdResults = ConnectSsh.getSshCmdResult(ppSetting, file_id_rsa, cmdString);
 						}
 						cmdResults.forEach(item -> listRecords.add(item));
-
-//        					ChannelExec channelexec = (ChannelExec) jsesion.openChannel("exec");
-//    						//channelexec.setCommand("cd "+workdir+"; bash "+selectedScript+" "+runcmd);
-//    						channelexec.setCommand(cmdString);
-//    						//channelexec.setCommand("ls -l |wc -l");
-//    						//channelexec.setPty(false);
-//    						channelexec.connect();
-//
-//    						BufferedInputStream bin = null;
-//    						//コマンド実行
-//    						try {
-//    							bin = new BufferedInputStream(channelexec.getInputStream());
-//    							BufferedReader bufferedReader = new BufferedReader(
-//    									new InputStreamReader(bin, StandardCharsets.UTF_8));
-//
-//    							String data;
-//    							while ((data = bufferedReader.readLine()) != null) {
-//    								System.out.println(data);
-//    								String data2 = new String(data);
-//    								Platform.runLater( () -> listRecords.add(data2) );
-//    								//listRecords.add(data);
-//    							}
-//
-//    							// 最後にファイルを閉じてリソースを開放する
-//    							bufferedReader.close();
-//    						} catch (Exception e) {
-//    							System.err.println(e);
-//    						} finally {
-//    							if (bin != null) {
-//    								try {
-//    									bin.close();
-//    								}
-//    								catch (IOException e) {
-//    								}
-//    							}
-//    						}
 
 					}else {
 						Process process = Runtime.getRuntime().exec(cmdString, null, new File(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"));
@@ -825,13 +794,16 @@ public class JobWindowController {
 				jsonGenerator.writeStringField("password","your_wsl_password");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("preset","WSL");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-				jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
-				//}else if(OS_NAME.startsWith("mac")) {
+				jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
+				}else if(OS_NAME.startsWith("mac")) {
+					jsonGenerator.writeStringField("preset","Mac");jsonGenerator.writeRaw("\n");
+					jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
+					jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
 				}else if(OS_NAME.startsWith("linux")) {
 				jsonGenerator.writeStringField("imagefolder","$HOME/img");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("preset","Linux");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-				jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
+				jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
 				}else {
 				jsonGenerator.writeStringField("hostname","m208.s");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("port","22");jsonGenerator.writeRaw("\n");
@@ -841,7 +813,7 @@ public class JobWindowController {
 				jsonGenerator.writeStringField("workfolder","work");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("preset","ssh");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("outputfolder","output");jsonGenerator.writeRaw("\n");
-				jsonGenerator.writeStringField("scriptfolder","scripts");jsonGenerator.writeRaw("\n");
+				jsonGenerator.writeStringField("scriptfolder",ppBinDir + "/scripts");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("imagefolder","$HOME/img");jsonGenerator.writeRaw("\n");
 				jsonGenerator.writeStringField("checkdelete", "true");jsonGenerator.writeRaw("\n");
 				}
@@ -875,7 +847,7 @@ public class JobWindowController {
             outputfolder.setText(ppSetting.get("outputfolder"));
         }
         if(ppSetting.get("scriptfolder").equals("")) {
-		scriptfolder.setText("scripts");
+		scriptfolder.setText(ppBinDir + "/scripts");
         }else {
             scriptfolder.setText(ppSetting.get("scriptfolder"));
         }
@@ -1088,7 +1060,7 @@ public class JobWindowController {
 
         // Icon loading logic
         Map<String, Image> categoryIcons = new HashMap<>();
-        String defaultIconPath = "file:image/pipe_icon.png";
+        String defaultIconPath = "file:"+ ppBinDir + "/image/pipe_icon.png";
         Image defaultIcon = null;
         try {
             defaultIcon = new Image(defaultIconPath);
@@ -1148,7 +1120,7 @@ public class JobWindowController {
                         if (categoryIcons.containsKey(categoryName)) {
                             scriptIcon = categoryIcons.get(categoryName);
                         } else {
-                            String categoryIconPath = "file:image/" + categoryName + ".png";
+                            String categoryIconPath = "file:"+ ppBinDir + "/image/" + categoryName + ".png";
                             try {
                                 Image loadedIcon = new Image(categoryIconPath);
                                 scriptIcon = loadedIcon;
@@ -1609,47 +1581,8 @@ public class JobWindowController {
 										}catch(Exception e2) {
 											e2.printStackTrace();
 										}
-//    										channelExec.connect();
-//    										//System.out.println("Jsch: start");
-//
-//        									BufferedInputStream bin = null;
-//        									int jobRunningStatus = 0;
-//        									//コマンド実行
-//        									try {
-//        										bin = new BufferedInputStream(channelExec.getInputStream());
-//        										BufferedReader bufferedReader = new BufferedReader(
-//        												new InputStreamReader(bin, StandardCharsets.UTF_8));
-//
-//        										String data;
-//        										while ((data = bufferedReader.readLine()) != null) {
-//        											//System.out.println(data);
-//        											String data2 = new String(data);
-//        											if(data2.equals("0")) {
-//        												jobRunningStatus = 1;
-//        											}
-//        											//Platform.runLater( () -> listRecords.add(data2) );
-//        										}
-//
-//        										// 最後にファイルを閉じてリソースを開放する
-//        										bufferedReader.close();
-//        									} catch (Exception e) {
-//        										System.err.println(e);
-//        									} finally {
-//        										if (bin != null) {
-//        											try {
-//        												bin.close();
-//        											}
-//        											catch (IOException e) {
-//        											}
-//        										}
-//        									}
-//    										//System.out.println("Jsch: end");
-//        									channelExec.disconnect();
-//        									channelExec.getSession().disconnect();
-
 										returnCode = jobRunningStatus;
-										//returnCode = channelExec.getExitStatus(); //これだと、まだ実行中のプロセスがあるのにExitStatusが0以外になることが稀にある模様。
-
+										
 									}else {
 										try {
 											if(node.get("preset").asText().equals("WSL")) {
