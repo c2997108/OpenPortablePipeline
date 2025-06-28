@@ -41,6 +41,8 @@ INTEL/AMD系のCPUであれば、`PortablePipeline-windows-amd64-vx.x.x.zip`を�
 
 ![image](https://github.com/user-attachments/assets/561d67ac-6d00-4f46-b612-8be663217394)
 
+<img width="252" alt="image" src="https://github.com/user-attachments/assets/52caadb8-f406-41ab-9cfd-83103756a7b5" />
+
 解凍されたファイルの中で、「PortablePipeline.bat」をダブルクリックして起動する。
 Windowsユーザはジャンクションファイルの作成に管理者権限が必要なので、管理者で実行しても良いか聞かれると思うのでOKを押す。管理者権限を許可しない場合でも起動は可能だが、解析を実行する際に入力ファイルのジャンクションが作れずコピーするため、ディスク容量がより必要になる。
 
