@@ -1,4 +1,5 @@
 # 次回予告
+- ```annotation~PASA```のtrinityrnaseqのdockerイメージのバージョン更新
 
 # 1.5.2 (2025/06/28)
 - ```nanopore~filter-lambda-phage-reads```でトリミング後のリード長が0bpの場合は除去するように設定
