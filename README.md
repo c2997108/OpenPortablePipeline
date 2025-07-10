@@ -2,7 +2,7 @@
 
 [日本語版 (Japanese)](https://github.com/c2997108/OpenPortablePipeline/blob/master/README_jp.md)
 
-PortablePipeline is a software that gives Windows and Mac users the ability to conduct NGS analysis through a graphical interface, on either a local computer, remote server. It supports SGE as a grid engine and can execute jobs on a supercomputer such as SHIROKANE and NIG in Japan. Migration to SLURM job scheduler on the NIG supercomputer completed (2025). Registered scripts can also be easily called from the command-line interface.
+PortablePipeline is a software that gives Windows and Mac users the ability to conduct NGS analysis through a graphical interface, on either a local computer, remote server. It supports SGE as a grid engine and can execute jobs on a supercomputer such as SHIROKANE and NIG (supports SLURM since 2025) in Japan. Registered scripts can also be easily called from the command-line interface.
 
 ![image](https://github.com/user-attachments/assets/3f183d9d-739a-4a73-9cbd-8aecf4c1fe2f)
 
