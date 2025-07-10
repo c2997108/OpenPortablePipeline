@@ -169,7 +169,7 @@ Virtualization support (Intel VT or AMD-V) must be enabled in the BIOS. This is 
 
 8.  Once Portable Pipeline launches, open the "Settings" tab, check "Preset: WSL," and enter the WSL username and password you just created.
 
-## Mac Server Setup Instructions (M1 and later Macs)
+## Mac Server Setup Instructions
 
 If Rosetta is not installed, or if you are unsure whether it is installed, run the following command for now:
 
