@@ -382,6 +382,10 @@ Rosettaがインストールされていない場合、インストールされ�
 softwareupdate --install-rosetta --agree-to-license
 ```
 
+Python3のインストール：https://www.python.org/downloads/macos/ からインストーラーをダウンロードしてインストール
+
+Docker Desktopのインストール：https://matsuand.github.io/docs.docker.jp.onthefly/desktop/mac/install/ からインストーラーをダウンロードしてインストール
+
 Homebrewのインストール
 
 ```
