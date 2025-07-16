@@ -485,6 +485,7 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 
 ### singularityに起因する部分
 - コンテナの/root以下にツールなどをインストールしても、singularityはコンテナの/rootを普通はマウントしないようでアクセスできない。
+- micromamba installでインストールしたツールは例えばEMBOSSなどはacdファイルを見つけられなくて起動できなかったりした。dockerやpodmanでは普通に動くので、ファイルを探す先が何か違う？
 
 ### Maser用
 - 入力フォルダは「$input_1」ではなく、「$input_1/」と書くこと。input_1がシンボリックリンクだとそれ以上追ってくれないから。
