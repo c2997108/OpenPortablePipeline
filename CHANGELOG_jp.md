@@ -1,4 +1,6 @@
 # 次回予告
+
+# 1.5.3 (2025/07/18)
 - ```annotation~PASA```のtrinityrnaseqのdockerイメージのバージョン更新
 - ```post-assemble~dotplot-by-last```でトップヒットだけのアライメントにしていたのを全部のヒットを出力するように変更
 - `nanopore~get-consensus`でsingularityでは動かなかったのを修正
