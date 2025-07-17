@@ -17,7 +17,7 @@ opt_f:mafft option (If you want to search the complementary strand as well, use 
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -n #opt_n# #input_1#"
 
-export IM_MAFFT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_1"
+export IM_MAFFT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_2"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 

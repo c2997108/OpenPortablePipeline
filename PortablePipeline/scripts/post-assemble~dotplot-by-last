@@ -9,15 +9,17 @@ input_2::FASTA (y axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.f
 '
 optiondef='
 opt_c:cpu threads:8
-opt_m:memory limit (GB):64
+opt_m:memory limit (GB):30
 opt_l:line width:1
+opt_d:lastdb options:-uRY4
 opt_a:lastal options:
+opt_e:E-value threshold:1e-100
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -l #opt_l# -a #opt_a# #input_1# #input_2#"
 
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_AWK="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
-export IM_LAST="quay.io/biocontainers/last:1418--h5b5514e_0"
+export IM_LAST="quay.io/biocontainers/last:1642--h5ca1c30_0"
 export IM_IMAGEMAGICK="c2997108/centos6:2-imagemagick"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 
@@ -31,29 +33,26 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$i
 
 db=$input_2
 q=$input_1
-outbase=`basename $q`-`basename ${db}`
-cpu=$N_CPU
+outbase=split_query/`basename $q`-`basename ${db}`
 
-DO_LAST lastdb -P$cpu -uNEAR -R01 $outbase.lastdb $db
-awk '{if($0~"^>"){n++; if(n>'$cpu'){n=1}}; print $0 > "'$outbase'.split."n".fa"}' $q
+mkdir -p split_query
+DO_LAST lastdb -P$N_CPU $opt_d $outbase.lastdb $db
+awk -v nsplit=100 '{if($0~"^>"){n++; if(n>nsplit){n=1}}; print $0 > "'"$outbase"'.split."n".fa"}' $q
 
-for i in `ls $outbase.split.*.fa|sed 's/'"$outbase"'.split.//; s/.fa$//'`; do
- (
-  (DO_LAST lastal $opt_a -P$cpu $outbase.lastdb $outbase.split.$i.fa) | (DO_LAST last-split -m1e-6) > $outbase.split.$i.maf
-  DO_LAST maf-convert tab $outbase.split.$i.maf  >  $outbase.split.$i.maf.tab
- ) &
-done
-wait
-(for i in `ls $outbase.split.*.fa|sed 's/'"$outbase"'.split.//; s/.fa$//'`; do
- cat $outbase.split.$i.maf.tab
-done) > $outbase.maf.tab
+for i in `ls $outbase.split.*.fa`; do
+ echo "($ENV_LAST lastal $opt_a -P1 $outbase.lastdb $i ) | ($ENV_LAST maf-convert tab - ) | grep -v '^#'|awk -F'\t' -v e=$opt_e '{if(substr(\$13,5)+0 <= e){print \$0}}' > $i.maf.tab"
+done | DOPARALLELONE
 
-ln -sf $db $outbase.db.fa
-ln -sf $q $outbase.q.fa
+WAITPARALLEL
+
+cat $outbase.split.*.fa.maf.tab > $outbase.maf.all.tsv
+
+ln -sf ../$db $outbase.db.fa
+ln -sf ../$q $outbase.q.fa
 DO_SAMTOOLS samtools faidx $outbase.db.fa
 DO_SAMTOOLS samtools faidx $outbase.q.fa
 
-in=$outbase.maf.tab
+in=$outbase.maf.all.tsv
 fafai1=$outbase.db.fa.fai
 fafai2=$outbase.q.fa.fai
 
@@ -188,12 +187,43 @@ EOF
 
 DO_R R --vanilla < run-R.R
 DO_IMAGEMAGICK convert -density 300 $in.pdf $in.png
-
+mv $in.pdf $in.png .
 
 
 
 post_processing
 #<option detail>
+#<opt_d>
+Main Options:
+ -h, --help  show all options and their default settings, and exit
+ -p  interpret the sequences as proteins
+ -c  soft-mask lowercase letters (in reference *and* query sequences)
+ -u  seeding scheme (default: YASS if DNA, else PSEUDO if -q, else exact-match)
+ -P  number of parallel threads (default: 1)
+
+Advanced Options (default settings):
+ -q  interpret the sequences as proteins and append */STOP
+ -S  strand: 0=reverse, 1=forward, 2=both (default: 1)
+ -R  lowercase & simple-sequence options (default: 03 for -q, else 01)
+ -U  maximum tandem repeat unit length (protein: 50, DNA: 100 or 400)
+ -w  use initial matches starting at every w-th position in each sequence (1)
+ -W  use "minimum" positions in sliding windows of W consecutive positions (1)
+ -Q  input format: fastx, keep, sanger, solexa, illumina (default: fasta)
+ -s  volume size (default: unlimited)
+ -m  seed patterns (1=match, 0=anything, @=transition)
+ -d  DNA seed patterns (N=match, n=anything, R=purine match, etc.)
+ -a  user-defined alphabet
+ -i  minimum limit on initial matches per query position (default: 0)
+ -b  maximum length for buckets
+ -B  use max bucket length with memory <= (memory for stored positions) / B (4)
+ -C  child table type: 0=none, 1=byte-size, 2=short-size, 3=full (default: 0)
+ -x  just count sequences and letters
+ -D  print all sequences in lastdb files
+ --bits=N  use this many bits per base for DNA sequence (default: 8)
+ --circular  these sequences are circular
+ -v  be verbose: write messages about what lastdb is doing
+ -V, --version  show version information, and exit
+#</opt_d>
 #<opt_a>
 E-value options (default settings):
 -D: query letters per random alignment (1e+06)
