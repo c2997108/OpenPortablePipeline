@@ -1,5 +1,5 @@
 # 次回予告
-- ```nanopore~get-consensus```の最小クラスターリード数を10->3に変更
+- ```nanopore~get-consensus```の最小クラスターリード数を10->3に変更, 2, 3回目のクラスタリングの閾値を別途設定するように変更。
 
 # 1.5.3 (2025/07/18)
 - ```annotation~PASA```のtrinityrnaseqのdockerイメージのバージョン更新
