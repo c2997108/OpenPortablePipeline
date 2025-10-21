@@ -1,5 +1,5 @@
 # 次回予告
-- ```nanopore~get-consensus```の最小クラスターリード数を10->3に変更, 2, 3回目のクラスタリングの閾値を別途設定するように変更。
+- ```nanopore~get-consensus```の最小クラスターリード数を10->3に変更, 2, 3回目のクラスタリングの閾値を別途設定するように変更。3回目のクラスタリングはvsearchだとまとめ切れていないことがあったので、cd-hitを使うように変更。blastの一致率の閾値も別途設定するように変更。
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```のDBを2025/10現在入手可能なファイルに更新
 
 # 1.5.3 (2025/07/18)
