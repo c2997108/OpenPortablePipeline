@@ -2,6 +2,7 @@
 - ```nanopore~get-consensus```の最小クラスターリード数を10->3に変更, 2, 3回目のクラスタリングの閾値を別途設定するように変更。3回目のクラスタリングはvsearchだとまとめ切れていないことがあったので、cd-hitを使うように変更。blastの一致率の閾値も別途設定するように変更。
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```のDBを2025/10現在入手可能なファイルに更新
 - ```QC~jellyfish```でDNAの量に比例したkmer頻度の割合が分かるようにfrequency x coverageのグラフを追加。高頻度のkmer配列自体を出力するように変更。
+- ```post-assemble~coverage-length-graph```,```post-assemble~coverage-length-graph_by-minimap2```でコンティグのk-mer (5 bp)組成でK-meansクラスタリングを行いコンティグの色分けをする機能を追加。
 
 # 1.5.3 (2025/07/18)
 - ```annotation~PASA```のtrinityrnaseqのdockerイメージのバージョン更新
