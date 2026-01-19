@@ -3,6 +3,7 @@
 - ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_single-end```, ```metagenome~silva-SSU-LSU_PR2_NCBI-mito-plastid_MitoFish_paired-end```のDBを2025/10現在入手可能なファイルに更新
 - ```QC~jellyfish```でDNAの量に比例したkmer頻度の割合が分かるようにfrequency x coverageのグラフを追加。高頻度のkmer配列自体を出力するように変更。
 - ```post-assemble~coverage-length-graph```,```post-assemble~coverage-length-graph_by-minimap2```でコンティグのk-mer (5 bp)組成でK-meansクラスタリングを行いコンティグの色分けをする機能を追加。
+- ```nanopore~split-barcode```で高速化のためにインプットファイルを分割してからblastを並列実行するように変更。
 
 # 1.5.3 (2025/07/18)
 - ```annotation~PASA```のtrinityrnaseqのdockerイメージのバージョン更新
