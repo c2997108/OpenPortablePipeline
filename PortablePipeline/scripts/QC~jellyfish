@@ -10,12 +10,14 @@ optiondef='
 opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_j:jellyfish option:-m 21 -s 1000000 -C
+opt_f:the frequency threshold for output k-mer sequences:1000
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -j #opt_j# #input_1#"
+runcmd="$0 -c #opt_c# -m #opt_m# -j #opt_j# -f #opt_f# #input_1#"
 
 export IM_JELLYFISH="c2997108/biocontainers:jellyfish_2.2.10-2-deb"
 export IM_R="c2997108/ppmultiarch:R_3.6.3"
 export IM_SEQKIT="c2997108/biocontainers:seqkit_2.1.0"
+export IM_PLOT="c2997108/ppmultiarch:yoshitake_matplotlib"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -43,6 +45,8 @@ eval "DO_JELLYFISH bash -c '$cmd'"
 # DO_JELLYFISH jellyfish merge -o output output[0-9]*
 #fi
 DO_JELLYFISH jellyfish histo --high=100000000 output > output.txt
+DO_JELLYFISH jellyfish dump -c -t output |awk -F'\t' -v opt_f="$opt_f" '$2>=opt_f' > output.o"$opt_f".kmers.txt
+
 rm -f output
 
 echo 'library(Cairo)
@@ -51,14 +55,17 @@ CairoPNG("kmer-graph.png", width = 1000, height = 1000)
 plot(a,log="xy",type="o", main="K-mer distribution", xlab="K-mer coverage", ylab="K-mer frequency", cex=0.5)
 dev.off()
 
-m=floor(log2(max(a[,1])))
-c=rep(0,m+1)
-for(i in 1:(dim(a)[1])){tempm=floor(log2(a[i,1])); c[tempm+1]=c[tempm+1]+a[i,1]*a[i,2]}
-d=as.matrix(c)
-row.names(d)=2^(0:m)
-CairoPNG("kmer-base-histogram.png", width = 1000, height = 1000)
-barplot(t(d),xlab = "K-mer frequency section", ylab = "K-mer frequency x coverage")
-dev.off()'|(DO_R R --vanilla < /dev/stdin)
+#m=floor(log2(max(a[,1])))
+#c=rep(0,m+1)
+#for(i in 1:(dim(a)[1])){tempm=floor(log2(a[i,1])); c[tempm+1]=c[tempm+1]+a[i,1]*a[i,2]}
+#d=as.matrix(c)
+#row.names(d)=2^(0:m)
+#CairoPNG("kmer-base-histogram.png", width = 1000, height = 1000)
+#barplot(t(d),xlab = "K-mer frequency section", ylab = "K-mer frequency x coverage")
+#dev.off()
+'|(DO_R R --vanilla < /dev/stdin)
+
+DO_PLOT plot_read_bases_hist.py output.txt
 
 DO_SEQKIT seqkit stats $r1 | tee reads.stats
 awk 'NR>1{gsub(/,/,"",$4); reads+=$4; gsub(/,/,"",$5); sum+=$5} END{print reads"\t"sum"\t"sum/reads}' reads.stats > reads.stats.txt

@@ -14,7 +14,7 @@ opt_f:Flye option:--genome-size 10M
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -f #opt_f# #input_1#"
 
-export IM_FLYE="quay.io/biocontainers/flye:2.9.5--py39hdf45acc_1"
+export IM_FLYE="c2997108/biocontainers:flye_2.9.6"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 

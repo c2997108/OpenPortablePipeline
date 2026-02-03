@@ -18,8 +18,9 @@ opt_i:Identity threshold of a whole read (%):80
 opt_b:Consider hits below the threshold to suppress chimeras. (y|n):n
 opt_a:Adapter alignment length percentage threshold of a barcode:0.9
 opt_j:Identity threshold of a barcode (%):90
+opt_d:the number of reads per split FASTQ:300
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -p #opt_p# -f #opt_f# -i #opt_i# -b #opt_b# -a #opt_a# -j #opt_j# -s #input_4# #input_1# #input_2# #input_3#"
+runcmd="$0 -c #opt_c# -m #opt_m# -p #opt_p# -f #opt_f# -i #opt_i# -b #opt_b# -a #opt_a# -j #opt_j# -d #opt_d# -s #input_4# #input_1# #input_2# #input_3#"
 
 export IM_BLAST="c2997108/ppmultiarch:blast_seqkit_1"
 export IM_SAMTOOLS="c2997108/biocontainers:samtools_1.22"
@@ -40,7 +41,7 @@ list="$input_3"
 cat "$primers" | sed 's/\t/ /g; s/\r//g'| DO_SEQKIT seqkit fx2tab |awk -F'\t' '{split($1,arr," "); a=toupper($2); gsub(/[^ACGTBVDHKMRYSWN]/,"",a); print ">"arr[1]"\n"a}' > primer-clean.fa
 primers=primer-clean.fa
 
-cat "$list" | sed 's/\t\+/\t/g' | awk -F'\t' '$1!=""&&$2!=""&&$3!=""&&$4!=""&&$5!=""&&$5>$4{print $0}' > samplelist-clean.txt
+cat "$list" | sed 's/\t\+/\t/g' | awk -F'\t' '$1!=""&&$2!=""&&$3!=""&&$5>=$4{print $0}' > samplelist-clean.txt
 list=samplelist-clean.txt
 
 #プライマーの縮重塩基を解消
@@ -320,14 +321,14 @@ awk -F'\t' -v file="$i" '
   else{return "N"}
  }
  function revcomp(x,  i, str, revx){revx=rev(x); for(i=1;i<=length(revx);i++){str=str""comp(substr(revx,i,1))}; return str}
- FILENAME==ARGV[1]{n++; seq[$1]=$2; qual[$1]=$3}
+ FILENAME==ARGV[1]{n++; split($1,arr," "); seq[arr[1]]=$2; qual[arr[1]]=$3; s=""; for(i=2;i<=length(arr);i++){s=s" "arr[i]}; info[arr[1]]=s}
  FILENAME==ARGV[2]{
   m++
   n3[$3]++
   if($8==1){
-   print $3"\t"$1":"$2":"$4":"$5":"$6":"$7":"$8"\t"substr(seq[$1],$6,$7-$6+1)"\t"substr(qual[$1],$6,$7-$6+1)
+   print $3"\t"$1":"$2":"$4":"$5":"$6":"$7":"$8""info[$1]"\t"substr(seq[$1],$6,$7-$6+1)"\t"substr(qual[$1],$6,$7-$6+1)
   }else{
-   print $3"\t"$1":"$2":"$4":"$5":"$6":"$7":"$8"\t"revcomp(substr(seq[$1],$6,$7-$6+1))"\t"rev(substr(qual[$1],$6,$7-$6+1))
+   print $3"\t"$1":"$2":"$4":"$5":"$6":"$7":"$8""info[$1]"\t"revcomp(substr(seq[$1],$6,$7-$6+1))"\t"rev(substr(qual[$1],$6,$7-$6+1))
   }
  }
  END{
@@ -337,21 +338,36 @@ awk -F'\t' -v file="$i" '
    print "  "i": "n3[i]" reads" >> file".stats"
   }
  }
-' <(if [[ "$i" == *.gz ]]; then zcat "$i"; else cat "$i"; fi|sed 's/\t/ /g'|seqkit fx2tab | awk -F'\t' '{split($1,arr," "); print arr[1]"\t"$2"\t"$3}') "$i".fasta.blastn.dedup.filterd.tag_position > "$i".fasta.blastn.dedup.filterd.tag_position.tsv
+' <(if [[ "$i" == *.gz ]]; then zcat "$i"; else cat "$i"; fi|sed 's/\t/ /g'|seqkit fx2tab) "$i".fasta.blastn.dedup.filterd.tag_position > "$i".fasta.blastn.dedup.filterd.tag_position.tsv
 
 EOF
 
+cat_or_zcat() {
+    for f in "$@"; do
+        if [[ "$f" == *.gz ]]; then
+            gzip -cd "$f"
+        else
+            cat "$f"
+        fi
+    done
+}
+
 (for i in `find $input_1/|DO_BASE grep -E "[.]f(ast|)q(|[.]gz)$"||true`; do
+ cat_or_zcat $i
+done) | DO_SEQKIT seqkit split2 -s $opt_d -O tmp-fastq-split
+
+find tmp-fastq-split/|DO_BASE grep -E "[.]f(ast|)q$"|while read i; do
  echo $ENV_BLAST "bash run-blast.sh $i $primers $list $opt_f $opt_i $opt_b $opt_a $opt_j"
-done) |DOPARALLELONE
+done |DOPARALLELONE
 
 WAITPARALLEL
 
+find tmp-fastq-split/|DO_BASE grep -E "[.]f(ast|)q$"|while read i; do rm -f $i; done
 
 #サンプルごとに分割したFASTQファイル出力
 mkdir -p output
-cat "$input_1"/*.fasta.blastn.dedup.filterd.tag_position.tsv | awk -F'\t' '{print "@"$2"\n"$3"\n+\n"$4 > ("output/"$1".fq")}'
-cat "$input_1"/*.stats|awk '$1=="Total:"{t+=$2} $1=="Demultiplexed:"{d+=$2} END{print "Total: "t" reads, Demultiplexed: "d" reads"}' | tee output.stats
+cat tmp-fastq-split/*.fasta.blastn.dedup.filterd.tag_position.tsv | awk -F'\t' '{print "@"$2"\n"$3"\n+\n"$4 > ("output/"$1".fq")}'
+cat tmp-fastq-split/*.stats|awk '$1=="Total:"{t+=$2} $1=="Demultiplexed:"{d+=$2} END{print "Total: "t" reads, Demultiplexed: "d" reads"}' | tee output.stats
 DO_SEQKIT seqkit stats output/*.fq | tee -a output.stats
 
 for i in output/*.fq; do

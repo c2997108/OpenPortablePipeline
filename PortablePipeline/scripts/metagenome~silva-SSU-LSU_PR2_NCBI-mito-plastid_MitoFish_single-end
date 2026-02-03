@@ -21,9 +21,9 @@ opt_g:read number for normalization:10000
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -a #opt_a# -l #opt_l# -i #opt_i# -t #opt_t# -s #opt_s# -g #opt_g# #input_1#"
 
-export IM_PR2="c2997108/centos7:2-blast-taxid-2-KronaTools-2.7-pr2-mito-silva-3"
-export IM_BASE="c2997108/centos7:3-java"
-export IM_SEQKIT="quay.io/biocontainers/seqkit:2.6.1--h9ee0642_0"
+export IM_BLAST="c2997108/ppmultiarch:blast_seqkit_1-metasearchdb"
+export IM_KRONA="c2997108/biocontainers:krona_2.8.1"
+export IM_BASE="c2997108/ppmultiarch:yoshitake_merge"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -50,7 +50,7 @@ EOS
 
 mkdir -p fq2fa
 (for i in `find "$input_1"/|grep -E "[.]f(ast|)(a|q)([.]gz|)$"||true`; do
- echo $ENV_SEQKIT bash run-split.sh "$i" "$opt_s"
+ echo $ENV_BLAST bash run-split.sh "$i" "$opt_s"
 done)|DOPARALLELONE
 
 WAITPARALLEL
@@ -136,7 +136,7 @@ EOS
 
 
 find split -mindepth 2 -maxdepth 2|grep -E "[.]part_[0-9]*[.](fasta|fa)[.]gz$"|while read i; do
- echo $ENV_PR2 bash run-blast.sh "$i" "$opt_d" "$opt_t" $N_CPU "'$opt_b'" "$opt_a" "$opt_i" "$opt_l"
+ echo $ENV_BLAST bash run-blast.sh "$i" "$opt_d" "$opt_t" $N_CPU "'$opt_b'" "$opt_a" "$opt_i" "$opt_l"
 done|DOPARALLEL
 
 WAITPARALLEL
@@ -148,7 +148,7 @@ for i in split/*; do
   {n=split($1,arr,";"); ORS="\t"; print $2; for(i=1;i<n;i++){print arr[i]}; ORS="\n"; print arr[n]}
  ' > result.temp/`basename $i`
 done
-DO_PR2 /usr/local/KronaTools-2.7/scripts/ImportText.pl result.temp/* -o all.html
+DO_KRONA ktImportText result.temp/* -o all.html
 rm -rf result.temp
 
 if [ `ls result/*.tsv|wc -l` -gt 1 ]; then

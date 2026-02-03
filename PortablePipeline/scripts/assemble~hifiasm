@@ -110,6 +110,8 @@ DO_HIFI hifiasm -o output -t $N_CPU $opt_a $input_hic $input_nanopore $input_hif
 
 for i in `ls output.*.gfa|grep -v noseq.gfa`; do awk '/^S/{print ">"$2;print $3}' $i > $i.fa; done
 
+rm -f output.ec.bin output.ovlp.source.bin output.ovlp.reverse.bin
+
 post_processing
 #<option detail>
 #<opt_a>

@@ -5,7 +5,7 @@ Windowed Adaptive Trimming for fastq files using quality
 * Especially for nanopore trimming
 '
 inputdef='
-input_1:directory:FASTQ:*.fastq,*.fq
+input_1:directory:FASTQ:*.fastq,*.fq,*.fastq.gz,*.fq.gz
 '
 optiondef='
 opt_c:cpu threads:8
@@ -22,11 +22,17 @@ source $(dirname `readlink -f $0 || echo $0`)/common.sh
 set -eux
 set -o pipefail
 
-cat `find $input_1/|egrep "[.]f(ast|)q$"` > input.fastq
+files=`find $input_1/|egrep "[.]f(ast|)q$" || true`
+gzfiles=`find $input_1/|egrep "[.]f(ast|)q[.]gz$" || true`
+(if [ "$files" != "" ]; then
+ cat $files
+elif [ "$gzfiles" != "" ]; then
+ zcat $gzfiles
+fi) > input.fastq
 DO_FASTQC fastqc -t $N_CPU --extract input.fastq
 rm -f input.fastq
 
-for i in `find $input_1/|egrep "[.]f(ast|)q$"`; do
+for i in `find $input_1/|egrep "[.]f(ast|)q(|[.]gz)$"`; do
  echo $ENV_SICKLE sickle se -f $i  -o $i.sickle $opt_s
 done|DOPARALLELONE
 
@@ -34,7 +40,7 @@ WAITPARALLEL
 
 cat $input_1/*.sickle > output.sickle.fastq
 DO_FASTQC fastqc -t $N_CPU --extract output.sickle.fastq
-rm -f input_1/*.sickle
+rm -f $input_1/*.sickle
 
 post_processing
 #<option detail>
