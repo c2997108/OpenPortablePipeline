@@ -76,7 +76,7 @@ done | DOPARALLEL
 
 WAITPARALLEL
 
-mkdir -p output-consensus-fasta output-consensus-fastq output-consensus-alignments
+mkdir -p output-consensus-fastq output-consensus-alignments
 
 #最初のクラスタリング結果のコンセンサス配列を作成
 cat << 'EOF' > run-consensus2.sh
@@ -183,9 +183,9 @@ if [ -e "$r3prefix"-haplotypes.fasta ]; then
   mafft $opt_f --thread $N_CPU --auto "$y".fa.sub > "$y".fa.sub.mafft
   cp -p "$y".fa.sub.mafft output-consensus-alignments/`basename $x`.mafft
  done
- cp -p "$r3prefix"-haplotypes/*.fasta output-consensus-fasta/
+ #cp -p "$r3prefix"-haplotypes/*.fasta output-consensus-fasta/
 fi
-cp -p "$r3prefix"/*.fasta output-consensus-fasta/
+#cp -p "$r3prefix"/*.fasta output-consensus-fasta/
 
 EOF
 
@@ -202,11 +202,12 @@ WAITPARALLEL
 
 #全サンプルの代表配列をさらにクラスタリングし、最大リード数のクラスターIDに付け替える
 #opt_l #0.99
-cat output-consensus-fasta/*.fasta > output-all.fasta
-DO_SEQKIT seqkit sort -lr output-all.fasta > output-all.sorted.fasta
+find output-consensus-fastq/|grep "[.]fq$"|xargs cat > output-consensus.fastq
+DO_SEQKIT seqkit fq2fa output-consensus.fastq > output-consensus.fasta
+DO_SEQKIT seqkit sort -lr output-consensus.fasta > output-all.sorted.fasta
 DO_CDHIT cd-hit -i output-all.sorted.fasta -c "$opt_l" -T $N_CPU -o output-all-center.fasta -M 0 -d 0
 DO_MAFFT awk '{if($0~"^>"){id=$2+1}else{a=substr($3,2,length($3)-4); n=split(a,arr,"_"); b=arr[n]; sub(/reads/,"",b); print a"\t"id"\t"b}}' output-all-center.fasta.clstr|sort -k2,2n -k3,3nr > output-all-center.fasta.clstr.uc
-DO_SEQKIT seqkit fx2tab output-all.fasta |awk 'FILENAME==ARGV[1]{seq[$1]=$2} FILENAME==ARGV[2]{if(a[$2]==0){a[$2]=$3; print ">"$1"\n"seq[$1]}}' /dev/stdin output-all-center.fasta.clstr.uc > output-all-clusters.max.uc.fasta
+DO_SEQKIT seqkit fx2tab output-all.sorted.fasta |awk 'FILENAME==ARGV[1]{seq[$1]=$2} FILENAME==ARGV[2]{if(a[$2]==0){a[$2]=$3; print ">"$1"\n"seq[$1]}}' /dev/stdin output-all-center.fasta.clstr.uc > output-all-clusters.max.uc.fasta
 
 DO_MAFFT mafft $opt_f --thread $N_CPU --auto output-all-clusters.max.uc.fasta > output-all-clusters.max.uc.fasta.mafft
 
@@ -259,11 +260,11 @@ DO_MAFFT awk -F'\t' '
   }
  }' work-blast/*.cnt > all.cnt.txt
 
-DO_SEQKIT seqkit fx2tab output-all.fasta | DO_MAFFT awk -F'\t' '
+DO_SEQKIT seqkit fx2tab output-all.sorted.fasta | DO_MAFFT awk -F'\t' '
  FILENAME==ARGV[1]{seq[$1]=$2}
  FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; $1=$1"\tseq"}else{$1=$1"\t"seq[$1]}; print $0}' /dev/stdin all.cnt.txt  > all.cnt.seq.txt
 
-find output-consensus-fastq/|grep "[.]fq$"|xargs cat| DO_SEQKIT seqkit fx2tab | DO_MAFFT awk -F'\t' '
+DO_SEQKIT seqkit fx2tab output-consensus.fastq | DO_MAFFT awk -F'\t' '
  FILENAME==ARGV[1]{seq[$1]=$2; qual[$1]=$3}
  FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; $1=$1"\tseq\tqual"}else{$1=$1"\t"seq[$1]"\t"qual[$1]}; print $0}' /dev/stdin all.cnt.txt  > all.cnt.seq.qual.txt
 post_processing
