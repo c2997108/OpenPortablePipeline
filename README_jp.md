@@ -189,36 +189,47 @@ pp -s -g metagenome~silva_SSU+LSU -c 8 -m 32 -t 0.995 fastq/
 
 
 ## Linuxサーバのセットアップ方法
-### CentOS7の場合
-CentOSの場合、SSHサーバは基本インストール済みなので、あとはDockerをインストールすればよい。Dockerのインストール手順は良く変わるので、[公式サイト](https://docs.docker.com/install/linux/docker-ce/centos/)を見るのが好ましいが、例を挙げると下記の手順でインストール可能。
+
+### Ubuntu 22.04の場合
+
+Docker/Apptainerをインストールすればよい。下記はApptainerの例。
 ```
-sudo yum install -y yum-utils device-mapper-persistent-data lvm2
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install -y docker-ce
-sudo systemctl start docker
-sudo systemctl enable docker
+sudo add-apt-repository -y ppa:apptainer/ppa
+sudo apt update
+sudo apt install -y apptainer
+```
+
+### Rocky Linux 9の場合
+
+Docker/Apptainerをインストールすればよい。下記はDockerの例。Dockerのインストール手順は良く変わるので、[公式サイト](https://docs.docker.com/engine/install/rhel/)を見るのが好ましいが、例を挙げると下記の手順でインストール可能。
+```
+sudo dnf -y install dnf-plugins-core
+sudo dnf config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
+sudo dnf install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo systemctl enable --now docker
 sudo docker run hello-world
 ```
 hello-worldが無事に起動すればインストールは完了。
-インストール後にrootでなくてもdockerを実行できるように下記のコマンドを実行する。
+インストール後にrootでなくてもdockerを実行できるように下記のコマンドを実行してユーザーをdockerグループに所属させる必要がある。もしログインユーザーを変更したら、一度は下記を実行する必要がある。
 ```
 sudo groupadd docker
 sudo usermod -aG docker $USER
 ```
 
-### Rocky Linux 9の場合
+### Rocky Linux 9でGPUも使う場合
 
-GPUも使う場合のセットアップ方法。NVIDIAのドライバーをインストールしているものとする。まだインストールしていない場合はhttps://www.server-world.info/query?os=CentOS_7&p=nvidia を参照。
+NVIDIAのドライバーをインストールしているものとする。まだインストールしていない場合はhttps://www.server-world.info/query?os=CentOS_7&p=nvidia を参照。上記手順に加えて下記を実行する。
 
 ```
-sudo yum install -y yum-utils
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-curl -s -L https://nvidia.github.io/nvidia-docker/centos8/nvidia-docker.repo | sudo tee /etc/yum.repos.d/nvidia-docker.repo
-sudo dnf -y install nvidia-container-toolkit
-sudo usermod -aG docker $USER
-sudo systemctl start docker
-sudo systemctl enable docker
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+sudo dnf-config-manager --enable nvidia-container-toolkit-experimental
+export NVIDIA_CONTAINER_TOOLKIT_VERSION=1.18.2-1
+sudo dnf install -y \
+      nvidia-container-toolkit-${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      nvidia-container-toolkit-base-${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container-tools-${NVIDIA_CONTAINER_TOOLKIT_VERSION} \
+      libnvidia-container1-${NVIDIA_CONTAINER_TOOLKIT_VERSION}
+sudo systemctl restart docker
 sudo docker run -it --rm --gpus all nvcr.io/nvidia/clara/clara-parabricks:4.1.0-1 nvidia-smi #docker内でGPUが使えるか確認
 ```
 
