@@ -221,11 +221,11 @@ opt_a="$2" #0.90
 N_CPU="$3"
 opt_b="$4" #200
 
-seqkit fq2fa "$j" | blastn -db output-all-clusters.max.uc.fasta -query /dev/stdin -num_threads "$N_CPU" -outfmt 6 |
- awk -F'\t' -v opt_b="$opt_b" -v opt_a="$opt_a" '!($1 in a){a[$1]=1; if($12>=opt_b&&$3>=opt_a*100){print $0}}' > work-blast/`basename $j`.blastn
-cut -f 2 work-blast/`basename $j`.blastn |
- awk -v name=`basename $j | sed 's/[.]gz$//; s/[.]\(fastq\|fq\)$//'` '
-  {c[$0]++} END{print "id\t"name; for(i in c){print i"\t"c[i]}}
+#同じbitscoreならカバー率の高い（＝subject長の短い）ヒットを集計し、同一bitscore&カバー率のヒットがあればヒット数で割ってカウントする
+seqkit fq2fa "$j" | blastn -db output-all-clusters.max.uc.fasta -query /dev/stdin -num_threads "$N_CPU" -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle" | awk -F'\t' -v opt_b="$opt_b" -v opt_a="$opt_a" -v name=`basename $j | sed 's/[.]gz$//; s/[.]\(fastq\|fq\)$//'` '
+  function calcdata(  i){PROCINFO["sorted_in"]="@ind_num_asc"; for(j in s){for(i in data[j]){cnt[data[j][i]]+=1/s[j]}; break}; delete data; delete s; n=0}
+  $14>=opt_b&&$5>=opt_a*100{if($1!=old){old=$1; olds=$14; if(n>0){calcdata()}}; if($14==olds){data[$4][s[$4]]=$2; s[$4]++; n++}}
+  END{if(n>0){calcdata()}; print "id\t"name; for(i in cnt){print i"\t"cnt[i]}}
  ' > work-blast/`basename $j`.cnt
 
 EOF
