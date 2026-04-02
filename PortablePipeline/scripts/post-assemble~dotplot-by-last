@@ -4,8 +4,8 @@ explanation='
 compare large genomes by dot plot using last
 '
 inputdef='
-input_1::FASTA (x axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
-input_2::FASTA (y axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_1::FASTA (y axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
+input_2::FASTA (x axis):*.fa,*.fasta,*.fsa,*.fna,*.fa.gz,*.fasta.gz,*.fsa.gz,*.fna.gz
 '
 optiondef='
 opt_c:cpu threads:8

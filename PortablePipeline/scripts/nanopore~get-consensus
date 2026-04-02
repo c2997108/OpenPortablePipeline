@@ -19,13 +19,16 @@ opt_f:mafft option (If you want to search the complementary strand as well, use 
 opt_a:Identity threshold during the last blastn (0-1):0.90
 opt_b:blastn bitscore threshold:200
 opt_d:Minimum read depth for output haplotypes:30
+opt_s:the number of reads per split FASTQ at blastn:300
 '
-runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -j #opt_j# -n #opt_n# -l #opt_l# -a #opt_a# -b #opt_b# -d #opt_d# #input_1#"
+runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -j #opt_j# -n #opt_n# -l #opt_l# -a #opt_a# -b #opt_b# -d #opt_d# -s #opt_s# #input_1#"
 
 export IM_MAFFT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_5"
 export IM_SEQKIT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_5"
 export IM_BLAST="c2997108/ppmultiarch:blast_seqkit_1"
 export IM_CDHIT="c2997108/biocontainers:cd-hit_4.8.1"
+export IM_EXCEL="c2997108/ppmultiarch:yoshitake_merge"
+export IM_KYST="c2997108/ppmultiarch:yoshitake_kystudio-align"
 
 source $(dirname `readlink -f $0 || echo $0`)/common.sh
 
@@ -222,11 +225,12 @@ N_CPU="$3"
 opt_b="$4" #200
 
 #同じbitscoreならカバー率の高い（＝subject長の短い）ヒットを集計し、同一bitscore&カバー率のヒットがあればヒット数で割ってカウントする
-seqkit fq2fa "$j" | blastn -db output-all-clusters.max.uc.fasta -query /dev/stdin -num_threads "$N_CPU" -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle" | awk -F'\t' -v opt_b="$opt_b" -v opt_a="$opt_a" -v name=`basename $j | sed 's/[.]gz$//; s/[.]\(fastq\|fq\)$//'` '
+seqkit fq2fa "$j" | blastn -db output-all-clusters.max.uc.fasta -query /dev/stdin -num_threads "$N_CPU" -outfmt "6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send evalue bitscore staxids stitle"  | awk -F'\t' '{if($1!=old){print $0; old=$1; olds=$14}else if($1==old&&$14==olds){print $0}}' > "$j".blastn
+cat "$j".blastn | awk -F'\t' -v opt_b="$opt_b" -v opt_a="$opt_a" -v name=`basename $j | sed 's/[.]gz$//; s/[.]\(fastq\|fq\)$//'` '
   function calcdata(  i){PROCINFO["sorted_in"]="@ind_num_asc"; for(j in s){for(i in data[j]){cnt[data[j][i]]+=1/s[j]}; break}; delete data; delete s; n=0}
   $14>=opt_b&&$5>=opt_a*100{if($1!=old){old=$1; olds=$14; if(n>0){calcdata()}}; if($14==olds){data[$4][s[$4]]=$2; s[$4]++; n++}}
   END{if(n>0){calcdata()}; print "id\t"name; for(i in cnt){print i"\t"cnt[i]}}
- ' > work-blast/`basename $j`.cnt
+ ' > "$j".blastn.cnt #work-blast/`basename $j`.cnt
 
 EOF
 
@@ -234,10 +238,18 @@ DO_BLAST makeblastdb -in output-all-clusters.max.uc.fasta -dbtype nucl
 mkdir -p work-blast
 
 find "$input_1/" | grep -E "[.](fastq|fq)($|[.]gz$)" | while read i; do
- echo $ENV_BLAST bash run-blast.sh "$i" "$opt_a" "$N_CPU" "'$opt_b'"
-done | DOPARALLEL
+ DO_SEQKIT seqkit split2 -s $opt_s -O tmp-fastq-split/`basename $i` "$i"
+ find tmp-fastq-split/`basename $i`/ | grep -E "[.](fastq|fq)($|[.]gz$)" | while read j; do
+  echo $ENV_BLAST bash run-blast.sh "$j" "$opt_a" 1 "'$opt_b'"
+ done
+done | DOPARALLELONE
 
 WAITPARALLEL
+
+find "$input_1/" | grep -E "[.](fastq|fq)($|[.]gz$)" | while read i; do
+ (echo -e "id\t"`basename $i | sed 's/[.]gz$//; s/[.]\(fastq\|fq\)$//'`
+ awk -F'\t' 'FNR>1{cnt[$1]+=$2} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' tmp-fastq-split/`basename $i`/*.blastn.cnt) > work-blast/`basename $i`.cnt
+done
 
 DO_MAFFT awk -F'\t' '
  {if(FNR==1){name[FILENAME]=$2}else{data[FILENAME][$1]=$2; cnt[$1]+=$2}}
@@ -267,6 +279,10 @@ DO_SEQKIT seqkit fx2tab output-all.sorted.fasta | DO_MAFFT awk -F'\t' '
 DO_SEQKIT seqkit fx2tab output-consensus.fastq | DO_MAFFT awk -F'\t' '
  FILENAME==ARGV[1]{seq[$1]=$2; qual[$1]=$3}
  FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; $1=$1"\tseq\tqual"}else{$1=$1"\t"seq[$1]"\t"qual[$1]}; print $0}' /dev/stdin all.cnt.txt  > all.cnt.seq.qual.txt
+
+DO_EXCEL java -jar /usr/local/bin/excel2.jar all.cnt.seq.qual.txt all.cnt.seq.qual.xlsx
+DO_KYST node /usr/local/bin/generate-output-consensus-viewer.mjs output-consensus-alignments
+
 post_processing
 
 #<option detail>

@@ -19,8 +19,6 @@ import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
 import com.jcraft.jsch.Logger;
 
-import javafx.application.Platform;
-
 public class ConnectSsh {
 
 	public ConnectSsh(JsonNode node) {

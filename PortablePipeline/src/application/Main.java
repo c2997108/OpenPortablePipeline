@@ -53,6 +53,7 @@ public class Main extends Application {
 	        		// Macで/Applicationsフォルダに配置されたものであるなら
 	        		ppOutDir=System.getProperty("user.home")+"/pp_out/";
 	        		System.setProperty("PP_OUT_DIR", ppOutDir);
+                                System.setProperty("user.dir", Paths.get(ppOutDir).toAbsolutePath().normalize().toString());
 	        	}
 	        }
 	        System.out.println("Output Base Dir: " + ppOutDir);
