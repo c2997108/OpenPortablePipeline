@@ -191,7 +191,7 @@ public class JobWindowController {
     @FXML
     private Label label_imagefolder;
 
-    String file_id_rsa = "id_rsa.txt";
+    String file_id_rsa = "";
 
     ObservableList<String> listRecords = FXCollections.observableArrayList();
     //ObservableList<String> listRecordsJob = FXCollections.observableArrayList();
@@ -1912,6 +1912,9 @@ public class JobWindowController {
         Tooltip label_imagefolder_tooltip = new Tooltip();
         label_imagefolder_tooltip.setText(label_imagefolder.getText());
 	    label_imagefolder.setTooltip(label_imagefolder_tooltip);
+
+
+        file_id_rsa = PPSetting.getBaseDir()+"id_rsa.txt";
     }
 
 
