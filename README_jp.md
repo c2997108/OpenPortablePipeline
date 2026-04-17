@@ -479,6 +479,7 @@ GitHubに50 MBを超えるファイルを登録しているので、git cloneで
 - dockerを使う場合は途中でキャンセル処理はSGEなしの場合のみ完全対応。SGEを使うとqsubで投げたjobは削除するが、投げた先のサーバの中のdockerは停止されないので、docker stopを実行しないといけないが現在は対応していない。singularityの場合はSGEでもSGEがプロセスを停止させてくれるはず。
 - <del>xargsの仕様として、「'」や「"」はエスケープ処理しておかないと消える。```echo 'set -eux; echo \"a   a\"'|xargs -I{} bash -c "{}"```</del>->v1.2.0でxargs -0とすることで影響なくなった。
 - DOPARALLELの中で子スクリプトを呼び出す場合、bashコマンドの前にN_SCRIPT=$N_SCRIPTを付けて、子スクリプトであることを伝える必要がある。またスペースが入ったコマンドオプションなどを子スクリプトに渡す場合は「'」や「"」はエスケープ処理しておかないと消える。
+- while read句の中でDO_XXXのaliasを使うと、docker, podmanの実行が1つ目で終了してしまうのでwhile read句の中ではEVN_XXXを１回だけ使うこと。
 
 ### コマンドライン実行時の注意
 - オプション扱いの入力だけど、-X input_1/ などになっていない入力の場合、空のオプション""や、空のフォルダを作ってそのフォルダを指定しておかないとスクリプトの中で変な挙動になる可能性がある。例えば「metagenome~clustering_pfam-annotation」では空のinput_2もしくはinput_3フォルダが無いとfind $input_2/などとしているため、空だとルート「/」からの検索をしてしまう。
