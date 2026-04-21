@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname `readlink -f $0 || echo $0`)" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/.pp-cui-build"
 CLASS_DIR="$BUILD_DIR/classes"
 STAMP_FILE="$BUILD_DIR/.stamp"

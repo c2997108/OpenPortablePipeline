@@ -180,6 +180,15 @@ public class JobWindowController {
     private TextField searchtxt;
 
     @FXML
+    private ListView<String> savedSettingList;
+
+    @FXML
+    private TextField savedSettingName;
+
+    @FXML
+    private Button saveNamedSetting;
+
+    @FXML
     private CheckBox checkdelete;
 
     @FXML
@@ -197,8 +206,10 @@ public class JobWindowController {
     //ObservableList<String> listRecordsJob = FXCollections.observableArrayList();
     static ObservableList<JobNode> jobNodes = FXCollections.observableArrayList();
     ObservableList<String> listScripts = FXCollections.observableArrayList();
+    ObservableList<String> savedSettingNames = FXCollections.observableArrayList();
     ObservableList<ScriptNode> ScriptNodes = FXCollections.observableArrayList();
     ObservableList<ScriptNode> ScriptNodesOrig = FXCollections.observableArrayList();
+    Map<String, Boolean> categoryExpandedState = new LinkedHashMap<String, Boolean>();
 
     //static ChannelSftp channelSftp = null;
     //static Session session = null;
@@ -214,8 +225,10 @@ public class JobWindowController {
     boolean isSending = false;
 
     Map<String, Map<String, String>> settings = new LinkedHashMap<String, Map<String, String>>();
+    Map<String, Map<String, String>> namedSettings = new LinkedHashMap<String, Map<String, String>>();
     String[] settingPresetKey = {"ssh","ssh (SGE)","ddbj","shirokane","WSL","Mac","Linux","Linux (SGE)"};
     String[] settingItemKey = {"hostname", "port", "user", "password", "privatekey", "workfolder", "imagefolder"};
+    String namedSettingsFile = PPSetting.getBaseDir() + "saved_settings.json";
 
     String ppBinDir = System.getProperty("PP_BIN_DIR");
     String ppOutDir = System.getProperty("PP_OUT_DIR");
@@ -268,6 +281,33 @@ public class JobWindowController {
 			// TODO 自動生成された catch ブロック
 			e.printStackTrace();
 		}
+    }
+
+    @FXML
+    void onButtonSaveNamedSetting(ActionEvent event) {
+        String settingName = savedSettingName.getText().trim();
+        if(settingName.equals("")) {
+            Alert alert = new Alert(AlertType.WARNING);
+            alert.setTitle("Warning");
+            alert.setHeaderText("Setting name is required");
+            alert.setContentText("Enter a name before saving the current settings.");
+            alert.showAndWait();
+            return;
+        }
+
+        namedSettings.put(settingName, collectCurrentSettings());
+        try {
+            saveNamedSettings();
+            refreshSavedSettingNames(settingName);
+            onButtonSave(null);
+        } catch (Exception e) {
+            e.printStackTrace();
+            Alert alert = new Alert(AlertType.ERROR);
+            alert.setTitle("Error");
+            alert.setHeaderText("Could not save named settings");
+            alert.setContentText(e.getMessage());
+            alert.showAndWait();
+        }
     }
 
     @FXML
@@ -756,6 +796,9 @@ public class JobWindowController {
         assert scriptfolder != null : "fx:id=\"scriptfolder\" was not injected: check your FXML file 'JobWindow.fxml'.";
         assert preset != null : "fx:id=\"preset\" was not injected: check your FXML file 'JobWindow.fxml'.";
         assert savesetting != null : "fx:id=\"savesetting\" was not injected: check your FXML file 'JobWindow.fxml'.";
+        assert savedSettingList != null : "fx:id=\"savedSettingList\" was not injected: check your FXML file 'JobWindow.fxml'.";
+        assert savedSettingName != null : "fx:id=\"savedSettingName\" was not injected: check your FXML file 'JobWindow.fxml'.";
+        assert saveNamedSetting != null : "fx:id=\"saveNamedSetting\" was not injected: check your FXML file 'JobWindow.fxml'.";
 
 	analysisGrid.getColumnConstraints().addAll(new ColumnConstraints(18), new ColumnConstraints(40), new ColumnConstraints(40), new ColumnConstraints(2));
 
@@ -950,6 +993,15 @@ public class JobWindowController {
 			System.out.println("no preset value");
 		}
 
+        loadNamedSettings();
+        savedSettingList.setItems(savedSettingNames);
+        savedSettingList.setOnMouseClicked((event) -> {
+            String selectedSettingName = savedSettingList.getSelectionModel().getSelectedItem();
+            if(selectedSettingName != null) {
+                applyNamedSetting(selectedSettingName);
+            }
+        });
+
 		tabPane.getSelectionModel().selectedItemProperty().addListener((ov, oldTab, newTab) ->{
 			//System.out.println(oldTab.getText()+"; "+ newTab.getText());
 			if(oldTab.getText().compareTo("Settings")==0) {
@@ -1033,29 +1085,11 @@ public class JobWindowController {
 
         //textボックスでEnterが押された場合
         searchtxt.setOnAction((ActionEvent event)->{
-		//System.out.println(searchtxt.getText());
-		Platform.runLater( ()->{
-			ScriptNodes.clear();
-		for(ScriptNode sNode : ScriptNodesOrig) {
-			if(sNode.filename.toUpperCase().contains(searchtxt.getText().toUpperCase()) || sNode.explanation.toUpperCase().contains(searchtxt.getText().toUpperCase())){
-				ScriptNodes.add(sNode);
-			}
-		}
-
-		});
+		rebuildScriptNodes(searchtxt.getText(), true);
         });
         //searchボタンが押された場合
         searchbtn.setOnAction((ActionEvent event)->{
-		//System.out.println(searchtxt.getText());
-		Platform.runLater( ()->{
-			ScriptNodes.clear();
-		for(ScriptNode sNode : ScriptNodesOrig) {
-			if(sNode.filename.toUpperCase().contains(searchtxt.getText().toUpperCase()) || sNode.explanation.toUpperCase().contains(searchtxt.getText().toUpperCase())){
-				ScriptNodes.add(sNode);
-			}
-		}
-
-		});
+		rebuildScriptNodes(searchtxt.getText(), true);
         });
 
         // Icon loading logic
@@ -1131,12 +1165,15 @@ public class JobWindowController {
                             }
                         }
                     }
-                    ScriptNodes.add(new ScriptNode(fileName, explanationString, scriptIcon));
-                    ScriptNodesOrig.add(new ScriptNode(fileName, explanationString, scriptIcon)); // Assuming ScriptNodeOrig also needs icons
+                    ScriptNode scriptNode = new ScriptNode(fileName, explanationString, scriptIcon);
+                    ScriptNodesOrig.add(scriptNode);
+                    categoryExpandedState.putIfAbsent(scriptNode.getCategoryName(), true);
 			listScripts.add(fileName);
 		}
             }
         }
+
+        rebuildScriptNodes("");
 
 
         scriptlist.setCellFactory(new Callback<ListView<ScriptNode>, ListCell<ScriptNode>>(){
@@ -1147,13 +1184,26 @@ public class JobWindowController {
         });
         scriptlist.setItems(ScriptNodes);
         scriptlist.getSelectionModel().selectedItemProperty().addListener(
-		new ChangeListener<Object>(){
+		new ChangeListener<ScriptNode>(){
 		    @Override
-		    public void changed(ObservableValue<?> observable, Object oldVal, Object newVal) {
+		    public void changed(ObservableValue<? extends ScriptNode> observable, ScriptNode oldVal, ScriptNode newVal) {
+		        if (newVal == null) {
+		            return;
+		        }
+		        if (newVal.isCategoryHeader()) {
+		            final String categoryName = newVal.getCategoryName();
+		            selectedScript = null;
+		            buttonRun.setDisable(true);
+		            Platform.runLater(() -> {
+		                toggleCategory(categoryName);
+		                scriptlist.getSelectionModel().clearSelection();
+		            });
+		            return;
+		        }
 		        // 実行する処理
 			//System.out.println(newVal);
 			buttonRun.setDisable(false);
-			selectedScript = ((ScriptNode)newVal).filename;
+			selectedScript = newVal.filename;
 			List<InputItem> listInputItems = new ArrayList<>();
 			List<OptionItem> listOptionItems = new ArrayList<>();
 
@@ -1914,7 +1964,8 @@ public class JobWindowController {
 	    label_imagefolder.setTooltip(label_imagefolder_tooltip);
 
 
-        file_id_rsa = PPSetting.getBaseDir()+"id_rsa.txt";
+		file_id_rsa = PPSetting.getBaseDir()+"id_rsa.txt";
+		tabPane.getSelectionModel().select(tabAnalysis);
     }
 
 
@@ -2160,6 +2211,296 @@ public class JobWindowController {
     }
 
     // Removed computeHighlighting method
+
+    private void toggleCategory(String categoryName) {
+        boolean expanded = categoryExpandedState.getOrDefault(categoryName, true);
+        categoryExpandedState.put(categoryName, !expanded);
+        rebuildScriptNodes(searchtxt.getText(), false);
+    }
+
+    private void rebuildScriptNodes(String searchText) {
+        rebuildScriptNodes(searchText, false);
+    }
+
+    private void rebuildScriptNodes(String searchText, boolean expandMatchedCategories) {
+        String normalizedSearch = "";
+        if (searchText != null) {
+            normalizedSearch = searchText.trim().toUpperCase();
+        }
+
+        ScriptNodes.clear();
+        selectedScript = null;
+        if (buttonRun != null) {
+            buttonRun.setDisable(true);
+        }
+        if (scriptlist != null) {
+            scriptlist.getSelectionModel().clearSelection();
+        }
+
+        LinkedHashMap<String, List<ScriptNode>> groupedNodes = new LinkedHashMap<String, List<ScriptNode>>();
+        for (ScriptNode scriptNode : ScriptNodesOrig) {
+            if (!matchesSearch(scriptNode, normalizedSearch)) {
+                continue;
+            }
+
+            categoryExpandedState.putIfAbsent(scriptNode.getCategoryName(), true);
+            if (expandMatchedCategories && !normalizedSearch.equals("")) {
+                categoryExpandedState.put(scriptNode.getCategoryName(), true);
+            }
+            if (!groupedNodes.containsKey(scriptNode.getCategoryName())) {
+                groupedNodes.put(scriptNode.getCategoryName(), new ArrayList<ScriptNode>());
+            }
+            groupedNodes.get(scriptNode.getCategoryName()).add(scriptNode);
+        }
+
+        for (Map.Entry<String, List<ScriptNode>> entry : groupedNodes.entrySet()) {
+            String categoryName = entry.getKey();
+            List<ScriptNode> categoryNodes = entry.getValue();
+            boolean expanded = categoryExpandedState.getOrDefault(categoryName, true);
+
+            ScriptNodes.add(ScriptNode.createCategoryNode(categoryName, categoryNodes.get(0).getIcon(), expanded, categoryNodes.size()));
+            if (expanded) {
+                ScriptNodes.addAll(categoryNodes);
+            }
+        }
+    }
+
+    private boolean matchesSearch(ScriptNode scriptNode, String normalizedSearch) {
+        if (normalizedSearch.equals("")) {
+            return true;
+        }
+        String[] searchTerms = normalizedSearch.split("[\\s\\u3000]+");
+        for (String searchTerm : searchTerms) {
+            if (searchTerm.equals("")) {
+                continue;
+            }
+            if (!matchesSearchTerm(scriptNode, searchTerm)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean matchesSearchTerm(ScriptNode scriptNode, String searchTerm) {
+        return scriptNode.filename.toUpperCase().contains(searchTerm)
+                || scriptNode.explanation.toUpperCase().contains(searchTerm)
+                || scriptNode.getDisplayName().toUpperCase().contains(searchTerm)
+                || scriptNode.getCategoryName().toUpperCase().contains(searchTerm);
+    }
+
+    private void loadNamedSettings() {
+        namedSettings.clear();
+        File savedSettingsFile = new File(namedSettingsFile);
+        if(!savedSettingsFile.exists()) {
+            refreshSavedSettingNames(null);
+            return;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            LinkedHashMap<String, LinkedHashMap<String, String>> loadedSettings = mapper.readValue(
+                    savedSettingsFile,
+                    new TypeReference<LinkedHashMap<String, LinkedHashMap<String, String>>>(){});
+            for (Map.Entry<String, LinkedHashMap<String, String>> entry : loadedSettings.entrySet()) {
+                namedSettings.put(entry.getKey(), new LinkedHashMap<String, String>(entry.getValue()));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        refreshSavedSettingNames(null);
+    }
+
+    private void saveNamedSettings() throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.enable(SerializationFeature.INDENT_OUTPUT);
+        mapper.writeValue(new File(namedSettingsFile), namedSettings);
+    }
+
+    private void refreshSavedSettingNames(String selectedName) {
+        savedSettingNames.clear();
+        savedSettingNames.addAll(namedSettings.keySet());
+        if(selectedName != null) {
+            savedSettingList.getSelectionModel().select(selectedName);
+            savedSettingName.setText(selectedName);
+        }
+    }
+
+    private Map<String, String> collectCurrentSettings() {
+        Map<String, String> currentSettings = new LinkedHashMap<String, String>();
+        currentSettings.put("hostname", hostname.getText());
+        currentSettings.put("port", port.getText());
+        currentSettings.put("user", user.getText());
+        currentSettings.put("password", password.getText());
+        currentSettings.put("privatekey", privatekey.getText());
+        currentSettings.put("workfolder", workfolder.getText());
+        currentSettings.put("preset", getSelectedPresetName());
+        currentSettings.put("outputfolder", outputfolder.getText());
+        currentSettings.put("scriptfolder", scriptfolder.getText());
+        currentSettings.put("imagefolder", imagefolder.getText());
+        if(checkdelete.isSelected()) {
+            currentSettings.put("checkdelete", "true");
+        }else {
+            currentSettings.put("checkdelete", "false");
+        }
+        return currentSettings;
+    }
+
+    private void applyNamedSetting(String settingName) {
+        Map<String, String> namedSetting = namedSettings.get(settingName);
+        if(namedSetting == null) {
+            return;
+        }
+
+        savedSettingName.setText(settingName);
+
+        String presetName = getMapValue(namedSetting, "preset", "ssh");
+        selectPreset(presetName);
+
+        hostname.setText(getMapValue(namedSetting, "hostname", ""));
+        port.setText(getMapValue(namedSetting, "port", ""));
+        user.setText(getMapValue(namedSetting, "user", ""));
+        password.setText(getMapValue(namedSetting, "password", ""));
+        privatekey.setText(getMapValue(namedSetting, "privatekey", ""));
+        workfolder.setText(getMapValue(namedSetting, "workfolder", "work"));
+        outputfolder.setText(getMapValue(namedSetting, "outputfolder", "output"));
+        scriptfolder.setText(getMapValue(namedSetting, "scriptfolder", "scripts"));
+        imagefolder.setText(getMapValue(namedSetting, "imagefolder", "$HOME/img"));
+        checkdelete.setSelected(getMapValue(namedSetting, "checkdelete", "false").equals("true"));
+
+        applyPresetMode(presetName);
+        rememberCurrentPresetSettings();
+        onButtonSave(null);
+    }
+
+    private void selectPreset(String presetName) {
+        preset.getToggles().forEach((toggle) -> {
+            if(((RadioButton)toggle).getText().equals(presetName)) {
+                toggle.setSelected(true);
+            }
+        });
+    }
+
+    private void rememberCurrentPresetSettings() {
+        String presetName = getSelectedPresetName();
+        if(presetName.equals("")) {
+            return;
+        }
+
+        Map<String, String> tempSettingMap = new LinkedHashMap<String, String>();
+        tempSettingMap.put("hostname", hostname.getText());
+        tempSettingMap.put("port", port.getText());
+        tempSettingMap.put("user", user.getText());
+        tempSettingMap.put("password", password.getText());
+        tempSettingMap.put("privatekey", privatekey.getText());
+        tempSettingMap.put("workfolder", workfolder.getText());
+        tempSettingMap.put("imagefolder", imagefolder.getText());
+        if(checkdelete.isSelected()) {
+            tempSettingMap.put("checkdelete", "true");
+        }else {
+            tempSettingMap.put("checkdelete", "false");
+        }
+        tempSettingMap.put("changed", "T");
+        settings.put(presetName, tempSettingMap);
+    }
+
+    private String getSelectedPresetName() {
+        if(preset.getSelectedToggle() == null) {
+            return "";
+        }
+        return ((RadioButton)preset.getSelectedToggle()).getText();
+    }
+
+    private String getMapValue(Map<String, String> sourceMap, String key, String defaultValue) {
+        if(sourceMap.get(key) == null || sourceMap.get(key).equals("")) {
+            return defaultValue;
+        }
+        return sourceMap.get(key);
+    }
+
+    private void applyPresetMode(String mode) {
+        hostname.setDisable(false);
+        port.setDisable(false);
+        user.setDisable(false);
+        password.setDisable(false);
+        privatekey.setDisable(false);
+        imagefolder.setDisable(false);
+        workfolder.setDisable(false);
+        checkdelete.setDisable(false);
+
+        switch(mode) {
+        case "ssh":
+            break;
+        case "ssh (SGE)":
+            break;
+        case "ddbj":
+            break;
+        case "shirokane":
+            break;
+        case "WSL":
+            hostname.setDisable(true);
+            hostname.setText("");
+            port.setDisable(true);
+            port.setText("");
+            privatekey.setDisable(true);
+            privatekey.setText("");
+            imagefolder.setDisable(true);
+            imagefolder.setText("");
+            workfolder.setDisable(true);
+            workfolder.setText("");
+            checkdelete.setDisable(true);
+            break;
+        case "Mac":
+            hostname.setDisable(true);
+            hostname.setText("");
+            port.setDisable(true);
+            port.setText("");
+            privatekey.setDisable(true);
+            privatekey.setText("");
+            user.setDisable(true);
+            user.setText("");
+            password.setDisable(true);
+            password.setText("");
+            imagefolder.setDisable(true);
+            imagefolder.setText("");
+            workfolder.setDisable(true);
+            workfolder.setText("");
+            checkdelete.setDisable(true);
+            break;
+        case "Linux":
+            hostname.setDisable(true);
+            hostname.setText("");
+            port.setDisable(true);
+            port.setText("");
+            privatekey.setDisable(true);
+            privatekey.setText("");
+            user.setDisable(true);
+            user.setText("");
+            password.setDisable(true);
+            password.setText("");
+            workfolder.setDisable(true);
+            workfolder.setText("");
+            checkdelete.setDisable(true);
+            break;
+        case "Linux (SGE)":
+            hostname.setDisable(true);
+            hostname.setText("");
+            port.setDisable(true);
+            port.setText("");
+            privatekey.setDisable(true);
+            privatekey.setText("");
+            user.setDisable(true);
+            user.setText("");
+            password.setDisable(true);
+            password.setText("");
+            workfolder.setDisable(true);
+            workfolder.setText("");
+            checkdelete.setDisable(true);
+            break;
+        default:
+            System.out.println("no preset value");
+        }
+    }
 
     public void handleShowSourceCode(String scriptName) {
         try {

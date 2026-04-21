@@ -13,8 +13,13 @@ import javafx.scene.layout.Background;
 import javafx.scene.layout.BackgroundFill;
 import javafx.scene.layout.CornerRadii;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.shape.Polygon;
 
 public class ScriptCell extends ListCell<ScriptNode> {
 	//private HBox hbox1;
@@ -33,9 +38,89 @@ public class ScriptCell extends ListCell<ScriptNode> {
 		setText(null);
 		setGraphic(null);
         }else {
-            //System.out.println(jNode.filename);
+            setText(null);
+
+            if (jNode.isCategoryHeader()) {
+                HBox categoryBox = new HBox(10d);
+                categoryBox.setAlignment(Pos.CENTER_LEFT);
+                categoryBox.setPadding(new Insets(7, 10, 7, 10));
+                categoryBox.setBackground(new Background(new BackgroundFill(Color.web("#eef4f8"), new CornerRadii(8d), Insets.EMPTY)));
+
+                StackPane toggleBadge = new StackPane();
+                toggleBadge.setMinSize(22d, 22d);
+                toggleBadge.setPrefSize(22d, 22d);
+                toggleBadge.setMaxSize(22d, 22d);
+                toggleBadge.setStyle("-fx-background-color: white; "
+                        + "-fx-background-radius: 11; "
+                        + "-fx-border-color: #c8d5df; "
+                        + "-fx-border-radius: 11;");
+
+                Polygon chevron = new Polygon();
+                if (jNode.isExpanded()) {
+                    chevron.getPoints().addAll(new Double[]{
+                            5d, 8d,
+                            11d, 14d,
+                            17d, 8d
+                    });
+                } else {
+                    chevron.getPoints().addAll(new Double[]{
+                            8d, 5d,
+                            14d, 11d,
+                            8d, 17d
+                    });
+                }
+                chevron.setFill(Color.web("#355466"));
+                toggleBadge.getChildren().add(chevron);
+                categoryBox.getChildren().add(toggleBadge);
+
+                Image icon = jNode.getIcon();
+                if (icon != null) {
+                    ImageView iconView = new ImageView(icon);
+                    iconView.setFitWidth(20);
+                    iconView.setFitHeight(20);
+                    categoryBox.getChildren().add(iconView);
+                }
+
+                Label categoryLabel = new Label(jNode.getCategoryName());
+                categoryLabel.setStyle("-fx-font-weight: bold; "
+                        + "-fx-font-size: 13px; "
+                        + "-fx-text-fill: #2f4858;");
+                categoryBox.getChildren().add(categoryLabel);
+
+                Region spacer = new Region();
+                HBox.setHgrow(spacer, Priority.ALWAYS);
+                categoryBox.getChildren().add(spacer);
+
+                Label countBadge = new Label(String.valueOf(jNode.getChildCount()));
+                countBadge.setStyle("-fx-background-color: #d6e3ec; "
+                        + "-fx-background-radius: 999; "
+                        + "-fx-padding: 2 8 2 8; "
+                        + "-fx-font-size: 11px; "
+                        + "-fx-font-weight: bold; "
+                        + "-fx-text-fill: #355466;");
+                categoryBox.getChildren().add(countBadge);
+
+                categoryBox.setOnMouseEntered((MouseEvent event) -> {
+                    categoryBox.setBackground(new Background(new BackgroundFill(Color.web("#e3ecf2"), new CornerRadii(8d), Insets.EMPTY)));
+                    toggleBadge.setStyle("-fx-background-color: #f8fbfd; "
+                            + "-fx-background-radius: 11; "
+                            + "-fx-border-color: #afc3d1; "
+                            + "-fx-border-radius: 11;");
+                });
+                categoryBox.setOnMouseExited((MouseEvent event) -> {
+                    categoryBox.setBackground(new Background(new BackgroundFill(Color.web("#eef4f8"), new CornerRadii(8d), Insets.EMPTY)));
+                    toggleBadge.setStyle("-fx-background-color: white; "
+                            + "-fx-background-radius: 11; "
+                            + "-fx-border-color: #c8d5df; "
+                            + "-fx-border-radius: 11;");
+                });
+
+                setGraphic(categoryBox);
+                return;
+            }
 
 		HBox hBox = new HBox(5d); // Reduced spacing a bit to accommodate icon
+            hBox.setPadding(new Insets(2, 8, 2, 20));
             hBox.getChildren().clear(); // Clear previous children
 
             // Add icon
@@ -54,13 +139,14 @@ public class ScriptCell extends ListCell<ScriptNode> {
                 // hBox.getChildren().add(placeholder);
             }
 
-		Label label1 = new Label(jNode.filename);
+		Label label1 = new Label(jNode.getDisplayName());
 		Label label2 = new Label(jNode.explanation);
 
 
 		String baseUrl = "http://suikou.fs.a.u-tokyo.ac.jp/pp/";
 		// Consider making the icon size for the button consistent (e.g., 16x16)
 		Button button1 = new Button("", new ImageView(new Image("file:"+ ppBinDir + "/image/iconmonstr-share-8-24.png", 16, 16, false, false)));
+		button1.setFocusTraversable(false);
 		try {
 			button1.setOnAction((ActionEvent e) -> {
 				System.out.println(jNode.filename);
@@ -84,32 +170,9 @@ public class ScriptCell extends ListCell<ScriptNode> {
 		}catch(Exception e) {
 			e.printStackTrace();
 		}
-		Tooltip tooltipbutton1 = new Tooltip("Open an example"); // example, not exapmle
+		Tooltip tooltipbutton1 = new Tooltip("Open help page");
 		Tooltip.install(button1, tooltipbutton1);
-
             hBox.getChildren().add(button1);
-
-            Button buttonSource = new Button(); // Text removed later
-            buttonSource.setText(""); // Set empty text for icon button
-            Image sourceIcon = new Image("file:"+ ppBinDir + "/image/scode.png", 16, 16, false, false); // Consistent with button1
-            ImageView sourceIconView = new ImageView(sourceIcon);
-            buttonSource.setGraphic(sourceIconView);
-
-            Tooltip tooltipButtonSource = new Tooltip("View source code"); // Tooltip name changed for clarity
-            Tooltip.install(buttonSource, tooltipButtonSource);
-            buttonSource.setOnAction((ActionEvent e) -> {
-                if (jNode != null && jNode.filename != null) {
-                    // Ensure JobWindowController.instance is not null if used directly
-                    if (JobWindowController.instance != null) {
-                        JobWindowController.instance.handleShowSourceCode(jNode.filename);
-                    } else {
-                        // Fallback or error handling if controller instance is not available
-                        System.err.println("JobWindowController instance is not available.");
-                        // Optionally show an alert to the user
-                    }
-                }
-            });
-            hBox.getChildren().add(buttonSource);
 
 		label1.setMinWidth(300d); // Consider adjusting if space is tight with icon
 		label2.setMaxHeight(15d);
@@ -117,6 +180,29 @@ public class ScriptCell extends ListCell<ScriptNode> {
 		Tooltip.install(hBox, tooltip); // Tooltip on HBox might be broad, consider on label1 or label2
             hBox.getChildren().add(label1);
             hBox.getChildren().add(label2);
+
+            Region spacer = new Region();
+            HBox.setHgrow(spacer, Priority.ALWAYS);
+            hBox.getChildren().add(spacer);
+
+            Button buttonSource = new Button("source");
+            buttonSource.setFocusTraversable(false);
+            buttonSource.setStyle("-fx-background-color: transparent; "
+                    + "-fx-padding: 0 4 0 4; "
+                    + "-fx-font-size: 10px; "
+                    + "-fx-text-fill: #666666;");
+            Tooltip tooltipButtonSource = new Tooltip("View source code");
+            Tooltip.install(buttonSource, tooltipButtonSource);
+            buttonSource.setOnAction((ActionEvent e) -> {
+                if (jNode != null && jNode.filename != null) {
+                    if (JobWindowController.instance != null) {
+                        JobWindowController.instance.handleShowSourceCode(jNode.filename);
+                    } else {
+                        System.err.println("JobWindowController instance is not available.");
+                    }
+                }
+            });
+            hBox.getChildren().add(buttonSource);
 
             // Add mouse event handlers for background change
             hBox.setOnMouseEntered((MouseEvent event) -> {

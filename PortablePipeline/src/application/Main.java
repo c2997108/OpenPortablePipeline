@@ -59,7 +59,7 @@ public class Main extends Application {
 	        System.out.println("Output Base Dir: " + ppOutDir);
 	        
 			BorderPane root = (BorderPane)FXMLLoader.load(getClass().getResource("JobWindow.fxml"));
-			Scene scene = new Scene(root,1000,600);
+			Scene scene = new Scene(root,1500,900);
 	        Image icon = new Image( "file:"+ppBinDir+"/image/pipe.png" );
 	        primaryStage.getIcons().add( icon );
 			scene.getStylesheets().add(getClass().getResource("application.css").toExternalForm());

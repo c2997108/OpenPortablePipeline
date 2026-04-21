@@ -57,7 +57,11 @@ DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=
 DO_EMBOSS seqret -sequence `basename "$i"`.txt2 -outseq `basename "$i"`.txt2.gb -osformat genbank
 awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai `basename "$i"`.txt `basename "$i"`.txt2.gb > output_for_mauve/`basename "$i"`.gb
 
-tail -n+2 list.txt |while read k; do
+OLDIFS=$IFS
+IFS=$'\n'
+set -f
+for k in $(tail -n+2 list.txt); do
+#tail -n+2 list.txt |while read k; do
  i=`echo "$k"|cut -f 2`
  j=`echo "$k"|cut -f 1`
  DO_MINIMAP2 minimap2 $opt_a -t $N_CPU "$j" "$i" > `basename "$i"`_`basename "$j"`.paf
@@ -67,6 +71,8 @@ tail -n+2 list.txt |while read k; do
  DO_EMBOSS seqret -sequence `basename "$i"`.txt2 -outseq `basename "$i"`.txt2.gb -osformat genbank
  awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai `basename "$i"`.txt `basename "$i"`.txt2.gb > output_for_mauve/`basename "$i"`.gb
 done
+set +f
+IFS=$OLDIFS
 
 DO_MAUVE /usr/local/mauve_snapshot_2015-02-13/linux-x64/progressiveMauve $opt_b --output=mauve-align --output-guide-tree=mauve-align.guide_tree --backbone-output=mauve-align.backbone output_for_mauve/*.gb
 

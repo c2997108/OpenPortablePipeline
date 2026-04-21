@@ -93,7 +93,7 @@ def handler(signum, frame):
                 1
     except TypeError as e:
         print('catch TypeError:', e)
-    sys.exit()
+    sys.exit(128 + signum)
 
 signal.signal(signal.SIGTERM, handler)
 signal.signal(signal.SIGINT, handler)
@@ -110,6 +110,8 @@ try:
         f.write(str(os.getpid()))
 except:
     print("pp setup error.")
+
+exit_code = 1
 
 try:
     log_file = open("pp_log.txt", "w")
@@ -130,11 +132,28 @@ try:
     argv2[0]=os.path.dirname(os.path.realpath(__file__))+"/"+argv2[0]
     #print(argv2)
 
-    process = subprocess.Popen(argv2, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=my_env)
-    while process.poll() is None:
-        output = process.stdout.readline()
-        print(output.decode().strip(), flush=True)
-        log_file.write(output.decode())
-    #print('status:',process.poll())
-except:
-    print("pp runtime error.")
+    process = subprocess.Popen(
+        argv2,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=my_env,
+        universal_newlines=True,
+    )
+    for output in process.stdout:
+        sys.stdout.write(output)
+        sys.stdout.flush()
+        log_file.write(output)
+    exit_code = process.wait()
+    if exit_code < 0:
+        exit_code = 128 + (-exit_code)
+except Exception as e:
+    print("pp runtime error.", file=sys.stderr)
+    print(e, file=sys.stderr)
+    exit_code = 1
+finally:
+    try:
+        log_file.close()
+    except:
+        pass
+
+sys.exit(exit_code)

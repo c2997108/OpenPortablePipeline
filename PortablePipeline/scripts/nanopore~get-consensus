@@ -238,7 +238,12 @@ DO_BLAST makeblastdb -in output-all-clusters.max.uc.fasta -dbtype nucl
 mkdir -p work-blast
 
 find "$input_1/" | grep -E "[.](fastq|fq)($|[.]gz$)" | while read i; do
- DO_SEQKIT seqkit split2 -s $opt_s -O tmp-fastq-split/`basename $i` "$i"
+ echo $ENV_SEQKIT seqkit split2 -s $opt_s -O tmp-fastq-split/`basename $i` "$i"
+done | DOPARALLELONE
+
+WAITPARALLEL
+
+find "$input_1/" | grep -E "[.](fastq|fq)($|[.]gz$)" | while read i; do
  find tmp-fastq-split/`basename $i`/ | grep -E "[.](fastq|fq)($|[.]gz$)" | while read j; do
   echo $ENV_BLAST bash run-blast.sh "$j" "$opt_a" 1 "'$opt_b'"
  done

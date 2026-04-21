@@ -520,24 +520,55 @@ function pp_realpath(){
  parent_dir=$(cd -- "$abs_dir" && pwd) || parent_dir="$abs_dir"
  printf '%s\n' "$parent_dir"/$(basename "$target")| sed 's/\/\+/\//g'
 }
-#-followオプションはリンク先情報を使って判定するが、今回はおそらく不要。ディレクトリ中のファイルが深すぎると結果がたくさんあるときの再実行に時間がかかるので2階層(input_*/*/*)までに限定して調べる
-find . -follow -maxdepth 2 | while read i; do pp_realpath $PWD/$i; done|
- awk -F/ '{path=""; for(i=2;i<=NF;i++){path=path"/"$i; print path}}'|
- sort|uniq|while read i; do if [ -L $i ]; then
-  PP_BINDS_TEMP=`readlink "$i"`
-  if [[ $PP_BINDS_TEMP =~ ^/ ]]; then
-   pp_realpath "$PP_BINDS_TEMP"
-  else
-   pp_realpath `dirname "$i"`"/$PP_BINDS_TEMP"
-  fi
- fi; done|sort|uniq > pp_symlink_list
+##-followオプションはリンク先情報を使って判定するが、今回はおそらく不要。ディレクトリ中のファイルが深すぎると結果がたくさんあるときの再実行に時間がかかるので2階層(input_*/*/*)までに限定して調べる
+#find . -follow -maxdepth 2 | while read i; do pp_realpath $PWD/$i; done|
+# awk -F/ '{path=""; for(i=2;i<=NF;i++){path=path"/"$i; print path}}'|
+# sort|uniq|while read i; do if [ -L $i ]; then
+#  PP_BINDS_TEMP=`readlink "$i"`
+#  if [[ $PP_BINDS_TEMP =~ ^/ ]]; then
+#   pp_realpath "$PP_BINDS_TEMP"
+#  else
+#   pp_realpath `dirname "$i"`"/$PP_BINDS_TEMP"
+#  fi
+# fi; done|sort|uniq > pp_symlink_list
+
+collect_path_targets() {
+   local target="$1"
+   [ -z "${target:-}" ] && return 0
+   # opt_* には通常の文字列も入るので、実在するパスだけ対象にする
+   if [ -L "$target" ] || [ -e "$target" ]; then
+    if [ -d "$target" ]; then
+     # フォルダー自身も含め、配下も列挙する
+     # -H にして、引数そのものがシンボリックリンクなディレクトリでも中をたどれるようにする
+     find -H "$target" -print 2>/dev/null | while IFS= read -r path; do
+      pp_realpath "$path"
+     done
+    else
+     pp_realpath "$target"
+    fi
+   fi
+}
+collect_input_paths() {
+   local var_name target
+   {
+    for var_name in $(compgen -A variable | grep '^input_[0-9]\+$'); do
+     target="${!var_name:-}"
+     collect_path_targets "$target"
+    done
+    for var_name in $(compgen -A variable | grep '^opt_[a-z]\+$'); do
+     target="${!var_name:-}"
+     collect_path_targets "$target"
+    done
+   } | awk 'NF' | sort -u
+}
+collect_input_paths > pp_symlink_list
 
 cp pp_symlink_list pp_symlink_list_temp
 
 pp_n=0
 function find_link_path_recursive () {
  echo $((++pp_n))
- cat pp_symlink_list_temp | awk -F/ '{path=""; if(substr($0,1,1)!="/"){ppath=$1; print path}; for(i=2;i<=NF;i++){path=path"/"$i; print path}}'|
+ cat pp_symlink_list_temp | awk -F/ '{path=""; if(substr($0,1,1)!="/"){path=$1; print path}; for(i=2;i<=NF;i++){path=path"/"$i; print path}}'|
   sort|uniq|while read i; do if [ -L $i ]; then
    PP_BINDS_PATH=`readlink "$i"`
    if [[ $PP_BINDS_PATH =~ ^/ ]]; then
