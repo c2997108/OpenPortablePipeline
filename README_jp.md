@@ -366,9 +366,7 @@ source ~/.bash_profile
 Linuxで標準的なツールのインストール
 
 ```
-brew install grep gawk gzip bash
-brew install gnu-tar gnu-sed gnu-getopt
-brew install findutils coreutils moreutils
+brew install grep gawk gzip bash gnu-tar gnu-sed gnu-getopt findutils coreutils moreutils
 
 echo 'export PATH=/usr/local/opt/coreutils/libexec/gnubin:/usr/local/bin:/usr/local/sbin:${PATH}
 export PATH='$(dirname $(ls -ht `find /usr/local/|grep bin/grep$`|head -n 1))':$PATH
