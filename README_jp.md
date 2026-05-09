@@ -400,6 +400,7 @@ Homebrewのインストール
 ```
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 (echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.zprofile
+(echo; echo 'eval "$(/opt/homebrew/bin/brew shellenv)"') >> ~/.bash_profile
 eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
 
@@ -418,26 +419,22 @@ podman machine start
 grepやawkなどの基本ツールの最新版をMacにインストールしておく
 
 ```
-brew install grep gawk gzip bash
-brew install gnu-tar gnu-sed gnu-getopt
+brew install grep gawk gzip bash gnu-tar gnu-sed gnu-getopt findutils coreutils moreutils
 
-#xargs
-brew install findutils
-#parallel
-brew install moreutils
-#cat, ls, nproc
-brew install coreutils
-
-echo 'export PATH="/opt/homebrew/opt/grep/libexec/gnubin:$PATH"' >> ~/.bash_profile
-echo 'export PATH="/opt/homebrew/opt/gawk/libexec/gnubin:$PATH"' >> ~/.bash_profile
-echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.bash_profile
-
-echo 'export PATH="/opt/homebrew/opt/gnu-sed/libexec/gnubin:$PATH"' >> ~/.bash_profile
-echo 'export PATH="/opt/homebrew/opt/gnu-tar/libexec/gnubin:$PATH"' >> ~/.bash_profile
-echo 'export PATH="/opt/homebrew/opt/gnu-getopt/bin:$PATH"' >> ~/.bash_profile
-
-echo 'export PATH="/opt/homebrew/opt/findutils/libexec/gnubin:$PATH"' >> ~/.bash_profile
-echo 'export PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"' >> ~/.bash_profile
+dir=`brew --prefix || echo /opt/homebrew`
+echo "
+export PATH=$dir/opt/coreutils/libexec/gnubin:$dir/bin:$dir/sbin:"'${PATH}
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/grep$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/awk$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/bash$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/tar$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/sed$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/getopt$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/xargs$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/ls$`|head -n 1))':$PATH
+export PATH='$(dirname $(ls -ht `find $dir|grep bin/parallel$`|head -n 1))':$PATH
+' >> ~/.bash_profile
+source ~/.bash_profile
 ```
 
 ## JAVA開発者用メモ
