@@ -1,5 +1,6 @@
 # 次回予告
 
+# 1.6.1 (2026/05/29)
 - ```nanopore~get-consensus```でリードのクオリティ値に依存したクラスタリング方法を実装。
 - Win/MacでDocker Desktop使用時にDockerを認識しなかった問題を解消。
 
