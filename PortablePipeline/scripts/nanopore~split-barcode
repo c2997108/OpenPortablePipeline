@@ -42,7 +42,7 @@ list="$input_3"
 cat "$primers" | sed 's/\t/ /g; s/\r//g'| DO_SEQKIT seqkit fx2tab |awk -F'\t' '{split($1,arr," "); a=toupper($2); gsub(/[^ACGTBVDHKMRYSWN]/,"",a); print ">"arr[1]"\n"a}' > primer-clean.fa
 primers=primer-clean.fa
 
-cat "$list" | sed 's/\t\+/\t/g' | awk -F'\t' '$1!=""&&$2!=""&&$3!=""&&$5>=$4{print $0}' > samplelist-clean.txt
+cat "$list" | sed 's/[ \t]\+/\t/g; s/\r//g' | awk -F'\t' '$1!=""&&$2!=""&&$3!=""&&$5>=$4{print $0}' > samplelist-clean.txt
 list=samplelist-clean.txt
 
 #プライマーの縮重塩基を解消
@@ -386,6 +386,13 @@ DO_PLOT plot_tsv_binleft_totalbases.py -g "output/*.fq.tsv" -o reads_hist.png --
 #統計情報があればグラフ作成
 if [ "$input_4" != "" ];then
  for i in output/*.fq; do
+  #配列名のオプショナル情報としてリードクオリティ値を追加
+  cat "$i"| sed 's/\t/ /g'| DO_SEQKIT seqkit fx2tab|awk -F'\t' '
+   FILENAME==ARGV[1]{if(FNR==1){for(i=1;i<=NF;i++){if($i=="mean_qscore_template"){qs=i}else if($i=="read_id"){r=i}}}else{q[$r]=$qs}}
+   FILENAME==ARGV[2]{split($1,arr,":"); print "@"$1" qs:f:"q[arr[1]]"\n"$2"\n+\n"$3}
+  ' "$input_4" /dev/stdin > temp_pp.fq
+  mv temp_pp.fq "$i"
+  #グラフ作成
   DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' '{split($1,arr,":"); print arr[1]"\t"length($2)}'|
    awk -F'\t' '
     BEGIN{print "read_id\tlength\tmean_qscore"}

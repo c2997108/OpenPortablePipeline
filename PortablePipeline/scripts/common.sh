@@ -148,7 +148,7 @@ echo "Containers: "$IMS
 #echo $IMS
 
 if [ "$PP_USE_SING" = "y" ]; then touch "$workdir"/pp-singularity-flag; else rm -f "$workdir"/pp-singularity-flag; fi
-if [ ! -e "$workdir"/pp-singularity-flag -a `docker images 2> /dev/null |head -n 1|grep "^REPO"|wc -l` = 1 -a "$PP_USE_PODMAN" != "y" ]; then
+if [ ! -e "$workdir"/pp-singularity-flag ] && docker info >/dev/null 2>&1 && [ "$PP_USE_PODMAN" != "y" ]; then
  echo using docker;
  CON="$CON_DOCKER";
 

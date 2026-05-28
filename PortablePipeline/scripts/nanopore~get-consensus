@@ -23,8 +23,8 @@ opt_s:the number of reads per split FASTQ at blastn:300
 '
 runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -k #opt_k# -j #opt_j# -n #opt_n# -l #opt_l# -a #opt_a# -b #opt_b# -d #opt_d# -s #opt_s# #input_1#"
 
-export IM_MAFFT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_5"
-export IM_SEQKIT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_5"
+export IM_MAFFT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_6"
+export IM_SEQKIT="c2997108/ppmultiarch:vsearch_mafft_muscle_emboss_exonerate_6"
 export IM_BLAST="c2997108/ppmultiarch:blast_seqkit_1"
 export IM_CDHIT="c2997108/biocontainers:cd-hit_4.8.1"
 export IM_EXCEL="c2997108/ppmultiarch:yoshitake_merge"
@@ -51,25 +51,61 @@ opt_i="$2" #0.97
 opt_k="$3" #10
 N_CPU="$4"
 opt_v="$5"
+scriptdir="$(cd "$(dirname "$0")" && pwd)"
 
 workdir=work/`basename $i`.dir
 mkdir -p "$workdir"
-vsearch $opt_v --threads $N_CPU --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
-if [[ "$i" == *.gz ]]; then
- zcat "$i"
-else
- cat "$i"
-fi | sed 's/\t/ /g'|seqkit fx2tab |awk -F'\t' -v dir="$workdir" -v minreads="$opt_k" '
- FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2; q[arr[1]]=$3}
- FILENAME==ARGV[2]{if($1=="S"){s[$2]=$9}else if($1=="H"){c[$2]++; r[$2][c[$2]]=$9}}
- END{
-  for(i in c){
-   if(c[i]+1>=minreads){
-    print i"\t"c[i]+1; print ">"s[i]"\n"seq[s[i]] > dir"/cluster"i"_"c[i]+1"reads.fasta";
-    for(j in r[i]){print ">"r[i][j]"\n"seq[r[i][j]] > dir"/cluster"i"_"c[i]+1"reads.fasta"}
+rm -f "$workdir"/cluster*_*reads.fasta
+
+has_fastq_qscore_tag() {
+ if [[ "$i" == *.gz ]]; then
+  zcat "$i"
+ else
+  cat "$i"
+ fi | awk 'NR % 4 == 1 && $0 ~ /(^|[[:space:]])qs:f:/ {found=1} END{exit(found ? 0 : 1)}'
+}
+
+run_legacy_vsearch_clustering() {
+ vsearch $opt_v --threads $N_CPU --cluster_fast "$i" --id "$opt_i" --centroids "$workdir"/vsearch-center.fasta --uc "$workdir"/vsearch-clusters.uc
+ if [[ "$i" == *.gz ]]; then
+  zcat "$i"
+ else
+  cat "$i"
+ fi | sed 's/\t/ /g'|seqkit fx2tab |awk -F'\t' -v dir="$workdir" -v minreads="$opt_k" '
+  FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2; q[arr[1]]=$3}
+  FILENAME==ARGV[2]{if($1=="S"){s[$2]=$9}else if($1=="H"){c[$2]++; r[$2][c[$2]]=$9}}
+  END{
+   for(i in c){
+    if(c[i]+1>=minreads){
+     print i"\t"c[i]+1; print ">"s[i]"\n"seq[s[i]] > dir"/cluster"i"_"c[i]+1"reads.fasta";
+     for(j in r[i]){print ">"r[i][j]"\n"seq[r[i][j]] > dir"/cluster"i"_"c[i]+1"reads.fasta"}
+    }
    }
-  }
- }' /dev/stdin $workdir/vsearch-clusters.uc
+  }' /dev/stdin $workdir/vsearch-clusters.uc
+}
+
+if has_fastq_qscore_tag ; then
+ iterative_out="$workdir"/iterative_qbin_vsearch
+ rm -rf "$iterative_out"
+ python3 /usr/local/bin/iterative_qbin_vsearch.py \
+  --fastq "$i" \
+  --qscore-source fastq-tag \
+  --out-dir "$iterative_out" \
+  --stages 1 2 3 4 5 6 7 8 9 10 all \
+  --q-min 10 \
+  --q-top 20 \
+  --min-cluster-size "$opt_k" \
+  --identity-error-multiplier 2 \
+  --vsearch vsearch
+ python3 /usr/local/bin/iterative_trace_to_cluster_fastas.py \
+  --fastq "$i" \
+  --trace-tsv "$iterative_out"/read_to_size3plus_consensus.dedup100.tsv \
+  --out-dir "$workdir" \
+  --min-reads "$opt_k" \
+  --map-tsv "$workdir"/iterative_cluster_fasta_map.tsv
+else
+ run_legacy_vsearch_clustering
+fi
 
 EOF
 
@@ -165,7 +201,16 @@ java -jar /usr/local/bin/VarScan.jar mpileup2snp  "$r3prefix".mpileup  --min-cov
 java -jar /usr/local/bin/VarScan.jar mpileup2indel  "$r3prefix".mpileup  --min-coverage 10  --min-reads2 2  --min-var-freq 0.10  --p-value 0.05  --output-vcf 1 | bgzip -c >  "$r3prefix".indel.vcf.gz
 tabix -f -p vcf  "$r3prefix".snp.vcf.gz
 tabix -f -p vcf  "$r3prefix".indel.vcf.gz
-bcftools concat -a  "$r3prefix".snp.vcf.gz  "$r3prefix".indel.vcf.gz  | bcftools sort -Oz -o  "$r3prefix".vcf.gz
+if [ `zcat "$r3prefix".snp.vcf.gz| wc -l` = 0 -a `zcat "$r3prefix".indel.vcf.gz| wc -l` = 0 ]; then
+ echo low coverage
+ exit
+elif [ `zcat "$r3prefix".snp.vcf.gz| wc -l` != 0 ]; then
+ bcftools concat -a  "$r3prefix".snp.vcf.gz | bcftools sort -Oz -o  "$r3prefix".vcf.gz
+elif [ `zcat "$r3prefix".indel.vcf.gz| wc -l` != 0 ]; then
+ bcftools concat -a  "$r3prefix".indel.vcf.gz | bcftools sort -Oz -o  "$r3prefix".vcf.gz
+else
+ bcftools concat -a  "$r3prefix".snp.vcf.gz  "$r3prefix".indel.vcf.gz  | bcftools sort -Oz -o  "$r3prefix".vcf.gz
+fi
 bcftools index -t  "$r3prefix".vcf.gz
 bcftools view -i "DP>=$opt_d" -Oz -o  "$r3prefix".dp.vcf.gz  "$r3prefix".vcf.gz
 bcftools index -t  "$r3prefix".dp.vcf.gz
