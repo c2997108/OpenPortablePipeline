@@ -1,4 +1,5 @@
 # 次回予告
+- ```annotation~rRNA-for-metabarcoding```を追加。
 
 # 1.6.1 (2026/05/29)
 - ```nanopore~get-consensus```でリードのクオリティ値に依存したクラスタリング方法を実装。
