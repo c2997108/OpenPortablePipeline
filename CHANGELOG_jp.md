@@ -1,8 +1,9 @@
 # 次回予告
 - ```annotation~rRNA-for-metabarcoding```を追加。
+- ```nanopore~get-consensus```でリード全体のクオリティ値が存在する場合、80塩基ごとに改行されているのを考慮せずにデフォルトでは30x2行までしか使っていなかったことを修正。
 
 # 1.6.1 (2026/05/29)
-- ```nanopore~get-consensus```でリードのクオリティ値に依存したクラスタリング方法を実装。
+- ```nanopore~get-consensus```でリード全体のクオリティ値に依存したクラスタリング方法を実装。
 - Win/MacでDocker Desktop使用時にDockerを認識しなかった問題を解消。
 
 # 1.6.0 (2026/04/21)
