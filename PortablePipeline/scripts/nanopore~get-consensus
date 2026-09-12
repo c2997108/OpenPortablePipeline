@@ -131,7 +131,9 @@ workdir="$5"
 opt_f="$6"
 
 #for j in `ls $workdir/cluster*_*reads.fasta 2> /dev/null`; do
- head -n $((10#$opt_n*2)) $j > $j.sub #10#は10進数という意味 030のように0から始まると8進数扱いになるのを避けるため
+ seqkit fx2tab $j > $j.tab
+ head -n $((10#$opt_n)) $j.tab | awk '{print ">"$1"\n"$2}' > $j.sub
+ #head -n $((10#$opt_n*2)) $j > $j.sub #10#は10進数という意味 030のように0から始まると8進数扱いになるのを避けるため
  mafft $opt_f --thread $N_CPU --auto $j.sub > $j.sub.mafft
  #muscle -align $j.sub -output $j.sub.muscle
  #cons -sequence $j.sub.mafft -outseq $j.sub.mafft.fa

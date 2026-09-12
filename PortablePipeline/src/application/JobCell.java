@@ -127,10 +127,13 @@ public class JobCell extends ListCell<JobNode> {
         	}catch(Exception e) {
         		e.printStackTrace();
         	}
-        	try {
-        		stopButton.setOnAction(ae -> {
-        			System.out.println("stopping: "+jNode.id);
-        			try {
+		try {
+			stopButton.setOnAction(ae -> {
+				System.out.println("stopping: "+jNode.id);
+				if(JobWindowController.instance != null) {
+					JobWindowController.instance.requestJobCancellation(jNode.id);
+				}
+				try {
 						PPSetting mainSetting = new PPSetting();
                 		String outputfolder = PPSetting.getBaseDir() + mainSetting.get("outputfolder");
                 		String workfolder = mainSetting.get("workfolder");

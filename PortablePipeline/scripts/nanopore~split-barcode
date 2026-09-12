@@ -10,7 +10,7 @@ input_3::sample table (Sample name[tab]Forward read name[tab]Reverse read name[t
 input_4:option:sequencing_summary_XXX.txt:sequencing_summary*.txt
 '
 optiondef='
-opt_c:cpu threads:16
+opt_c:cpu threads:8
 opt_m:memory limit (GB):32
 opt_p:Solve condensed bases in primers (y|n):y
 opt_f:Adapter alignment length percentage threshold of a whole read:0.6

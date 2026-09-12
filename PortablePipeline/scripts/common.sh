@@ -137,7 +137,7 @@ PP_SCRIPT_SEARCH(){
 PP_SCRIPT_SEARCH `basename "$0"` #$0には元のスクリプトファイルの名前が入っている
 
 IMS=$((for line in "${PP_SCRIPTS[@]}"; do
-    cat "$line"
+    cat "$DIR_SRC/$line"
  done | grep "^export IM_"|cut -f 2 -d =|sed 's/"//g';
  #IM_CONFIG_はUbuntuでim-configと重なって挙動が変になる
  set |grep ^IM_|grep -v ^IM_CONFIG_|cut -f 2 -d =)|sort|uniq)
