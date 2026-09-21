@@ -21,31 +21,31 @@ export IM_XATLAS="quay.io/biocontainers/xatlas:0.3--h84372a0_3"
 export IM_GLNEXUS="quay.io/biocontainers/glnexus:1.4.1--h5c1b0a6_3"
 export IM_BCF="quay.io/biocontainers/bcftools:1.9--h68d8f2e_7"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 
 DO_SAMTOOLS samtools faidx "$input_2"
 ref="$input_2"
 
 bed1=""
-bed2=""
-if [ "$input_3" != "" ]; then bed1="-c $input_3"; bed2="-b $input_3"; fi
+bed2=()
+if [ "$input_3" != "" ]; then bed1="-c $(pp_shell_quote "$input_3")"; bed2=(-b "$input_3"); fi
 
 mkdir -p output.vcf.dir
 
 for i in "$input_1"/*.bam; do
- j=`basename $i .bam`
- echo $ENV_XATLAS xatlas -r $ref -i $i -s $j -p output.vcf.dir/$j $bed1 $opt_x
+ j="$(basename "$i" .bam)"
+ echo "$ENV_XATLAS xatlas -r $(pp_shell_quote "$ref") -i $(pp_shell_quote "$i") -s $(pp_shell_quote "$j") -p $(pp_shell_quote "output.vcf.dir/$j") $bed1 $opt_x"
 done | DOPARALLELONE
 
 WAITPARALLEL
 
 rm -rf GLnexus.DB
-DO_GLNEXUS glnexus_cli -t $N_CPU $bed2 -c xAtlas_unfiltered output.vcf.dir/*_snp.vcf | DO_BCF bcftools view - | awk -F'\t' '
+DO_GLNEXUS glnexus_cli -t $N_CPU ${bed2[@]+"${bed2[@]}"} -c xAtlas_unfiltered output.vcf.dir/*_snp.vcf | DO_BCF bcftools view - | awk -F'\t' '
  $0~"^#"{if($0!~"^##FORMAT=<ID=GQ"){print $0}} #remove GQ field because it is "." in vcf
  $0!~"^#"{OFS="\t"; split($9,arr,":"); ngq=0;
   for(i=1;i<=length(arr);i++){if(arr[i]=="GQ"){ngq=i; break}};
@@ -61,7 +61,7 @@ DO_GLNEXUS glnexus_cli -t $N_CPU $bed2 -c xAtlas_unfiltered output.vcf.dir/*_snp
 DO_BCF tabix -f -p vcf output.snp.vcf.gz
 
 rm -rf GLnexus.DB
-DO_GLNEXUS glnexus_cli -t $N_CPU $bed2 -c xAtlas_unfiltered output.vcf.dir/*_indel.vcf | DO_BCF bcftools view - | awk -F'\t' '
+DO_GLNEXUS glnexus_cli -t $N_CPU ${bed2[@]+"${bed2[@]}"} -c xAtlas_unfiltered output.vcf.dir/*_indel.vcf | DO_BCF bcftools view - | awk -F'\t' '
  $0~"^#"{if($0!~"^##FORMAT=<ID=GQ"){print $0}} #remove GQ field because it is "." in vcf
  $0!~"^#"{OFS="\t"; split($9,arr,":"); ngq=0;
   for(i=1;i<=length(arr);i++){if(arr[i]=="GQ"){ngq=i; break}};

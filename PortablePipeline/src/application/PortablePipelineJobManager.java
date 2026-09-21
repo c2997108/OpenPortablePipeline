@@ -3,8 +3,7 @@ package application;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
+import java.io.Writer;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,12 +33,9 @@ public class PortablePipelineJobManager {
         Map<String, String> settings = PortablePipelineCommon.normalizeSettingsForPreset(
                 PortablePipelineCommon.loadOrCreateSettings());
         String preset = settings.get("preset");
-        String userDir = System.getProperty("user.dir", "");
-        if ((PortablePipelineCommon.containsUnicode(userDir) || userDir.contains(" "))
-                && ("WSL".equals(preset) || "Mac".equals(preset))) {
-            throw new IllegalStateException(
-                    "Don't put Portable Pipeline in a folder which contains Unicode or space characters.");
-        }
+        // スペースや日本語などの非ASCII文字を含むパスに対応済み。プロセスはすべてProcessBuilderに
+        // 引数リストを渡して起動し、シェル側でもパスをクォートしているので、以前あったこうした
+        // フォルダーの拒否は不要になった。
 
         validateInputs(script, inputValues);
 
@@ -49,7 +45,7 @@ public class PortablePipelineJobManager {
         int workId = PortablePipelineCommon.nextJobId(jobs, outputRoot);
         String jobId = String.valueOf(workId);
 
-        JobNode preparingJob = new JobNode(jobId, "preparing", script.filename);
+        JobNode preparingJob = new JobNode(jobId, "preparing", script.filename).submittedNow();
         PortablePipelineCommon.upsertJob(jobs, preparingJob);
         PortablePipelineCommon.saveJobs(jobs);
 
@@ -58,7 +54,7 @@ public class PortablePipelineJobManager {
         Files.createDirectories(resultsDir);
         writeJobSettings(settings, jobDir.resolve("settings.json"));
 
-        String jobDesc = buildJobDescription(script, inputValues, optionValues);
+        List<JobParam> jobParams = buildJobParams(script, inputValues, optionValues);
         String scriptFolderPath = PortablePipelineCommon.getBinDirPath().resolve(settings.get("scriptfolder")).toString();
         String workDir = settings.get("workfolder") + "/" + jobId;
         String numCpu = optionValueByDescription(script, optionValues, "cpu threads", "1");
@@ -97,6 +93,14 @@ public class PortablePipelineJobManager {
             PortablePipelineCommon.searchChildScripts(scriptFolderPath, script.filename, childScripts);
 
             transferScriptBundle(script.filename, childScripts, settings.get("scriptfolder"), resultsDir, workDir, channelSftp);
+            if ("WSL".equals(preset)) {
+                // wrapper.batは自身の作業ディレクトリ（results/）で "bash WSL-setup.sh" を実行するので、
+                // バッチファイルにインストール先のパスを埋め込む必要がない（スペースや非ASCII文字が入ると
+                // cmd.exeが別のコードページで読んでしまうため）。
+                PortablePipelineCommon.copyFileWithTimestamp(
+                        PortablePipelineCommon.getBinDirPath().resolve("WSL-setup.sh"),
+                        resultsDir.resolve("WSL-setup.sh"));
+            }
             stageInputs(script, inputValues, preset, resultsDir, workDir, channelSftp);
 
             String commandString = createWrapperAndLaunchCommand(
@@ -136,12 +140,15 @@ public class PortablePipelineJobManager {
                 }
             }
 
-            JobNode runningJob = new JobNode(jobId, "running", jobDesc);
+            JobNode runningJob = new JobNode(jobId, "running", script.filename, script.filename, jobParams);
+            runningJob.submittedAt = preparingJob.submittedAt;
             PortablePipelineCommon.upsertJob(jobs, runningJob);
             PortablePipelineCommon.saveJobs(jobs);
             return runningJob;
         } catch (Exception e) {
-            PortablePipelineCommon.upsertJob(jobs, new JobNode(jobId, "aborted", e.toString()));
+            JobNode abortedJob = preparingJob.withFinished("aborted", PortablePipelineCommon.nowStamp());
+            abortedJob.desc = e.toString();
+            PortablePipelineCommon.upsertJob(jobs, abortedJob);
             PortablePipelineCommon.saveJobs(jobs);
             throw e;
         } finally {
@@ -258,7 +265,7 @@ public class PortablePipelineJobManager {
             new ProcessBuilder("kill", String.valueOf(pid)).start();
         }
 
-        PortablePipelineCommon.upsertJob(jobs, new JobNode(jobId, "cancelled", job.desc));
+        PortablePipelineCommon.upsertJob(jobs, job.withFinished("cancelled", PortablePipelineCommon.nowStamp()));
         PortablePipelineCommon.saveJobs(jobs);
     }
 
@@ -283,7 +290,7 @@ public class PortablePipelineJobManager {
                 System.out.println("No log file yet.");
                 return;
             }
-            Files.readAllLines(logPath, StandardCharsets.UTF_8).forEach(System.out::println);
+            PortablePipelineCommon.readLinesLenient(logPath).forEach(System.out::println);
             return;
         }
 
@@ -291,7 +298,7 @@ public class PortablePipelineJobManager {
         while (true) {
             JobNode currentJob = refreshJob(jobId, false);
             if (Files.exists(logPath)) {
-                List<String> lines = Files.readAllLines(logPath, StandardCharsets.UTF_8);
+                List<String> lines = PortablePipelineCommon.readLinesLenient(logPath);
                 for (int i = printedLines; i < lines.size(); i++) {
                     System.out.println(lines.get(i));
                 }
@@ -319,22 +326,24 @@ public class PortablePipelineJobManager {
         }
     }
 
-    private static String buildJobDescription(
+    /**
+     * 投入時に指定した入力ファイルとオプションを、項目ごとに1件ずつ記録する。
+     * ジョブ一覧ではこれを項目ごとのテキストボックスとして表示する。
+     */
+    private static List<JobParam> buildJobParams(
             PPScript script,
             Map<String, List<String>> inputValues,
             Map<String, String> optionValues) {
-        StringBuilder builder = new StringBuilder(script.filename);
+        List<JobParam> params = new ArrayList<>();
         for (InputItem item : script.inputs) {
             List<String> values = inputValues.getOrDefault(item.id, List.of());
-            builder.append(" ").append(item.id).append(":").append(String.join(",", values));
+            params.add(new JobParam(item.id, JobParam.KIND_INPUT, item.desc, values));
         }
         for (OptionItem item : script.options) {
-            builder.append(" ")
-                    .append(item.id)
-                    .append(":")
-                    .append(optionValues.getOrDefault(item.id, item.defaultopt));
+            String value = optionValues.getOrDefault(item.id, item.defaultopt);
+            params.add(new JobParam(item.id, JobParam.KIND_OPTION, item.desc, List.of(value == null ? "" : value)));
         }
-        return builder.toString();
+        return params;
     }
 
     private static String optionValueByDescription(
@@ -427,6 +436,7 @@ public class PortablePipelineJobManager {
             Path resultsDir,
             String workDir,
             ChannelSftp channelSftp) throws Exception {
+        PortablePipelineCommon.clearStagedInputs(resultsDir);
         for (InputItem item : script.inputs) {
             List<String> values = inputValues.getOrDefault(item.id, List.of());
             if (values.isEmpty()) {
@@ -443,9 +453,14 @@ public class PortablePipelineJobManager {
             for (String value : values) {
                 Path source = Path.of(value);
                 if (channelSftp != null) {
+                    // リモート実行では入力の実体はリモート側にあるので、ローカルのresults/input_N/には
+                    // リンクもコピーも作らない（Windowsでシンボリックリンクを作るには管理者権限が要る）。
+                    // 解析後に自分が送った入力を取得し直さないよう、ファイル名だけ記録しておく。
                     channelSftp.put(source.toString(), workDir + "/" + item.id);
+                    PortablePipelineCommon.recordStagedInput(resultsDir, item.id, source);
+                } else {
+                    PortablePipelineCommon.mkSymLinkOrCopy(preset, source, localTargetDir);
                 }
-                PortablePipelineCommon.mkSymLinkOrCopy(preset, source, localTargetDir);
             }
         }
     }
@@ -477,20 +492,21 @@ public class PortablePipelineJobManager {
             templateFile = PortablePipelineCommon.getBinDirPath().resolve("templates/WSL-wrapper.sh");
             Path batchTemplate = PortablePipelineCommon.getBinDirPath().resolve("templates/WSL-wrapper.bat");
             Path batchOutput = resultsDir.resolve("wrapper.bat");
-            String currentDir = PortablePipelineCommon.getBaseDirPath().toAbsolutePath().toString();
-            String wslCurrentDir = "/mnt/" + currentDir.substring(0, 1).toLowerCase() + currentDir.substring(2);
-            wslCurrentDir = wslCurrentDir.replace("\\", "/");
-            try (BufferedReader reader = new BufferedReader(new FileReader(batchTemplate.toFile()));
-                    BufferedWriter writer = new BufferedWriter(new FileWriter(batchOutput.toFile()))) {
+            // cmd.exeはバッチファイルをUTF-8ではなくコンソール（OEM）のコードページで読むので、この
+            // ファイルは実行環境の文字コード（sun.jnu.encoding、日本語WindowsならMS932）とCRLF改行で
+            // 書き出す。バッチファイルにパスは入れない。results/を作業ディレクトリとして起動すれば、
+            // WSLがそれを/mnt/<ドライブ>/... に自動で変換する。
+            try (BufferedReader reader = Files.newBufferedReader(batchTemplate, StandardCharsets.UTF_8);
+                    Writer writer = PortablePipelineCommon.batchFileWriter(batchOutput)) {
                 String line;
                 while ((line = reader.readLine()) != null) {
-                    line = line.replace("@wslcurDir@", wslCurrentDir);
                     line = line.replace("@password@", settings.get("password"));
                     writer.write(line);
-                    writer.newLine();
+                    writer.write("\r\n");
                 }
             }
-            commandString = "cmd.exe /c start cmd.exe /k " + batchOutput.toAbsolutePath().toString().replace("/", "\\");
+            // あえて相対名にしている（NoDefaultCurrentDirectoryInExePathが設定されていてもcmd.exeが見つけられるよう".\"を付ける）。作業ディレクトリはresults/（launchLocalJob参照）
+            commandString = "cmd.exe /c start \"PortablePipeline job\" cmd.exe /k .\\wrapper.bat";
         } else if ("Mac".equals(preset)) {
             templateFile = PortablePipelineCommon.getBinDirPath().resolve("templates/Mac-wrapper.sh");
             commandString = "bash wrapper.sh";
@@ -504,8 +520,8 @@ public class PortablePipelineJobManager {
             throw new IllegalArgumentException("Unsupported preset: " + preset);
         }
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(templateFile.toFile()));
-                BufferedWriter writer = new BufferedWriter(new FileWriter(resultsDir.resolve("wrapper.sh").toFile()))) {
+        try (BufferedReader reader = Files.newBufferedReader(templateFile, StandardCharsets.UTF_8);
+                BufferedWriter writer = Files.newBufferedWriter(resultsDir.resolve("wrapper.sh"), StandardCharsets.UTF_8)) {
             String line;
             while ((line = reader.readLine()) != null) {
                 line = line.replace("@imagefolder@", settings.get("imagefolder"));
@@ -517,7 +533,8 @@ public class PortablePipelineJobManager {
                         String.valueOf(Double.valueOf(numMem) / Double.valueOf(numCpu)));
                 line = line.replace("@numMEM_total@", numMem);
                 writer.write(line);
-                writer.newLine();
+                // 改行は必ずLF。wrapper.shはcmd.exeではなくbash（WSL / macOS / Linux）が実行する
+                writer.write("\n");
             }
         }
 
@@ -526,7 +543,12 @@ public class PortablePipelineJobManager {
 
     private static void launchLocalJob(String commandString, String preset, Path resultsDir) throws Exception {
         if ("WSL".equals(preset)) {
-            Process process = Runtime.getRuntime().exec(commandString, null, resultsDir.toFile());
+            // "start"は最初のクォート付き引数をウィンドウタイトルとして扱う。wrapper.batは作業
+            // ディレクトリからの相対で解決されるので、results/のパス（スペースや非ASCII文字が
+            // 入っていてもよい）がコマンド行に現れない。
+            Process process = new ProcessBuilder("cmd.exe", "/c", "start", "PortablePipeline job", "cmd.exe", "/k", ".\\wrapper.bat")
+                    .directory(resultsDir.toFile())
+                    .start();
             process.waitFor();
             return;
         }
@@ -564,7 +586,7 @@ public class PortablePipelineJobManager {
                 try {
                     channelSftp.ls(workDir);
                 } catch (Exception e) {
-                    return new JobNode(job.id, "aborted", job.desc);
+                    return job.withFinished("aborted", PortablePipelineCommon.nowStamp());
                 }
 
                 try {
@@ -599,7 +621,7 @@ public class PortablePipelineJobManager {
                     if ("true".equals(node.path("checkdelete").asText())) {
                         PortablePipelineCommon.lsFolderRemove(workDir, channelSftp);
                     }
-                    return new JobNode(job.id, "aborted", job.desc);
+                    return job.withFinished("aborted", PortablePipelineCommon.nowStamp());
                 }
                 return job;
             } finally {
@@ -615,7 +637,7 @@ public class PortablePipelineJobManager {
 
         int returnCode = localProcessStatus(preset, resultsDir);
         if (returnCode != 0) {
-            return new JobNode(job.id, "aborted", job.desc);
+            return job.withFinished("aborted", PortablePipelineCommon.nowStamp());
         }
         return job;
     }
@@ -623,7 +645,7 @@ public class PortablePipelineJobManager {
     private static JobNode finalizeJobStatus(JobNode job, Path finStatus) throws IOException {
         List<String> lines = Files.readAllLines(finStatus, StandardCharsets.UTF_8);
         String status = (!lines.isEmpty() && "0".equals(lines.get(0).trim())) ? "finished" : "aborted";
-        return new JobNode(job.id, status, job.desc);
+        return job.withFinished(status, PortablePipelineCommon.fileStamp(finStatus));
     }
 
     private static int remoteProcessStatus(JsonNode node, String keyFilePath, String preset, String workDir)
@@ -651,10 +673,16 @@ public class PortablePipelineJobManager {
     }
 
     private static int localProcessStatus(String preset, Path resultsDir) {
+        if (!Files.exists(resultsDir.resolve("save_pid.txt"))) {
+            // wrapper.shがまだsave_pid.txtを書いていない。WSLの起動やdockerの準備に時間が
+            // かかっているだけで、ジョブはまだ始まっていない。異常終了とみなさない。
+            return 0;
+        }
         try {
             if ("WSL".equals(preset)) {
-                Process process = Runtime.getRuntime()
-                        .exec("bash -c 'ps -p `cat save_pid.txt`'", null, resultsDir.toFile());
+                Process process = new ProcessBuilder("bash", "-c", "ps -p `cat save_pid.txt`")
+                        .directory(resultsDir.toFile())
+                        .start();
                 return process.waitFor();
             }
             int pid = readPid(resultsDir.resolve("save_pid.txt"));

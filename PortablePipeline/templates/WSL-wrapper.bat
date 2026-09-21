@@ -1,7 +1,7 @@
 wsl bash -c "cat /proc/cmdline |grep vsyscall=emulate"
 if not "%ERRORLEVEL%" == "0" (
- echo [wsl2] >> %USERPROFILE%\\.wslconfig
- echo kernelCommandLine = vsyscall=emulate >> %USERPROFILE%\\.wslconfig
+ echo [wsl2] >> "%USERPROFILE%\.wslconfig"
+ echo kernelCommandLine = vsyscall=emulate >> "%USERPROFILE%\.wslconfig"
  wsl --shutdown
 )
 wsl -l
@@ -20,12 +20,14 @@ if not "%ERRORLEVEL%" == "0" (
 )
 wsl bash -c "cat /proc/cmdline |grep vsyscall=emulate"
 if not ERRORLEVEL 0 (
- mkdir %LOCALAPPDATA%\PPUbuntu20
+ mkdir "%LOCALAPPDATA%\PPUbuntu20"
  powershell -Command "Invoke-WebRequest http://suikou.fs.a.u-tokyo.ac.jp/pp/PPUbuntu20.tar -outFile PPUbuntu20.tar"
- wsl --import PPUbuntu20 %LOCALAPPDATA%/PPUbuntu20 PPUbuntu20.tar --version 2
+ wsl --import PPUbuntu20 "%LOCALAPPDATA%\PPUbuntu20" PPUbuntu20.tar --version 2
  wsl -s PPUbuntu20
 )
-powershell.exe start-process bash -Wait -ArgumentList '-c \"cd @wslcurDir@; echo @password@ |sudo -S bash WSL-setup.sh\"'
-powershell.exe start-process bash -ArgumentList '-c \"echo @password@ |sudo -S bash service docker start; echo ; echo Password is OK. Do not close this window.; bash wrapper.sh\"'
+rem このバッチファイルの作業ディレクトリはジョブのresultsフォルダー（Java側で指定）。WSLのbash.exeが
+rem それを/mnt/<ドライブ>/... に自動変換するので、パスを埋め込んだ"cd"は不要で、フォルダー名にスペースや非ASCII文字が入っていてもよい。
+rem WSL-setup.shはJava側がresultsフォルダーにコピーする。
+powershell.exe -NoProfile start-process bash -Wait -ArgumentList '-c \"echo @password@ |sudo -S bash WSL-setup.sh\"'
+powershell.exe -NoProfile start-process bash -ArgumentList '-c \"echo @password@ |sudo -S bash service docker start; echo ; echo Password is OK. Do not close this window.; bash wrapper.sh\"'
 exit
-

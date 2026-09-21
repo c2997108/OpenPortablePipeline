@@ -20,19 +20,19 @@ export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-tri
 export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_6-kegg_4"
 export IM_R2="c2997108/ubuntu20:R"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 
 #decompress input files
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
 
 vcf="$input_1"
-out="`basename $input_1` .vcf"
+out="$(basename "$input_1") .vcf"
 
-cat $vcf |grep -v "^##"|awk -v gq=$opt_q -v dp=$opt_d -F'\t' '
+cat "$vcf" |grep -v "^##"|awk -v gq=$opt_q -v dp=$opt_d -F'\t' '
  {ORS="\t"; print $1"\t"$2"\t"$4"\t"$5"\t"$6"\t"$8;
   if(NR>1){split($9,arr,":"); ngq=0; ndp=0; for(i in arr){if(arr[i]=="DP"){ndp=i}else if(arr[i]=="GQ"){ngq=i}}};
   for(i=10;i<=NF;i++){split($i,arr,":"); if(NR==1){print $i}else{if((ngq==0||arr[ngq]>=gq)&&(ndp==0||arr[ndp]>=dp)){print arr[1]}else{print "./."}}}; ORS="\n"; print ""

@@ -145,7 +145,7 @@ public class ScriptCell extends ListCell<ScriptNode> {
 
 		String baseUrl = "http://suikou.fs.a.u-tokyo.ac.jp/pp/";
 		// Consider making the icon size for the button consistent (e.g., 16x16)
-		Button button1 = new Button("", new ImageView(new Image("file:"+ ppBinDir + "/image/iconmonstr-share-8-24.png", 16, 16, false, false)));
+		Button button1 = new Button("", new ImageView(new Image(PortablePipelineCommon.fileUrl(ppBinDir, "image/iconmonstr-share-8-24.png"), 16, 16, false, false)));
 		button1.setFocusTraversable(false);
 		try {
 			button1.setOnAction((ActionEvent e) -> {

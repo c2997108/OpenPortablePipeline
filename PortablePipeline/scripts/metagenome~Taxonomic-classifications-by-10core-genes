@@ -19,7 +19,7 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# -g #opt_g# #in
 export IM_BLAST="c2997108/biocontainers:blast-2.13.0_core10_2"
 export IM_BASE="c2997108/centos7:3-java"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -37,40 +37,48 @@ set -ex
 
 echo "##convert fastq to fasta"
 j=${i%.*}.fasta
-zcat $i|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > $j
+zcat "$i"|awk 'NR%4==1{print ">"substr($0,2)} NR%4==2{print $0}' > "$j"
 
 echo "##blast"
-blastn -db $ref -query $j -outfmt 6 -out $j.core10.blast -num_threads $cpu
+blastn -db "$ref" -query "$j" -outfmt 6 -out "$j.core10.blast" -num_threads $cpu
 echo "blast status: " $?
-rm $j
+rm "$j"
 
 echo "##filtering"
-awk -F'\t' -v minB="$minB" -v minI="$minI" '$12>minB&&$3>minI&&$1!=old{old=$1; split($2,arr,"^"); print arr[1]}' $j.core10.blast|
- sort|uniq -c|sort -nr|awk '{print $2"\t"$1}' > $j.core10.blast.cnt
+awk -F'\t' -v minB="$minB" -v minI="$minI" '$12>minB&&$3>minI&&$1!=old{old=$1; split($2,arr,"^"); print arr[1]}' "$j.core10.blast"|
+ sort|uniq -c|sort -nr|awk '{print $2"\t"$1}' > "$j.core10.blast.cnt"
 EOS
 
 sed 's/zcat/cat/g' run-gz.sh > run.sh
 
-(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
- echo $ENV_BLAST bash run.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/|egrep "[.]f(ast|)q$"||true)
+r1gz=()
+while IFS= read -r pp_line; do r1gz+=("$pp_line"); done < <(find "$input_1"/|egrep "[.]f(ast|)q[.]gz$"||true)
+
+(for i in ${r1[@]+"${r1[@]}"}; do
+ echo "$ENV_BLAST bash run.sh $(pp_shell_quote "$i") $opt_d $opt_t $N_CPU $opt_b"
 done
-for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
- echo $ENV_BLAST bash run-gz.sh $i "$opt_d" "$opt_t" $N_CPU "$opt_b"
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ echo "$ENV_BLAST bash run-gz.sh $(pp_shell_quote "$i") $opt_d $opt_t $N_CPU $opt_b"
 done)|DOPARALLEL
 
 WAITPARALLEL
 
 cd "$input_1"
+#列見出し(ファイル名から作る)はカウント表のサンプル名＝識別子なので空白などを_に畳む(データの参照キーo[j]は元のファイル名のまま)
 awk -F'\t' '{print FILENAME"\t"$0}' *.fasta.core10.blast.cnt|
  awk -F'\t' '
   FILENAME==ARGV[1]{o[NR]=$1}
   FILENAME==ARGV[2]{data[$2][$1]=$3}
   END{ORS=""; print "id";
-   for(j=1;j<=length(o);j++){print "\t"o[j]};
+   for(j=1;j<=length(o);j++){k=o[j]; gsub(/[^A-Za-z0-9._-]/,"_",k); print "\t"k};
    print "\n";
    for(i in data){print i; for(j=1;j<=length(o);j++){print "\t"data[i][o[j]]+0}; print "\n"}
-  }' <(ls *.fasta.core10.blast.cnt|sort -V) /dev/stdin |sed 's/.fasta.core10.blast.cnt//g' > ../all.txt
-cd ..
+  }' <(ls *.fasta.core10.blast.cnt|sort -V) /dev/stdin |sed 's/.fasta.core10.blast.cnt//g' > "$workdir"/all.txt
+# （結果ディレクトリを明示して書き出し、明示して戻る。入力ディレクトリがシンボリックリンクの場合、
+#  "../all.txt"は利用者のフォルダーの親に置かれてしまい、"cd .."でも元に戻れないため）
+cd "$workdir"
 awk -F'\t' -v tot=$opt_g '
  FILENAME==ARGV[1]{for(i=2;i<=NF;i++){cnt[i]+=$i}}
  FILENAME==ARGV[2]{if(FNR==1){OFS="\t"; print $0}else{for(i=2;i<=NF;i++){if(cnt[i]==0){$i=0}else{$i=int($i*tot/cnt[i]+0.5)}}; print $0}}
@@ -90,7 +98,9 @@ awk -F'\t' '
 mkdir -p krona_input
 cd krona_input
 awk -F'\t' 'NR==1{for(i=2;i<=NF;i++){name[i]=$i}} NR>1{gsub(";","\t",$1); for(i=2;i<=NF;i++){if($i!=0){print $i"\t"$1 > name[i]".cnt"}}}' ../all.norm.sort.ann.sum.txt
-ktImportText -o core10abs.html `ls *.cnt|sort -V`
+rkrona=()
+while IFS= read -r pp_line; do rkrona+=("$pp_line"); done < <(ls *.cnt|sort -V)
+ktImportText -o core10abs.html ${rkrona[@]+"${rkrona[@]}"}
 mv core10abs.html ..
 cd ..
 

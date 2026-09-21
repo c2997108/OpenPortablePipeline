@@ -28,7 +28,7 @@ export IM_CUFF="quay.io/biocontainers/cufflinks:2.2.1--py36_2"
 export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
 export IM_MERGE="c2997108/centos6:3"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -36,13 +36,14 @@ set -o pipefail
 p=$opt_f
 
 mkdir -p input.ballgown
-for i in "$input_1"/*.stringtie.tar.gz; do tar zvxf $i -C input.ballgown; done
+for i in "$input_1"/*.stringtie.tar.gz; do tar zvxf "$i" -C input.ballgown; done
 mkdir -p input.cuffdiff
-for i in "$input_2"/*.cuffquant.tar.gz; do tar zvxf $i -C input.cuffdiff; done
+for i in "$input_2"/*.cuffquant.tar.gz; do tar zvxf "$i" -C input.cuffdiff; done
 
 #sample.txt
 cat "$input_3" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
-ls input.ballgown| (DO_BASE sort -V)| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+#sample.txt2側は上で_に畳んであるので、ディレクトリ名も同じ畳み方をしてから条件を引く。idはballgownが読むディレクトリ名なのでそのまま
+ls input.ballgown| (DO_BASE sort -V)| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; k=$1; gsub(/[^A-Za-z0-9._-]/,"_",k); if(cat[k]!=""){c=cat[k]}else{c=k}; print $1"\t"c}' sample.txt2 /dev/stdin > sample.input.txt
 
 cat << 'EOF' > run-estimate-fpkm.R
 library(ballgown)
@@ -203,37 +204,37 @@ for i in `seq 1 $(cat sample.input.pair.txt|wc -l)`; do
   anngofile="$input_9"
  fi
 
- cat << EOF > run-DE.$g1.$g2.sh
+ cat << EOF > "run-DE.$g1.$g2.sh"
 set -x
-awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(FNR==1){print \$0}else{if(\$2==g1||\$2==g2){print \$0}}}' sample.input.txt > sample.input.$g1.$g2.txt
-awk -F'\\t' -v g1=$g1 '\$2==g1{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.x
-awk -F'\\t' -v g2=$g2 '\$2==g2{print \$1}' sample.input.$g1.$g2.txt > sample.input.$g1.$g2.txt.y
+awk -F'\\t' -v g1=$(pp_shell_quote "$g1") -v g2=$(pp_shell_quote "$g2") 'FILENAME==ARGV[1]{if(FNR==1){print \$0}else{if(\$2==g1||\$2==g2){print \$0}}}' sample.input.txt > $(pp_shell_quote "sample.input.$g1.$g2.txt")
+awk -F'\\t' -v g1=$(pp_shell_quote "$g1") '\$2==g1{print \$1}' $(pp_shell_quote "sample.input.$g1.$g2.txt") > $(pp_shell_quote "sample.input.$g1.$g2.txt.x")
+awk -F'\\t' -v g2=$(pp_shell_quote "$g2") '\$2==g2{print \$1}' $(pp_shell_quote "sample.input.$g1.$g2.txt") > $(pp_shell_quote "sample.input.$g1.$g2.txt.y")
 
-awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $countfile.$g1.$g2.txt
-awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $countgenefile.$g1.$g2.txt
+awk -F'\\t' -v g1=$(pp_shell_quote "$g1") -v g2=$(pp_shell_quote "$g2") 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countfile > $(pp_shell_quote "$countfile.$g1.$g2.txt")
+awk -F'\\t' -v g1=$(pp_shell_quote "$g1") -v g2=$(pp_shell_quote "$g2") 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefile > $(pp_shell_quote "$countgenefile.$g1.$g2.txt")
 if [ -e $countgofile ]; then
-awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $countgofile.$g1.$g2.txt
+awk -F'\\t' -v g1=$(pp_shell_quote "$g1") -v g2=$(pp_shell_quote "$g2") 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgofile > $(pp_shell_quote "$countgofile.$g1.$g2.txt")
 fi
 #DESeq2
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$annfile'" "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$anngenefile'" "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~DESeq2' "-s $(pp_shell_quote "run-DESeq2.$g1.$g2.isoform.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p $(pp_shell_quote "$countfile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") $(pp_shell_quote "$annfile") > $(pp_shell_quote "log-DESeq2.$g1.$g2.isoform.txt") 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~DESeq2' "-s $(pp_shell_quote "run-DESeq2.$g1.$g2.gene.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p $(pp_shell_quote "$countgenefile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") $(pp_shell_quote "$anngenefile") > $(pp_shell_quote "log-DESeq2.$g1.$g2.gene.txt") 2>&1"
 if [ -e $countgofile ]; then
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$anngofile'" "> log-DESeq2.$g1.$g2.go.txt 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~DESeq2' "-s $(pp_shell_quote "run-DESeq2.$g1.$g2.go.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p $(pp_shell_quote "$countgofile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") $(pp_shell_quote "$anngofile") > $(pp_shell_quote "log-DESeq2.$g1.$g2.go.txt") 2>&1"
 fi
 #edgeR
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$annfile'" "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$anngenefile'" "> log-edgeR.$g1.$g2.gene.txt 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~edgeR' "-s $(pp_shell_quote "run-edgeR.$g1.$g2.isoform.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p $(pp_shell_quote "$countfile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") $(pp_shell_quote "$annfile") > $(pp_shell_quote "log-edgeR.$g1.$g2.isoform.txt") 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~edgeR' "-s $(pp_shell_quote "run-edgeR.$g1.$g2.gene.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p $(pp_shell_quote "$countgenefile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") $(pp_shell_quote "$anngenefile") > $(pp_shell_quote "log-edgeR.$g1.$g2.gene.txt") 2>&1"
 if [ -e $countgofile ]; then
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt "'$anngofile'" "> log-edgeR.$g1.$g2.go.txt 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~edgeR' "-s $(pp_shell_quote "run-edgeR.$g1.$g2.go.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p $(pp_shell_quote "$countgofile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") $(pp_shell_quote "$anngofile") > $(pp_shell_quote "log-edgeR.$g1.$g2.go.txt") 2>&1"
 fi
 #ballgown
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~ballgown -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a "'$annfile'" -b "'$anngenefile'" $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~ballgown' "-f input.ballgown -s $(pp_shell_quote "run-ballgown.$g1.$g2.isoform.R") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p -a $(pp_shell_quote "$annfile") -b $(pp_shell_quote "$anngenefile") $(pp_shell_quote "$countfile.$g1.$g2.txt") $(pp_shell_quote "$countgenefile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") input.ballgown.tar.gz > $(pp_shell_quote "log-ballgown.$g1.$g2.isoform-gene.txt") 2>&1"
 #Cuffdiff
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f input.cuffdiff -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a "'$annfile'" -b "'$anngenefile'" -d "'$opt_d'" $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.cuffdiff.tar.gz $input_4 $input_5 "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
+echo "N_SCRIPT=$N_SCRIPT bash" '"$scriptdir"/statistics~cuffdiff' "-f input.cuffdiff -c 1 -s $(pp_shell_quote "cuffdiff.$g1.$g2.sh") -i $(pp_shell_quote "$g1") -j $(pp_shell_quote "$g2") -p $p -a $(pp_shell_quote "$annfile") -b $(pp_shell_quote "$anngenefile") -d '$opt_d' $(pp_shell_quote "$countfile.$g1.$g2.txt") $(pp_shell_quote "$countgenefile.$g1.$g2.txt") $(pp_shell_quote "sample.input.$g1.$g2.txt") input.cuffdiff.tar.gz $(pp_shell_quote "$input_4") $(pp_shell_quote "$input_5") > $(pp_shell_quote "log-cuffdiff.$g1.$g2.isoform-gene.txt") 2>&1"
 
 EOF
 
- DO_R bash run-DE.$g1.$g2.sh
+ DO_R bash "run-DE.$g1.$g2.sh"
 done|DOPARALLELONE
 
 WAITPARALLEL

@@ -19,21 +19,21 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2# #input_3# #input
 
 
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-if [ `basename "$input_3"|grep "gmes_linux_64.*[.]tar[.]gz"|wc -l` != 1 -o `basename "$input_4"` != "gm_key_64.gz" ]; then echo 'Download GeneMark-ES/ET/EP LINUX 64 binary and license(http://exon.gatech.edu/GeneMark/license_download.cgi)'; post_processing; fi
+if [ `basename "$input_3"|grep "gmes_linux_64.*[.]tar[.]gz"|wc -l` != 1 -o "$(basename "$input_4")" != "gm_key_64.gz" ]; then echo 'Download GeneMark-ES/ET/EP LINUX 64 binary and license(http://exon.gatech.edu/GeneMark/license_download.cgi)'; post_processing; fi
 zcat "$input_4" > gm_key_64
 tar vxf "$input_3"
 rm -rf gmes_linux_64
-mv `find . -maxdepth 1 -type d|grep gmes_linux_64` gmes_linux_64
+mv "$(find . -maxdepth 1 -type d|grep gmes_linux_64)" gmes_linux_64
 
 #decompress input files
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
-awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > `basename "$input_2"`.ref.fa
-input_2=`basename "$input_2"`.ref.fa
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
+awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > "$(basename "$input_2").ref.fa"
+input_2="$(basename "$input_2").ref.fa"
 
 curl -OL https://github.com/sagnikbanerjee15/Finder/archive/refs/tags/finder_v1.1.0.tar.gz
 tar -vxf finder_v1.1.0.tar.gz
@@ -42,9 +42,12 @@ mv Finder-finder_v1.1.0/* .
 rm -rf Finder-finder_v1.1.0
 sed 's/docker run/docker run '"-u `id -u`:`id -g`"'/' run_finder
 
-ls "$input_1"/*_1.fastq|while read i; do echo 'Dummy,'`basename $i|sed 's/_1.fastq$//'`','`basename $i|sed 's/_1.fastq$//'`',dummy,2000/1/1,100,PE,1,1,'`realpath "$input_1"`; done > input.csv
+ls "$input_1"/*_1.fastq > /dev/null
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(ls "$input_1"/*_1.fastq)
+for i in ${r1[@]+"${r1[@]}"}; do echo "Dummy,$(basename "$i"|sed 's/_1.fastq$//'),$(basename "$i"|sed 's/_1.fastq$//'),dummy,2000/1/1,100,PE,1,1,$(realpath "$input_1")"; done > input.csv
 
-./run_finder -mf $PWD/input.csv -out_dir $PWD/out -g $PWD/"$input_2" -gm $PWD/gmes_linux_64 -gml $PWD/gm_key_64 --cpu 16 $opt_b
+./run_finder -mf "$PWD/input.csv" -out_dir "$PWD/out" -g "$PWD/$input_2" -gm "$PWD/gmes_linux_64" -gml "$PWD/gm_key_64" --cpu 16 $opt_b
 
 
 post_processing

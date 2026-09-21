@@ -18,29 +18,34 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -t #opt_t# #input_1#"
 export IM_BLAST="c2997108/biocontainers:blast-2.13.0_core10_2"
 export IM_BASE="c2997108/centos7:3-java"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
 
 mkdir -p output_blast
 
-(for i in `ls "$input_1"/*|grep -E "[.](fa|fasta|fsa|fna)$"`; do
- echo $ENV_BLAST blastn -db /usr/local/db/all.uscg10.fa -query $i -outfmt 6 -num_threads $N_CPU -out output_blast/`basename $i`.blastn $opt_b
+fas=()
+while IFS= read -r pp_line; do fas+=("$pp_line"); done < <(ls "$input_1"/*|grep -E "[.](fa|fasta|fsa|fna)$")
+fagzs=()
+while IFS= read -r pp_line; do fagzs+=("$pp_line"); done < <(ls "$input_1"/*|grep -E "[.](fa|fasta|fsa|fna)[.]gz$")
+
+(for i in ${fas[@]+"${fas[@]}"}; do
+ echo "$ENV_BLAST blastn -db /usr/local/db/all.uscg10.fa -query $(pp_shell_quote "$i") -outfmt 6 -num_threads $N_CPU -out $(pp_shell_quote "output_blast/$(basename "$i").blastn") $opt_b"
 done
-for i in `ls "$input_1"/*|grep -E "[.](fa|fasta|fsa|fna)[.]gz$"`; do
- i2=`basename "$i"|sed 's/[.]gz$//'`; DO_BASE gzip -dc "$i" > "output_blast/$i2"
- echo $ENV_BLAST blastn -db /usr/local/db/all.uscg10.fa -query "output_blast/$i2" -outfmt 6 -num_threads $N_CPU -out output_blast/"$i2".blastn $opt_b
+for i in ${fagzs[@]+"${fagzs[@]}"}; do
+ i2="$(basename "$i"|sed 's/[.]gz$//')"; DO_BASE gzip -dc "$i" > "output_blast/$i2"
+ echo "$ENV_BLAST blastn -db /usr/local/db/all.uscg10.fa -query $(pp_shell_quote "output_blast/$i2") -outfmt 6 -num_threads $N_CPU -out $(pp_shell_quote "output_blast/$i2.blastn") $opt_b"
 done)|DOPARALLEL
 
 WAITPARALLEL
 
 cd output_blast
 for i in *.blastn; do
-cat $i|awk -F'\t' '$12>'"$opt_t"'&&$3>'"$opt_t" | awk -F'\t' '
+cat "$i"|awk -F'\t' '$12>'"$opt_t"'&&$3>'"$opt_t" | awk -F'\t' '
  BEGIN{d[0]=0; delete d}
  {
   if($1==old){
@@ -65,11 +70,11 @@ cat $i|awk -F'\t' '$12>'"$opt_t"'&&$3>'"$opt_t" | awk -F'\t' '
      val=d[i][4]+1; if(d[i][5]!=0){val=d[d[i][5]][4]+1};
      print d[i][0]"\t"val}
    };
- }' > $i.txt
+ }' > "$i.txt"
 done
 
 for i in *.blastn; do
- if [ -s $i.txt ]; then awk -F'\t' '{split($2,arr,"^"); cnt[arr[1]]+=1/$13} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' $i.txt > $i.cnt; fi
+ if [ -s "$i.txt" ]; then awk -F'\t' '{split($2,arr,"^"); cnt[arr[1]]+=1/$13} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' "$i.txt" > "$i.cnt"; fi
 done
 DO_BLAST awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=$2} FILENAME==ARGV[2]{b[$1]=a[$2]} FILENAME!=ARGV[1]&&FILENAME!=ARGV[2]{print FILENAME"\t"$0"\t"b[$1]}' /usr/local/db/names.dmp.sname.path /usr/local/db/ac2tax.txt *.blastn.cnt|sed 's/;unclassified.*//; s/;environmental samples.*//; s/root;cellular organisms;//' > all.path
 

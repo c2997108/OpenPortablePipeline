@@ -1,24 +1,36 @@
 package application;
 
+import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.Vector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -29,6 +41,12 @@ import com.jcraft.jsch.SftpException;
 public class PortablePipelineCommon {
 
     public static final ObjectMapper MAPPER = new ObjectMapper();
+
+    static {
+        // jobs.jsonに後から項目が増えても、古いバージョンで書かれたファイルや
+        // 逆に新しいバージョンで書かれたファイルを読めるようにしておく
+        MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
 
     private static final List<String> SETTING_KEYS = Arrays.asList(
             "hostname",
@@ -291,13 +309,73 @@ public class PortablePipelineCommon {
         return settings;
     }
 
+    /** ジョブ一覧に表示する日時の形式。 */
+    private static final DateTimeFormatter JOB_STAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /** 現在時刻の日時文字列。 */
+    public static String nowStamp() {
+        return LocalDateTime.now().format(JOB_STAMP_FORMAT);
+    }
+
+    /** ファイルの最終更新時刻の日時文字列。取得できなければ空。 */
+    public static String fileStamp(Path path) {
+        try {
+            return LocalDateTime.ofInstant(Files.getLastModifiedTime(path).toInstant(), ZoneId.systemDefault())
+                    .format(JOB_STAMP_FORMAT);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /**
+     * 日時の記録がないジョブ（この変更より前に投入したもの）について、出力フォルダーの
+     * ファイルの更新時刻から投入日時と終了日時を補う。ファイルにも書き戻さず、読み込んだ
+     * 一覧の上だけで補完する。
+     */
+    private static void fillMissingTimestamps(List<JobNode> jobs) {
+        boolean needed = false;
+        for (JobNode job : jobs) {
+            if (job.submittedAt == null || job.submittedAt.isEmpty()
+                    || (job.finishedAt == null || job.finishedAt.isEmpty()) && isFinishedStatus(job.status)) {
+                needed = true;
+                break;
+            }
+        }
+        if (!needed) {
+            return;
+        }
+        Path outputRoot;
+        try {
+            outputRoot = getBaseDirPath().resolve(loadOrCreateSettings().get("outputfolder"));
+        } catch (Exception e) {
+            return;
+        }
+        for (JobNode job : jobs) {
+            Path jobDir = outputRoot.resolve(job.id);
+            if (job.submittedAt == null || job.submittedAt.isEmpty()) {
+                // settings.jsonはジョブを投入したときに書き出している
+                job.submittedAt = fileStamp(jobDir.resolve("settings.json"));
+            }
+            if ((job.finishedAt == null || job.finishedAt.isEmpty()) && isFinishedStatus(job.status)) {
+                job.finishedAt = fileStamp(jobDir.resolve("results").resolve("fin_status"));
+            }
+        }
+    }
+
+    /** 実行が終わっている状態か。 */
+    public static boolean isFinishedStatus(String status) {
+        return "finished".equals(status) || "aborted".equals(status) || "cancelled".equals(status);
+    }
+
     public static List<JobNode> loadJobs() throws IOException {
         Path jobsPath = getJobsPath();
         if (!Files.exists(jobsPath)) {
             return new ArrayList<>();
         }
-        return new ArrayList<>(MAPPER.readValue(jobsPath.toFile(), new TypeReference<List<JobNode>>() {
+        List<JobNode> jobs = new ArrayList<>(MAPPER.readValue(jobsPath.toFile(), new TypeReference<List<JobNode>>() {
         }));
+        fillMissingTimestamps(jobs);
+        return jobs;
     }
 
     public static void saveJobs(List<JobNode> jobs) throws IOException {
@@ -416,6 +494,54 @@ public class PortablePipelineCommon {
         dest.toFile().setLastModified(Calendar.getInstance().getTimeInMillis());
     }
 
+    /** リモート実行でアップロードした入力ファイルの一覧を記録するファイル名（resultsフォルダーの中）。 */
+    public static final String INPUT_LIST_FILE = ".pp-input-files";
+
+    /**
+     * ジョブを投入するたびに入力ファイルの記録を作り直すため、古い一覧を消す。
+     */
+    public static void clearStagedInputs(Path resultsDir) {
+        try {
+            Files.deleteIfExists(resultsDir.resolve(INPUT_LIST_FILE));
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+    }
+
+    /**
+     * リモート実行でアップロードした入力ファイルを1行1件で記録する（「input_1/ファイル名」の形）。
+     * 結果をダウンロードするときに、自分が送った入力ファイルを取得し直さないために使う。
+     * ローカル実行のプリセットではダウンロード自体が起きないので記録しない。
+     */
+    public static void recordStagedInput(Path resultsDir, String inputId, Path source) throws IOException {
+        Files.createDirectories(resultsDir);
+        String line = inputId + "/" + source.getFileName() + "\n";
+        Files.write(resultsDir.resolve(INPUT_LIST_FILE), line.getBytes(StandardCharsets.UTF_8),
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+    }
+
+    /**
+     * 記録済みの入力ファイル一覧を読む。一覧がなければ空を返すので、この変更より前に投入した
+     * ジョブでも今までどおり（シンボリックリンクの有無で判定）動く。
+     */
+    public static Set<String> readStagedInputs(Path resultsDir) {
+        Set<String> names = new LinkedHashSet<>();
+        Path listFile = resultsDir.resolve(INPUT_LIST_FILE);
+        if (!Files.isRegularFile(listFile)) {
+            return names;
+        }
+        try {
+            for (String line : readLinesLenient(listFile)) {
+                if (!line.isEmpty()) {
+                    names.add(line);
+                }
+            }
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
+        }
+        return names;
+    }
+
     public static void mkSymLinkOrCopy(String preset, Path target, Path linkDir) throws IOException {
         Files.createDirectories(linkDir);
         Path linkPath = linkDir.resolve(target.getFileName());
@@ -457,9 +583,62 @@ public class PortablePipelineCommon {
         return "'" + value.replace("'", "'\"'\"'") + "'";
     }
 
-    @SuppressWarnings("unchecked")
+    /**
+     * cmd.exeが実行するファイル（wrapper.bat）用の文字コード。cmd.exeはバッチファイルをJava既定のUTF-8では
+     * なくコンソールのコードページ（日本語Windowsなら932）で読むので、sun.jnu.encodingが示す実行環境の
+     * 文字コードを使い、取得できなければ既定の文字コードにフォールバックする。
+     */
+    public static Charset batchFileCharset() {
+        String encoding = System.getProperty("sun.jnu.encoding");
+        if (encoding != null && !encoding.isEmpty()) {
+            try {
+                return Charset.forName(encoding);
+            } catch (Exception e) {
+                // 変換できなければ下の既定値を使う
+            }
+        }
+        return Charset.defaultCharset();
+    }
+
+    /**
+     * cmd.exeが実行するファイル（wrapper.bat）を書き出すためのWriter。実行環境の文字コードで書くが、
+     * その文字コードで表現できない文字（英語版Windowsでの日本語コメントなど）があっても例外にはせず
+     * 「?」に置き換える。バッチファイル本体は必ずASCIIだけで構成してあるので、置き換えが起きても
+     * 動作には影響しない。
+     */
+    public static Writer batchFileWriter(Path path) throws IOException {
+        CharsetEncoder encoder = batchFileCharset().newEncoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        return new BufferedWriter(new OutputStreamWriter(Files.newOutputStream(path), encoder));
+    }
+
+    /**
+     * バイナリディレクトリ配下のパス（アイコンなど）に対するfile:URLを作る。File.toURI()がパーセント
+     * エンコードするので、スペースや非ASCII文字が入っていても安全。
+     */
+    public static String fileUrl(String dir, String relativePath) {
+        return new File(dir, relativePath).toURI().toString();
+    }
+
+    /**
+     * テキストファイルをUTF-8として読む。不正なバイト列があっても例外にしない。log.txtはパイプラインの
+     * 出力をそのまま記録したもので、コンテナ内のツールが別の文字コードで出力することがあるため。
+     */
+    public static List<String> readLinesLenient(Path path) throws IOException {
+        return new String(Files.readAllBytes(path), StandardCharsets.UTF_8).lines().collect(Collectors.toList());
+    }
+
     public static void recursiveFolderDownload(String sourcePath, String destinationPath, ChannelSftp channelSftp)
             throws SftpException {
+        // 自分がアップロードした入力ファイルは取得し直さない（結果フォルダーの一覧を先に読んでおく）
+        recursiveFolderDownload(sourcePath, destinationPath, channelSftp,
+                readStagedInputs(Path.of(destinationPath)), "");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void recursiveFolderDownload(String sourcePath, String destinationPath, ChannelSftp channelSftp,
+            Set<String> stagedInputs, String relativePrefix) throws SftpException {
         Vector<ChannelSftp.LsEntry> fileAndFolderList = channelSftp.ls(sourcePath);
         if (!(new File(destinationPath)).exists()) {
             (new File(destinationPath)).mkdirs();
@@ -467,7 +646,11 @@ public class PortablePipelineCommon {
 
         for (ChannelSftp.LsEntry item : fileAndFolderList) {
             Path localPath = Path.of(destinationPath, item.getFilename());
+            String relativePath = relativePrefix + item.getFilename();
             if (!item.getAttrs().isDir()) {
+                if (stagedInputs.contains(relativePath)) {
+                    continue;
+                }
                 if (!Files.exists(localPath)
                         || (item.getAttrs().getMTime() > Long.valueOf(localPath.toFile().lastModified() / 1000L)
                                 .intValue())
@@ -482,13 +665,16 @@ public class PortablePipelineCommon {
                             recursiveFolderDownload(
                                     sourcePath + "/" + item.getFilename(),
                                     localPath.toString(),
-                                    channelSftp);
+                                    channelSftp,
+                                    stagedInputs,
+                                    relativePath + "/");
                         }
                     }
                 }
             } else if (!(".".equals(item.getFilename()) || "..".equals(item.getFilename()))) {
                 localPath.toFile().mkdirs();
-                recursiveFolderDownload(sourcePath + "/" + item.getFilename(), localPath.toString(), channelSftp);
+                recursiveFolderDownload(sourcePath + "/" + item.getFilename(), localPath.toString(), channelSftp,
+                        stagedInputs, relativePath + "/");
             }
         }
     }

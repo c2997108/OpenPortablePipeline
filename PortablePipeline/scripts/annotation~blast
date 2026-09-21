@@ -20,13 +20,13 @@ runcmd="$0 -c #opt_c# -m #opt_m# -p #opt_p# -d #opt_d# -b #opt_b# #input_1# #inp
 export IM_BLAST="quay.io/biocontainers/blast:2.9.0--pl526h979a64d_3"
 export IM_EXCEL="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_EXCEL gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_EXCEL gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_EXCEL gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_EXCEL gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 
 query="$input_1"
 db="$input_2"
@@ -45,21 +45,21 @@ fi
 
 DO_BLAST makeblastdb -in "$db" -dbtype $dbtype $opt_d
 
-output="`basename $db`.`basename $query`.$opt_p"
+output="$(basename "$db").$(basename "$query").$opt_p"
 
 if [ "$table" = "" ];then
  DO_BLAST $opt_p -db "$db" -query "$query" -num_threads $N_CPU $opt_b > "$output"
 else
  bash "$scriptdir"/preprocessing~extract-only-specific-entries-in-FASTA "$query" "$table" #$table.temp will be created
- newquery="`basename ${query%.*}`.`basename ${table%.*}`.fasta"
+ newquery="$(basename "${query%.*}").$(basename "${table%.*}").fasta"
  DO_BLAST $opt_p -db "$db" -query "$newquery" -num_threads $N_CPU $opt_b > "$output"
  awk -F'\t' '
   FILENAME==ARGV[1]{if(data[$1]==""){data[$1]=$2; evalue[$1]=$11}}
   FILENAME==ARGV[2]{if($0~"^>"){split($0,arr,"[ \t]"); desc[substr(arr[1],2)]=substr($0,2)}}
   FILENAME==ARGV[3]{if(FNR==1){print $0"\tTop Hit ("ARGV[1]")\te-value"}else{print $0"\t"desc[data[$1]]"\t"evalue[$1]}}
- ' "$output" "$db" "$table.temp" > `basename "$table"`."$opt_p".txt
+ ' "$output" "$db" "$table.temp" > "$(basename "$table").$opt_p.txt"
 
- DO_EXCEL java -Xmx1G -jar /usr/local/bin/excel2.jar `basename "$table"`."$opt_p".txt `basename "$table"`."$opt_p".xlsx
+ DO_EXCEL java -Xmx1G -jar /usr/local/bin/excel2.jar "$(basename "$table").$opt_p.txt" "$(basename "$table").$opt_p.xlsx"
 fi
 
 post_processing

@@ -34,7 +34,19 @@
                           <items>
                             <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="100.0" prefWidth="160.0">
                                  <children>
-                                    <ListView fx:id="joblist" prefHeight="173.0" prefWidth="955.0" AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0" />
+                                    <BorderPane AnchorPane.bottomAnchor="0.0" AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0" AnchorPane.topAnchor="0.0">
+                                       <top>
+                                          <FlowPane nodeOrientation="RIGHT_TO_LEFT" prefHeight="29.0" BorderPane.alignment="CENTER">
+                                             <children>
+                                                <Label text="   " />
+                                                <TextField fx:id="jobsearchtxt" nodeOrientation="LEFT_TO_RIGHT" prefWidth="320.0" promptText="filter jobs (script, input file, option, status, date)" />
+                                             </children>
+                                          </FlowPane>
+                                       </top>
+                                       <center>
+                                          <ListView fx:id="joblist" prefHeight="173.0" prefWidth="955.0" BorderPane.alignment="CENTER" />
+                                       </center>
+                                    </BorderPane>
                                  </children>
                               </AnchorPane>
                             <AnchorPane minHeight="0.0" minWidth="0.0" prefHeight="100.0" prefWidth="160.0">
@@ -95,8 +107,8 @@
                               <FlowPane nodeOrientation="RIGHT_TO_LEFT" prefHeight="29.0" prefWidth="957.0" BorderPane.alignment="CENTER">
                                  <children>
                                     <Label text="   " />
-                                    <Button fx:id="searchbtn" mnemonicParsing="false" text="Search" />
-                                    <TextField fx:id="searchtxt" />
+                                    <Button fx:id="searchresetbtn" mnemonicParsing="false" text="Reset" />
+                                    <TextField fx:id="searchtxt" nodeOrientation="LEFT_TO_RIGHT" prefWidth="320.0" promptText="filter scripts (name, category, description)" />
                                  </children>
                               </FlowPane>
                            </top>

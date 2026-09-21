@@ -26,7 +26,7 @@ export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 export IM_SEQKIT="quay.io/biocontainers/seqkit:0.12.1--0"
 export IM_R="c2997108/ubuntu20:R-2_gplots_ggExtra"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -272,19 +272,25 @@ fi
 
 EOF
 
-(for i in `find $input_1/|egrep "[.]f(ast|)q(|[.]gz)$"||true`; do
- echo $ENV_BLAST "bash run-blast.sh $i $primers $list $opt_f $opt_i $opt_b $opt_a $opt_j"
+fqall=()
+while IFS= read -r pp_line; do fqall+=("$pp_line"); done < <(find "$input_1"/|egrep "[.]f(ast|)q(|[.]gz)$"||true)
+(for i in ${fqall[@]+"${fqall[@]}"}; do
+ echo "$ENV_BLAST bash run-blast.sh $(pp_shell_quote "$i") $(pp_shell_quote "$primers") $(pp_shell_quote "$list") $opt_f $opt_i $opt_b $opt_a $opt_j"
 done) |DOPARALLELONE
 
 WAITPARALLEL
 
 
 #サンプルごとに分割したFASTQファイル出力
-(for i in `find $input_1/|egrep "[.]f(ast|)q$"||true`; do
- cat $i
+fqplain=()
+while IFS= read -r pp_line; do fqplain+=("$pp_line"); done < <(find "$input_1"/|egrep "[.]f(ast|)q$"||true)
+fqgz=()
+while IFS= read -r pp_line; do fqgz+=("$pp_line"); done < <(find "$input_1"/|egrep "[.]f(ast|)q[.]gz$"||true)
+(for i in ${fqplain[@]+"${fqplain[@]}"}; do
+ cat "$i"
 done
-for i in `find $input_1/|egrep "[.]f(ast|)q[.]gz$"||true`; do
- zcat $i
+for i in ${fqgz[@]+"${fqgz[@]}"}; do
+ zcat "$i"
 done)|awk -F'\t' '
  function rev(x,  i, str){for(i=length(x);i>0;i--){str=str""substr(x,i,1)}; return str}
  function comp(x){if(x=="A"){return "T"}else if(x=="C"){return "G"}else if(x=="G"){return "C"}else if(x=="T"){return "A"}
@@ -340,8 +346,8 @@ a=read.table("'"$i".stats'", sep="\t", header = T)
 CairoPNG("'"$i"'.png",width=1500,height = 1500)
 g=ggplot(a, aes(x = length, y = mean_qscore))+stat_binhex(bins=300)+scale_x_log10()+scale_fill_gradient(trans = "log")+geom_point(shape=19 ,alpha = 0,size=0.1)+theme(legend.position = "left")
 ggMarginal(g, type = "density", margins = "both", size = 4)
-dev.off()' > $i.R
-  echo "$ENV_R Rscript $i.R"
+dev.off()' > "$i.R"
+  echo "$ENV_R Rscript $(pp_shell_quote "$i.R")"
  done | DOPARALLELONE
  WAITPARALLEL
 fi

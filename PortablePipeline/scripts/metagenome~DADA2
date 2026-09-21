@@ -17,61 +17,65 @@ runcmd="$0 -c #opt_c# -m #opt_m# -q #opt_q# -r #opt_r# #input_1#"
 export IM_DADA2="c2997108/biocontainers-dada2:1.22.0-phyloseq"
 export IM_EXCEL="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_3-kegg_2"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
-r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
+r1gz=()
+while IFS= read -r pp_line; do r1gz+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true)
 
-if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+if [ ${#r1[@]} = 0 -a ${#r1gz[@]} = 0 ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
 
 
-r2=$(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+r2=()
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  r2+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
-r2gz=$(for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+done
+r2gz=()
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  r2gz+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2gz+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
+done
 
 echo "#Check paired-end"
-ls $r2 $r2gz > /dev/null
+ls -- ${r2[@]+"${r2[@]}"} ${r2gz[@]+"${r2gz[@]}"} > /dev/null
 
 mkdir -p dada_input_fastq
-for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  outbase=$(basename `echo $i|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$//'`)
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  outbase="$(basename "$(echo "$i"|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$//')")"
+  j=`echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
  else
-  outbase=$(basename `echo $i|sed 's/_R1.*//'`)
-  j=`echo $i|sed 's/_R1/_R2/'`
+  outbase="$(basename "$(echo "$i"|sed 's/_R1.*//')")"
+  j=`echo "$i"|sed 's/_R1/_R2/'`
  fi
  i2=${outbase}_1.fastq
  j2=${outbase}_2.fastq
- ln -s `readlink -f "$i"` dada_input_fastq/$i2
- ln -s `readlink -f "$j"` dada_input_fastq/$j2
+ ln -s "$(readlink -f "$i")" "dada_input_fastq/$i2"
+ ln -s "$(readlink -f "$j")" "dada_input_fastq/$j2"
 done
-for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
-  outbase=$(basename `echo $i|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$//'`)
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  outbase="$(basename "$(echo "$i"|sed 's/_1[.]f\(ast\|\)q\(\|[.]gz\)$//')")"
+  j=`echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
  else
-  outbase=$(basename `echo $i|sed 's/_R1.*//'`)
-  j=`echo $i|sed 's/_R1/_R2/'`
+  outbase="$(basename "$(echo "$i"|sed 's/_R1.*//')")"
+  j=`echo "$i"|sed 's/_R1/_R2/'`
  fi
  i2=${outbase}_1.fastq.gz
  j2=${outbase}_2.fastq.gz
- ln -s `readlink -f "$i"` dada_input_fastq/$i2
- ln -s `readlink -f "$j"` dada_input_fastq/$j2
+ ln -s "$(readlink -f "$i")" "dada_input_fastq/$i2"
+ ln -s "$(readlink -f "$j")" "dada_input_fastq/$j2"
 done
 
 

@@ -19,28 +19,29 @@ export IM_R="c2997108/ppmultiarch:R_3.6.3"
 export IM_SEQKIT="c2997108/biocontainers:seqkit_2.1.0"
 export IM_PLOT="c2997108/ppmultiarch:yoshitake_matplotlib"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eu
 set -o pipefail
 
-cd $input_1
+cd "$input_1"
 
-r1=`ls |egrep "[.]f(ast|)(a|q)([.]gz|)$" || echo ""`
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(ls |egrep "[.]f(ast|)(a|q)([.]gz|)$" || true)
 
-if [ "$r1" = "" ]; then echo Place fasta/fastq or fasta.gz/fastq.gz files in this folder; exit; fi
+if [ ${#r1[@]} = 0 ]; then echo Place fasta/fastq or fasta.gz/fastq.gz files in this folder; exit; fi
 
 set -x
 cmd="jellyfish count -o output -t $N_CPU $opt_j"
-for i in $r1; do
- if [ `echo $i|grep gz$|wc -l` = 1 ];then
-  cmd="$cmd "'<(zcat '$i')'
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|grep gz$|wc -l` = 1 ];then
+  cmd="$cmd <(zcat $(pp_shell_quote "$i"))"
  else
-  cmd="$cmd "$i
+  cmd="$cmd $(pp_shell_quote "$i")"
  fi
 done
 echo "$cmd"
-eval "DO_JELLYFISH bash -c '$cmd'"
+DO_JELLYFISH bash -c "$cmd"
 #if [ -e output0 ]; then
 # DO_JELLYFISH jellyfish merge -o output output[0-9]*
 #fi
@@ -67,8 +68,8 @@ dev.off()
 
 DO_PLOT plot_read_bases_hist.py output.txt
 
-DO_SEQKIT seqkit stats $r1 | tee reads.stats
-awk 'NR>1{gsub(/,/,"",$4); reads+=$4; gsub(/,/,"",$5); sum+=$5} END{print reads"\t"sum"\t"sum/reads}' reads.stats > reads.stats.txt
+DO_SEQKIT seqkit stats ${r1[@]+"${r1[@]}"} | tee reads.stats
+awk 'NR>1{gsub(/,/,"",$(NF-4)); reads+=$(NF-4); gsub(/,/,"",$(NF-3)); sum+=$(NF-3)} END{print reads"\t"sum"\t"sum/reads}' reads.stats > reads.stats.txt
 
 awk '{
   #通常はfreq=1の時がノイズにより最大値でいったん減少したのちにkmerピークが出てくる

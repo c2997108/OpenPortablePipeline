@@ -21,7 +21,7 @@ runcmd="$0 -c #opt_c# -m #opt_m# -i #opt_i# -j #opt_j# -o #opt_o# -b #opt_b# #in
 export IM_SAMTOOLS="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
 export IM_BBMAP="quay.io/biocontainers/bbmap:38.96--h5c4e2a8_1"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -63,7 +63,7 @@ out_files=""; for i in $opt_o; do out_files+=" ${i}=${i}.tsv"; done
 mapped_only_bam="$opt_b"
 
 #create index file
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 ref="$input_2"
 JAVAMEM=$((${N_MEM_M} - 2000))
 DO_BBMAP bbmap.sh -Xmx${JAVAMEM}M threads=$N_CPU ${indexing_param} ref="${ref}"
@@ -99,7 +99,7 @@ EOF
 pppair1=()
 pppair2=()
 ppsingle=()
-while IFS= read i; do
+while IFS= read -r i; do
  if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
   temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
  else
@@ -113,9 +113,9 @@ while IFS= read i; do
  fi
 done < <(find "$input_1/" |egrep '(_R1.*|_1)[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
 
-while IFS= read i; do
+while IFS= read -r i; do
  ppinputcheck=0
- for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+ for j in ${pppair1[@]+"${pppair1[@]}"} ${pppair2[@]+"${pppair2[@]}"} ${ppsingle[@]+"${ppsingle[@]}"}; do
   if [ "$j" = "$i" ]; then
    ppinputcheck=1
    break
@@ -130,17 +130,17 @@ mkdir -p output
 
 (
 #for single-end reads
-for i in ${ppsingle[@]:-}; do
- prefix=output/`basename "$i"`
- local_out_files="${out_files//=/=${prefix}_}"
- echo "$ENV_BBMAP bbmap.sh -Xmx${JAVAMEM}M ref=\"$ref\" threads=\"$threads1\" in=\"$i\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
+for i in ${ppsingle[@]+"${ppsingle[@]}"}; do
+ prefix="output/$(basename "$i")"
+ local_out_files=""; for ppo in $out_files; do local_out_files="$local_out_files $(pp_shell_quote "${ppo/=/=${prefix}_}")"; done
+ echo "$ENV_BBMAP bbmap.sh -Xmx${JAVAMEM}M $(pp_shell_quote "ref=$ref") threads=$threads1 $(pp_shell_quote "in=$i") $(pp_shell_quote "out=$prefix.temp.bam") ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh $(pp_shell_quote "$prefix.temp.bam") $threads1 $(pp_shell_quote "$mapped_only_bam") $N_MEM_M1"
 done
 
 #for paired-end reads
 for ((i = 0; i < ${#pppair1[@]}; i++)) {
- prefix=output/`basename "${pppair1[i]}"`
- local_out_files="${out_files//=/=${prefix}_}"
- echo "$ENV_BBMAP bbmap.sh -Xmx${JAVAMEM}M ref=\"$ref\" threads=\"$threads1\" in1=\"${pppair1[i]}\" in2=\"${pppair2[i]}\" out=\"$prefix\".temp.bam ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh \"$prefix\".temp.bam \"$threads1\" \"$mapped_only_bam\" \"$N_MEM_M1\""
+ prefix="output/$(basename "${pppair1[i]}")"
+ local_out_files=""; for ppo in $out_files; do local_out_files="$local_out_files $(pp_shell_quote "${ppo/=/=${prefix}_}")"; done
+ echo "$ENV_BBMAP bbmap.sh -Xmx${JAVAMEM}M $(pp_shell_quote "ref=$ref") threads=$threads1 $(pp_shell_quote "in1=${pppair1[i]}") $(pp_shell_quote "in2=${pppair2[i]}") $(pp_shell_quote "out=$prefix.temp.bam") ${mapping_param} ${local_out_files}; $ENV_SAMTOOLS bash run-samtools.sh $(pp_shell_quote "$prefix.temp.bam") $threads1 $(pp_shell_quote "$mapped_only_bam") $N_MEM_M1"
 }
 ) | DOPARALLEL
 

@@ -40,11 +40,54 @@ begintrap()
     trap 'onerror $LINENO "$@"' ERR
 }
 
+# シェルで再度解釈される場所（xargs経由のbash -c、eval、qsubのジョブスクリプト、aliasの中身）に
+# 埋め込んでも壊れないように文字列をクォートする。パスにスペースや非ASCII文字、「'」が入っていてもよい。
+pp_shell_quote()
+{
+ local s="$1" out="" c i
+ for ((i=0; i<${#s}; i++)); do
+  c="${s:i:1}"
+  if [ "$c" = "'" ]; then out="$out'\\''"; else out="$out$c"; fi
+ done
+ printf "'%s'" "$out"
+}
+
+# ファイル名をツールの識別子（サンプル名、リードグループ、FASTAヘッダー、表の列名）にするときに使う。
+# 空白、クォート、シェルの特殊文字、非ASCII文字を _ に畳む。英数字と . _ - / はそのまま残すので、
+# 従来どおりの英数字だけの名前では何も変わらない。パスとして使う値には使わず（クォートすればよい）、
+# 識別子を作る時点で一度だけ通すこと。
+pp_safe_name()
+{
+ printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._/-' '_'
+}
+
+# DOPARALLELONE_TOLERANT がxargs経由で呼ぶ。コマンドを実行し、失敗しても警告をログに出すだけで終了コードは0にする
+# （最後の統計解析のように、サンプル数が1つ・DEGが無いなどの理由で失敗しても、パイプライン全体は
+# エラーにしたくない段階で使う）。xargsが起動するbashから見えるようにエクスポートしておく。
+pp_run_tolerant()
+{
+ if eval "$1"; then
+  :
+ else
+  echo "WARNING: this command failed (exit $?) but the pipeline continues: $1" >&2
+ fi
+ return 0
+}
+export -f pp_run_tolerant
+
 
 container_setup()
 {
+# ENV_XXXのコマンド文字列の中に入れるパスは、空白も特殊文字も含まないエクスポート変数への参照として書く。
+# この文字列は各スクリプトがechoで出力し、後からDOPARALLEL*のbash -cやSGEノード上のevalで解釈し直される。
+# 多くのスクリプトはこれをクォートせずにechoするため、パスをそのまま埋め込むと連続したスペースが1つに
+# 潰れ、glob文字が展開され、awk -v経由ではバックスラッシュが消えてしまう。変数への参照ならこれらを
+# すべてすり抜け、最後に解釈し直されるときに初めて展開される。SGEの実行ノードへは pp-env.sh
+# （parallel_setup参照）で値を渡す。
+PP_WORKDIR="$workdir"
+export PP_WORKDIR
 if [ "$DIR_IMG" != "" ]; then
- DIR_IMG=`readlink -f $DIR_IMG || echo $DIR_IMG`
+ DIR_IMG="$(readlink -f "$DIR_IMG" 2>/dev/null || echo "$DIR_IMG")"
 else
  DIR_IMG="$HOME"/img
 fi
@@ -59,17 +102,50 @@ fi
 #Macの場合はdocker desktopのみを想定し、起動しておく
 if [ `uname -s` = "Darwin" ]; then docker desktop start || (echo Please install Docker Desktop; exit 1); fi
 
+# 作業ディレクトリに日本語などの非ASCII文字が入っていると、UTF-8ロケールを持たないコンテナイメージの中の
+# Java製ツールが動かない（JVMがそのカレントディレクトリを表現できず、例えばFastQCは起動に失敗する）。
+# またスペースやクォートが入っていると、カレントディレクトリからクォートなしでシェルコマンドを組み立てる
+# ツール（BRAKER、PASAなど）が壊れる。そこで作業ディレクトリに[A-Za-z0-9/._-]以外の文字が含まれる場合は、
+# 同じディレクトリをASCIIだけの別名にも重ねてbindマウントし、そちらをコンテナの作業ディレクトリにする。
+# 相対パスはそのまま使え、元の絶対パスもマウントされたままなので、普通の作業ディレクトリのときは
+# 今までとまったく同じ動作になる。
+# コンテナ内のツールに作業ディレクトリの絶対パスを渡す必要があるスクリプトは、"$PWD"ではなく
+# "$(pp_container_workdir)"を使うこと。
+PP_WORK_ALIAS=""
+if printf '%s' "$workdir" | LC_ALL=C grep -q '[^A-Za-z0-9/._-]'; then PP_WORK_ALIAS="/pp_work"; fi
+pp_container_workdir(){
+ # カレントディレクトリから起動したコンテナの中で使う作業ディレクトリ（DO_*関数用）
+ if [ -n "$PP_WORK_ALIAS" ]; then
+  case "$PWD" in
+   "$workdir"|"$workdir"/*) printf '%s%s' "$PP_WORK_ALIAS" "${PWD#"$workdir"}" ;;
+   *) printf '%s' "$PWD" ;;
+  esac
+ else
+  printf '%s' "$PWD"
+ fi
+}
+if [ -n "$PP_WORK_ALIAS" ]; then
+ # 解釈し直されるENV_*文字列用のテキスト。パスはすべてエクスポート変数への参照で、
+ # その行が解釈し直されるときに初めて展開される（container_setup冒頭のコメント参照）
+ PP_DOCKER_WD_TEXT='-v "$PWD":"$PWD" -v "$PP_WORKDIR":'"$PP_WORK_ALIAS"' -w "'"$PP_WORK_ALIAS"'${PWD#"$PP_WORKDIR"}"'
+ PP_SING_WD_TEXT='-B "$PWD":"$PWD" -B "$PP_WORKDIR":'"$PP_WORK_ALIAS"' --pwd "'"$PP_WORK_ALIAS"'${PWD#"$PP_WORKDIR"}"'
+else
+ PP_DOCKER_WD_TEXT='-v "$PWD":"$PWD" -w "$PWD"'
+ PP_SING_WD_TEXT='-B "$PWD":"$PWD" --pwd "$PWD"'
+fi
+
 #本当はPWDをrealpathに変換してから-v -wをしたほうがよいかも
 #CON_DOCKER='docker run -v $PWD:$PWD -w $PWD -u root -i --rm '
 #CON_DOCKERはENV_XXXのほうで使用され、FUNC_RUN_DOCKERのほうはDO_XXXのほうで使用される
-CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-docker-list; docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
+CON_DOCKER='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> "${PP_WORKDIR:?}"/pp-docker-list; docker run --name ${PPDOCNAME} '"$PP_DOCKER_WD_TEXT"' '"$PPDOCBINDS"' -u '`id -u`':'`id -g`' -i --rm '
 function FUNC_RUN_DOCKER () {
  PP_RUN_IMAGE="$1"
  shift
  PP_RUN_DOCKER_CMD=("${@}")
  PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM
  echo $PPDOCNAME >> "$workdir"/pp-docker-list
- docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
+ eval "set -- $PPDOCBINDS"
+ docker run --name ${PPDOCNAME} -v "$PWD":"$PWD" ${PP_WORK_ALIAS:+-v "$workdir:$PP_WORK_ALIAS"} -w "$(pp_container_workdir)" "$@" -u `id -u`:`id -g` -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
 }
 function FUNC_RUN_DOCKER_GPU () {
  PP_RUN_IMAGE="$1"
@@ -77,9 +153,10 @@ function FUNC_RUN_DOCKER_GPU () {
  PP_RUN_DOCKER_CMD=("${@}")
  PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM
  echo $PPDOCNAME >> "$workdir"/pp-docker-list
- docker run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u `id -u`:`id -g` -i --rm --gpus all "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
+ eval "set -- $PPDOCBINDS"
+ docker run --name ${PPDOCNAME} -v "$PWD":"$PWD" ${PP_WORK_ALIAS:+-v "$workdir:$PP_WORK_ALIAS"} -w "$(pp_container_workdir)" "$@" -u `id -u`:`id -g` -i --rm --gpus all "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
 }
-CON_PODMAN='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> '"$workdir"'/pp-podman-list; podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD '"$PPDOCBINDS"' -u root -i --rm '
+CON_PODMAN='PPDOCNAME=pp`date +%Y%m%d_%H%M%S_%3N`_$RANDOM; echo $PPDOCNAME >> "${PP_WORKDIR:?}"/pp-podman-list; podman run --name ${PPDOCNAME} '"$PP_DOCKER_WD_TEXT"' '"$PPDOCBINDS"' -u root -i --rm '
 function FUNC_RUN_PODMAN () {
  PP_RUN_IMAGE="$1"
  shift
@@ -88,26 +165,26 @@ function FUNC_RUN_PODMAN () {
  echo $PPDOCNAME >> "$workdir"/pp-podman-list
  #PODMANのほうは、dockerhubからのイメージにdocker.io/とつける必要がある
  PP_RUN_IMAGE=`echo "$PP_RUN_IMAGE"|awk -F'/' '{if(NF==2){$0="docker.io/"$0}; print $0}'`
- podman run --name ${PPDOCNAME} -v $PWD:$PWD -w $PWD $PPDOCBINDS -u root -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
+ eval "set -- $PPDOCBINDS"
+ podman run --name ${PPDOCNAME} -v "$PWD":"$PWD" ${PP_WORK_ALIAS:+-v "$workdir:$PP_WORK_ALIAS"} -w "$(pp_container_workdir)" "$@" -u root -i --rm "$PP_RUN_IMAGE" "${PP_RUN_DOCKER_CMD[@]}"
 }
-CON_SING='singularity exec --no-home -B $PWD:$PWD --pwd $PWD '"$PPSINGBINDS "
-CON_SING_GPU='singularity exec --no-home -B $PWD:$PWD --pwd $PWD '"$PPSINGBINDS --nv "
+CON_SING='singularity exec --no-home '"$PP_SING_WD_TEXT"' '"$PPSINGBINDS "
+CON_SING_GPU='singularity exec --no-home '"$PP_SING_WD_TEXT"' '"$PPSINGBINDS --nv "
 CHECK_SING="singularity"
-CON_APPT='apptainer exec --no-home -B $PWD:$PWD --pwd $PWD '"$PPSINGBINDS "
-CON_APPT_GPU='apptainer exec --no-home -B $PWD:$PWD --pwd $PWD '"$PPSINGBINDS --nv "
+CON_APPT='apptainer exec --no-home '"$PP_SING_WD_TEXT"' '"$PPSINGBINDS "
+CON_APPT_GPU='apptainer exec --no-home '"$PP_SING_WD_TEXT"' '"$PPSINGBINDS --nv "
 CHECK_APPT="apptainer"
 
 mkdir -p "$DIR_IMG"
-DIR_IMG="`readlink -f "$DIR_IMG" || echo $DIR_IMG`"
+DIR_IMG="$(readlink -f "$DIR_IMG" 2>/dev/null || echo "$DIR_IMG")"
+PP_DIR_IMG="$DIR_IMG"
+export PP_DIR_IMG
 mkdir -p "$DIR_WORK"
-DIR_WORK="`readlink -f "$DIR_WORK" || echo $DIR_WORK`"
+DIR_WORK="$(readlink -f "$DIR_WORK" 2>/dev/null || echo "$DIR_WORK")"
 DIR_CUR="$PWD"
-if [ `echo "$DIR_IMG"|grep " "|wc -l` = 1 -o `echo "$DIR_WORK"|grep " "|wc -l` = 1 -o `echo "$DIR_CUR"|grep " "|wc -l` = 1 ]; then
- echo Current, Work and Image directory should not contain space character in absolute path;
- echo 1 > "$workdir"/fin_status;
- exit 1;
-fi
-DIR_SRC="$(dirname "`readlink -f "$0" || echo "$0"`")"
+# DIR_IMG / DIR_WORK / DIR_CUR にスペースや非ASCII文字が入っていてもよい。以下ではすべてのパスを
+# クォートし、解釈し直されるコマンド文字列にはエクスポート変数への参照を埋め込んでいる。
+DIR_SRC="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 
 cd "$DIR_WORK";
 #SCRIPT0=""
@@ -134,7 +211,7 @@ PP_SCRIPT_SEARCH(){
             cat "$SCRIPT1"|grep PP_DO_CHILD|sed 's/.*PP_DO_CHILD//; s/^ *//'|cut -f 1 -d ' ';
             cat "$SCRIPT1"|grep PP_ENV_CHILD|sed 's/.*PP_ENV_CHILD//; s/^ *//'|cut -f 1 -d ' ' )|sort|uniq )
 }
-PP_SCRIPT_SEARCH `basename "$0"` #$0には元のスクリプトファイルの名前が入っている
+PP_SCRIPT_SEARCH "$(basename "$0")" #$0には元のスクリプトファイルの名前が入っている
 
 IMS=$((for line in "${PP_SCRIPTS[@]}"; do
     cat "$DIR_SRC/$line"
@@ -189,8 +266,8 @@ else
 #   (($CHECK_SING remote use SylabsCloud || ($CHECK_SING remote add --no-login SylabsCloud cloud.sycloud.io && $CHECK_SING remote use SylabsCloud)) && $CHECK_SING run library://godlovedc/funny/lolcow) )
  if [ $? = 0 ];then
   echo using singularity;
-  CON="$CON_SING""$DIR_IMG/";
-  CON_GPU="$CON_SING_GPU""$DIR_IMG/";
+  CON="$CON_SING"'"$PP_DIR_IMG"/';
+  CON_GPU="$CON_SING_GPU"'"$PP_DIR_IMG"/';
   for i in $IMS; do
    if [ ! -e "$DIR_IMG"/$i ]; then
     set -ex
@@ -213,8 +290,8 @@ else
    (($CHECK_APPT remote use SylabsCloud || ($CHECK_APPT remote add --no-login SylabsCloud cloud.sycloud.io && $CHECK_APPT remote use SylabsCloud)) && $CHECK_APPT run library://godlovedc/funny/lolcow) )
   if [ $? = 0 ];then
    echo using apptainer;
-   CON="$CON_APPT""$DIR_IMG/";
-   CON_GPU="$CON_APPT_GPU""$DIR_IMG/";
+   CON="$CON_APPT"'"$PP_DIR_IMG"/';
+   CON_GPU="$CON_APPT_GPU"'"$PP_DIR_IMG"/';
    for i in $IMS; do
     if [ ! -e "$DIR_IMG"/$i ]; then
      set -ex
@@ -246,20 +323,20 @@ else
       shift
      done
      set -x
-     mkdir -p "$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"`
+     mkdir -p "$DIR_IMG/sandbox/$imagename/$(dirname "$PWD")"
      #--copy-linksにしておかないと、DIR_IMGとPWDのディスクが異なる場合に、symlinkがあるとなぜか？戻りのrsyncでrsync: failed to hard-link ... : Invalid cross-device link (18)となる
      #--link-destを使うと＞で保存したファイルが初期化されてしまう。本来は--link-dest=../$(realpath --relative-to="$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"` `dirname "$PWD"`)を使いたいのだけど。
-     rsync -a --copy-links --modify-window=-1 --update --exclude="$DIR_IMG" "$PWD" "$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"`
+     rsync -a --copy-links --modify-window=-1 --update --exclude="$DIR_IMG" "$PWD" "$DIR_IMG/sandbox/$imagename/$(dirname "$PWD")"
      set -e
-     trap 'echo Line: $LINENO "$@"; rsync -a --copy-links --modify-window=-1 --update "$DIR_IMG/sandbox/$imagename"/"$PWD" `dirname "$PWD"`' ERR
+     trap 'echo Line: $LINENO "$@"; rsync -a --copy-links --modify-window=-1 --update "$DIR_IMG/sandbox/$imagename/$PWD" "$(dirname "$PWD")"' ERR
      #unshare --user --map-root-user --mount-proc --pid --fork /sbin/chroot "$DIR_IMG/sandbox/$imagename" /bin/bash -c "mkdir -p /proc /dev/pts; mount -t proc proc /proc; mount -t devpts devpts /dev/pts; cd \"$PWD\"; $ppcmd"
      chroot "$DIR_IMG/sandbox/$imagename" /bin/bash -c "export LD_LIBRARY_PATH=/usr/local/lib; cd \"$PWD\"; $ppcmd"
      #--link-destを使うと＞で保存したファイルが初期化されてしまう。本来は--link-dest=$(realpath --relative-to=`dirname "$PWD"` "$DIR_IMG/sandbox/$imagename"/`dirname "$PWD"`)を使いたいのだけど。
      set +e
-     rsync -a --copy-links --modify-window=-1 --update "$DIR_IMG/sandbox/$imagename"/"$PWD" `dirname "$PWD"`
+     rsync -a --copy-links --modify-window=-1 --update "$DIR_IMG/sandbox/$imagename/$PWD" "$(dirname "$PWD")"
 EOF
 
-    CON="bash $PWD/run-chroot.sh $DIR_IMG/ ";
+    CON='bash "$PP_WORKDIR"/run-chroot.sh "$PP_DIR_IMG"/ ';
     for i in $IMS; do
      if [ ! -e "$DIR_IMG"/sandbox/$i ]; then
       set -ex
@@ -309,14 +386,14 @@ fi
 WAITPARALLEL0(){
    set +x;
    while : ; do
-    if [ -e $workdir/fin ]; then
-     rm -f $workdir/fin; break;
+    if [ -e "$workdir"/fin ]; then
+     rm -f "$workdir"/fin; break;
     fi;
     sleep 1;
    done;
-   lastjob=`awk '$0~"^Your job "{id=$3} END{print id}' $workdir/qsub.log`;
+   lastjob=`awk '$0~"^Your job "{id=$3} END{print id}' "$workdir"/qsub.log`;
    mkdir -p pp_log_$lastjob;
-   awk -v prefix=`echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` '$0~"^Your job "{print prefix".o"$3}' $workdir/qsub.log|
+   awk -v prefix="$PP_QSUB_JOB_NAME" '$0~"^Your job "{print prefix".o"$3}' "$workdir"/qsub.log|
     while read i; do
      if [ ! -e $i -o "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then
       echo Failed: $i;
@@ -325,7 +402,7 @@ WAITPARALLEL0(){
       mv $i pp_log_$lastjob;
      fi
     done > qsub.log2;
-   mv $workdir/qsub.log $workdir/qsub.history
+   mv "$workdir"/qsub.log "$workdir"/qsub.history
    set -x;
 }
 WAITPARALLEL(){
@@ -333,13 +410,13 @@ WAITPARALLEL(){
    if [ "`cat qsub.log2`" != "" ]; then
     #失敗したジョブの2回目のqsub実行
     cat qsub.log2|sed 's/^Failed: //'|while read i; do
-     j=`awk -v jobid=$(echo $i|sed 's/.*o//') 'flag==1{flag=2; print $0} $0~"^Your job "&&$3==jobid{flag=1}' $workdir/qsub.history` #j=qsub.sh or qsubone.sh
-     k="`awk -v jobid=$(echo $i|sed 's/.*o//') 'flag==2{flag=3; print $0} flag==1{flag=2} $0~\"^Your job \"&&$3==jobid{flag=1}' $workdir/qsub.history`" #k=cmd #「"」で囲まないと展開される
-     qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/$j "$k"| grep submitted >> $workdir/qsub.log
-     echo "$j" >> $workdir/qsub.log
-     echo "$k" >> $workdir/qsub.log
+     j=`awk -v jobid=$(echo $i|sed 's/.*o//') 'flag==1{flag=2; print $0} $0~"^Your job "&&$3==jobid{flag=1}' "$workdir"/qsub.history` #j=qsub.sh or qsubone.sh
+     k="$(awk -v jobid=$(echo $i|sed 's/.*o//') 'flag==2{flag=3; print $0} flag==1{flag=2} $0~"^Your job "&&$3==jobid{flag=1}' "$workdir"/qsub.history)" #k=cmd #「"」で囲まないと展開される
+     qsub -N "$PP_QSUB_JOB_NAME" -j y "$workdir"/"$j" "$k"| grep submitted >> "$workdir"/qsub.log
+     echo "$j" >> "$workdir"/qsub.log
+     echo "$k" >> "$workdir"/qsub.log
     done
-    qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch "$workdir"/fin
+    qsub -hold_jid "$PP_QSUB_JOB_NAME" "$workdir"/qsubone.sh touch '"$PP_WORKDIR"/fin'
     mv qsub.log2 qsub.failed.1.log
 
     WAITPARALLEL0
@@ -347,12 +424,21 @@ WAITPARALLEL(){
      #2回実行してもダメならエラー終了
      cat qsub.log2;
      mv qsub.log2 qsub.failed.2.log
-     echo 1 > $workdir/fin_status;
-     exit 1;
+     if [ "${PP_TOLERATE_FAILURE:-}" = 1 ]; then
+      #失敗を許容する段階（WAITPARALLEL_TOLERANT）では、警告を出すだけで続行する
+      echo "WARNING: some parallel jobs failed but this stage tolerates failures (see qsub.failed.2.log). The pipeline continues."
+     else
+      echo 1 > "$workdir"/fin_status;
+      exit 1;
+     fi
     fi
    fi;
 }
 parallel_setup(){
+ # macOS標準のxargsは-Sを付けないと-Iの置換文字列が255バイトに制限される。自前でxargsを呼ぶ
+ # スクリプト（eDNA~HaCeD-Seqなど）も、下のDOPARALLEL*と同じ理由で${PP_XARGS_S:-}を使う。
+ if [ "$(uname -s)" = "Darwin" ] && [ "$(which xargs)" = "/usr/bin/xargs" ]; then PP_XARGS_S="-S 100000000"; else PP_XARGS_S=""; fi
+ export PP_XARGS_S
  #RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\n#$ -l mem_req=N_MEM_GG,s_vmem=N_MEM_GG\nsource ~/.bashrc\necho "$*"\neval "$*"'`
  #RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\nsource ~/.bashrc\necho "$*"\neval "$*"'`
  #if [ -v RUNPARALLEL ]; then
@@ -364,11 +450,11 @@ parallel_setup(){
   #pp -gで使用されるモード
   RUNPARALLEL=`echo -e '#!/bin/sh\n#$ -S /bin/bash\n#$ -cwd\n#$ -pe def_slot N_CPU\n#$ -l mem_req=N_MEM_GG\necho NSLOTS: $NSLOTS SGE_JOB_SPOOL_DIR: $SGE_JOB_SPOOL_DIR\necho CMD: "$@"\nsource ~/.bashrc\neval "$@"\necho CMD_FIN_STATUS: $?'`
  fi
- if [ "${RUNONSINGLENODE:-}" = "" ] && ( [ "${RUNPARALLEL:-}" != "" ] || [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ] || [ "$N_SCRIPT" != 1 -a -e "$workdir"/qsubone.sh ] ); then
+ if [ "${RUNONSINGLENODE:-}" = "" ] && ( [ "${RUNPARALLEL:-}" != "" ] || [ "`head -n 2 "$workdir"/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ] || [ "$N_SCRIPT" != 1 -a -e "$workdir"/qsubone.sh ] ); then
   #ddbjではなく and (pp -gのオプションがついている場合 or GUIからssh SGE, shiroオプションで投げられた場合 or 子スクリプトでqsubone.shが作られている場合)
-  if [ "${RUNPARALLEL:-}" != "" ] || [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ]; then
+  if [ "${RUNPARALLEL:-}" != "" ] || [ "`head -n 2 "$workdir"/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ]; then
    #qsubone.shが出来ている子スクリプト以外の場合
-   if [ "`head -n 2 $workdir/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
+   if [ "`head -n 2 "$workdir"/wrapper.sh 2> /dev/null|tail -n 1|awk '{print substr($0,1,5)}'`" = "#$ -S" ];then
     #GUIからssh SGE, ddbj, shiroオプションで投げられた場合
     grep "^#" "$workdir"/wrapper.sh > "$workdir"/qsub.sh
     grep "^#" "$workdir"/wrapper.sh|grep -v def_slot > "$workdir"/qsubone.sh
@@ -380,6 +466,24 @@ parallel_setup(){
     echo "$RUNPARALLEL"|sed 's/N_CPU/'$N_CPU'/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > "$workdir"/qsub.sh
     echo "$RUNPARALLEL"|sed 's/N_CPU/1/g'|sed 's/N_MEM_G/'`awk -v a=$N_MEM -v b=$N_CPU 'BEGIN{print a/1024/1024/b}'`'/g' > "$workdir"/qsubone.sh
    fi
+   # qsubで投げるコマンド行はエクスポートしたPP_*のパス変数を参照している（container_setup参照）。
+   # SGEの実行ノードはこのシェルの環境を引き継がないので、値をpp-env.shに書き出し、ジョブスクリプトの
+   # eval "$@" の前でそれを読み込ませる。
+   {
+    printf 'export PP_WORKDIR=%s\n' "$(pp_shell_quote "$PP_WORKDIR")"
+    printf 'export PP_DIR_IMG=%s\n' "$(pp_shell_quote "${PP_DIR_IMG:-}")"
+    pp_env_n=0
+    while [ "$pp_env_n" -lt "${PP_BIND_COUNT:-0}" ]; do
+     pp_env_n=`expr $pp_env_n + 1`
+     eval "printf 'export PP_BIND_$pp_env_n=%s\\n' \"\$(pp_shell_quote \"\$PP_BIND_$pp_env_n\")\""
+    done
+   } > "$workdir"/pp-env.sh
+   printf '. %s\n' "$(pp_shell_quote "$workdir/pp-env.sh")" > "$workdir"/pp-env-line.txt
+   for pp_qsub_file in "$workdir"/qsub.sh "$workdir"/qsubone.sh; do
+    awk 'FILENAME==ARGV[1]{pp_line=$0; next} $0=="eval \"$@\""{print pp_line} {print}' \
+     "$workdir"/pp-env-line.txt "$pp_qsub_file" > "$pp_qsub_file".tmp && mv "$pp_qsub_file".tmp "$pp_qsub_file"
+   done
+   rm -f "$workdir"/pp-env-line.txt
    chmod 755 "$workdir"/qsub.sh "$workdir"/qsubone.sh
   fi
   if [ "$N_SCRIPT" = 1 ]; then
@@ -390,25 +494,33 @@ parallel_setup(){
 
   cat << 'EOF' > "$workdir"/run-pp-qsubone.sh
 #!/bin/bash
-qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh "$@"
+qsub -N "$PP_QSUB_JOB_NAME" -j y "$workdir"/qsubone.sh "$@"
 while [ $? != 0 ]; do
  sleep 1
- qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsubone.sh "$@"
+ qsub -N "$PP_QSUB_JOB_NAME" -j y "$workdir"/qsubone.sh "$@"
 done
 EOF
   cat << 'EOF' > "$workdir"/run-pp-qsub.sh
 #!/bin/bash
-qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh "$@"
+qsub -N "$PP_QSUB_JOB_NAME" -j y "$workdir"/qsub.sh "$@"
 while [ $? != 0 ]; do
  sleep 1
- qsub -N `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` -j y $workdir/qsub.sh "$@"
+ qsub -N "$PP_QSUB_JOB_NAME" -j y "$workdir"/qsub.sh "$@"
 done
 EOF
   export workdir
+  # 作業ディレクトリから作るSGEのジョブ名（[A-Za-z0-9_]以外はすべて_になるのでスペースや非ASCIIでも問題ない）。
+  # run-pp-qsub*.shや下のaliasがWAITPARALLELと必ず同じ名前を使うようにエクスポートしておく。
+  PP_QSUB_JOB_NAME="$(echo "$workdir"|LC_ALL=C sed 's/^[^a-zA-Z]/_/; s/[^a-zA-Z0-9]/_/g'|cut -c 1-200)"
+  export PP_QSUB_JOB_NAME
 
-  alias DOPARALLELONE='sed "s/\"/\\\\\"/g; s/[$]/\\\\$/g"|xargs -d'"'"'\n'"'"' -I {} bash -c "bash $workdir/run-pp-qsubone.sh \"{}\" | grep submitted ; echo qsubone.sh; echo \"{}\" " >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch '"$workdir"'/fin'
-  alias DOPARALLEL='sed "s/\"/\\\\\"/g; s/[$]/\\\\$/g"|xargs -d'"'"'\n'"'"' -I {} bash -c "bash $workdir/run-pp-qsub.sh \"{}\" | grep submitted ; echo qsub.sh; echo \"{}\" " >> $workdir/qsub.log; qsub -hold_jid `echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` $workdir/qsubone.sh touch '"$workdir"'/fin'
+  alias DOPARALLELONE='sed "s/\"/\\\\\"/g; s/[$]/\\\\$/g"|xargs -d'"'"'\n'"'"' -I {} bash -c "bash \"\$workdir\"/run-pp-qsubone.sh \"{}\" | grep submitted ; echo qsubone.sh; echo \"{}\" " >> "$workdir"/qsub.log; qsub -hold_jid "$PP_QSUB_JOB_NAME" "$workdir"/qsubone.sh touch '"$PP_WORKDIR"/fin''
+  alias DOPARALLEL='sed "s/\"/\\\\\"/g; s/[$]/\\\\$/g"|xargs -d'"'"'\n'"'"' -I {} bash -c "bash \"\$workdir\"/run-pp-qsub.sh \"{}\" | grep submitted ; echo qsub.sh; echo \"{}\" " >> "$workdir"/qsub.log; qsub -hold_jid "$PP_QSUB_JOB_NAME" "$workdir"/qsubone.sh touch '"$PP_WORKDIR"/fin''
   #alias WAITPARALLEL='set +x; while : ; do if [ -e $workdir/fin ]; then rm -f $workdir/fin; break; fi; sleep 1; done; lastjob=`awk "END{print \\$3}" $workdir/qsub.log`; mkdir -p pp_log_$lastjob; awk -v prefix=`echo $workdir|sed s/^[^a-zA-Z]/_/|sed s/[^a-zA-Z0-9]/_/g` "{print prefix\".o\"\$3}" $workdir/qsub.log|while read i; do if [ "`tail -n 1 $i`" != "CMD_FIN_STATUS: 0" ]; then echo Failed: $i; fi; mv $i pp_log_$lastjob; done > qsub.log2; rm -f $workdir/qsub.log; if [ "`cat qsub.log2`" != "" ]; then cat qsub.log2; echo 1 > $workdir/fin_status; exit 1; fi; set -x;'
+  #失敗を許容する並列実行（最後の統計解析など）。投入はDOPARALLELONEと同じで、待ち合わせのWAITPARALLEL_TOLERANTが
+  #失敗したジョブがあっても警告を出すだけで続行する
+  alias DOPARALLELONE_TOLERANT='sed "s/\"/\\\\\"/g; s/[$]/\\\\$/g"|xargs -d'"'"'\n'"'"' -I {} bash -c "bash \"\$workdir\"/run-pp-qsubone.sh \"{}\" | grep submitted ; echo qsubone.sh; echo \"{}\" " >> "$workdir"/qsub.log; qsub -hold_jid "$PP_QSUB_JOB_NAME" "$workdir"/qsubone.sh touch '"$PP_WORKDIR"/fin''
+  WAITPARALLEL_TOLERANT(){ PP_TOLERATE_FAILURE=1; WAITPARALLEL; PP_TOLERATE_FAILURE=""; }
  else
   #ddbjもしくはpp -gがついていないかGUIでdirect, sshなどのSGEを使わない場合
   #xargs -d'\n'はtr '\n' '\0'|xargs -0と同じ。Macではxargs -d'\n'が使えないので。
@@ -417,11 +529,17 @@ EOF
    alias DOPARALLELONE='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -S 100000000 -I {} -P $N_CPU bash -c "{}"'
    alias DOPARALLEL='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -S 100000000 -I {} -P 1 bash -c "{}"'
    alias WAITPARALLEL=''
+   #失敗を許容する並列実行: 各コマンドをpp_run_tolerant経由で実行し、失敗しても警告を出すだけで続行する
+   alias DOPARALLELONE_TOLERANT='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -S 100000000 -I {} -P $N_CPU bash -c "pp_run_tolerant \"\$1\"" pp_tolerant {}'
+   alias WAITPARALLEL_TOLERANT=''
   else
    #Mac標準以外
    alias DOPARALLELONE='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -I {} -P $N_CPU bash -c "{}"'
    alias DOPARALLEL='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -I {} -P 1 bash -c "{}"'
    alias WAITPARALLEL=''
+   #失敗を許容する並列実行: 各コマンドをpp_run_tolerant経由で実行し、失敗しても警告を出すだけで続行する
+   alias DOPARALLELONE_TOLERANT='tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 -I {} -P $N_CPU bash -c "pp_run_tolerant \"\$1\"" pp_tolerant {}'
+   alias WAITPARALLEL_TOLERANT=''
   fi
  fi
 }
@@ -447,7 +565,7 @@ PP_ENV_CHILD(){
  CMD_CHILD="$1"
  # "shift" コマンドで最初の引数を除外します。
  shift
- echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/"$CMD_CHILD" "$@"
+ echo N_SCRIPT=$N_SCRIPT bash "$(pp_shell_quote "$scriptdir/$CMD_CHILD")" "$@"
 }
 
 for i in a b c d e f g h i j k l m n o p q r s t u v w x y z; do unset opt_$i; done
@@ -518,7 +636,7 @@ function pp_realpath(){
  local abs_dir=$(dirname -- "$abs_target")
  local parent_dir
  parent_dir=$(cd -- "$abs_dir" && pwd) || parent_dir="$abs_dir"
- printf '%s\n' "$parent_dir"/$(basename "$target")| sed 's/\/\+/\//g'
+ printf '%s\n' "$parent_dir/$(basename -- "$target")"| sed 's/\/\+/\//g'
 }
 ##-followオプションはリンク先情報を使って判定するが、今回はおそらく不要。ディレクトリ中のファイルが深すぎると結果がたくさんあるときの再実行に時間がかかるので2階層(input_*/*/*)までに限定して調べる
 #find . -follow -maxdepth 2 | while read i; do pp_realpath $PWD/$i; done|
@@ -569,12 +687,12 @@ pp_n=0
 function find_link_path_recursive () {
  echo $((++pp_n))
  cat pp_symlink_list_temp | awk -F/ '{path=""; if(substr($0,1,1)!="/"){path=$1; print path}; for(i=2;i<=NF;i++){path=path"/"$i; print path}}'|
-  sort|uniq|while read i; do if [ -L $i ]; then
+  sort|uniq|while IFS= read -r i; do if [ -L "$i" ]; then
    PP_BINDS_PATH=`readlink "$i"`
    if [[ $PP_BINDS_PATH =~ ^/ ]]; then
     pp_realpath "$PP_BINDS_PATH"
    else
-    pp_realpath `dirname "$i"`"/$PP_BINDS_PATH"
+    pp_realpath "$(dirname "$i")/$PP_BINDS_PATH"
    fi
   fi; done|sort|uniq > pp_symlink_list_temp2
 
@@ -590,11 +708,26 @@ function find_link_path_recursive () {
 
 find_link_path_recursive
 
-cat pp_symlink_list|sort|uniq|while read i; do dirname $i; done|sort|uniq > pp_bind_dir
+cat pp_symlink_list|sort|uniq|while IFS= read -r i; do dirname -- "$i"; done|sort|uniq > pp_bind_dir
 rm pp_symlink_list
 
-PPDOCBINDS=`cat pp_bind_dir | awk '{ORS=" "; print " -v "$0":"$0}'`
-PPSINGBINDS=`cat pp_bind_dir | awk '{ORS=" "; print " -B "$0":"$0}'`
+# 入力ファイル（やシンボリックリンクの先）が実際に置かれているディレクトリすべてのbindマウント指定。
+# 各ディレクトリはエクスポート変数PP_BIND_<n>に入れ、オプションの文字列にはその変数への参照だけを書く。
+# こうすると文字列自体には空白も特殊文字も含まれないので、スクリプトがクォートせずにechoしても、
+# bash -cやevalで解釈し直されても、awk -vを経由しても壊れない。
+# ディレクトリ名の側にはスペース（連続していてもよい）、クォート、バックスラッシュが入っていてよい。
+PPDOCBINDS=""
+PPSINGBINDS=""
+PP_BIND_COUNT=0
+while IFS= read -r pp_bind_dir_line; do
+ if [ -n "$pp_bind_dir_line" ]; then
+  PP_BIND_COUNT=`expr $PP_BIND_COUNT + 1`
+  eval "PP_BIND_$PP_BIND_COUNT=\$pp_bind_dir_line; export PP_BIND_$PP_BIND_COUNT"
+  PPDOCBINDS="$PPDOCBINDS -v \"\$PP_BIND_$PP_BIND_COUNT\":\"\$PP_BIND_$PP_BIND_COUNT\""
+  PPSINGBINDS="$PPSINGBINDS -B \"\$PP_BIND_$PP_BIND_COUNT\":\"\$PP_BIND_$PP_BIND_COUNT\""
+ fi
+done < pp_bind_dir
+export PP_BIND_COUNT
 
 
 #N_CPU=`cat /proc/cpuinfo 2> /dev/null |grep ^processor|wc -l` #all CPU
@@ -640,18 +773,23 @@ N_MEM_G1=`expr $N_MEM_G / $N_CPU`
 N_SCRIPT=`expr ${N_SCRIPT:-0} + 1`
 export N_SCRIPT
 
+#MacOS用: Homebrewで入れたGNU coreutils/sedがあれば優先する（Intelは/usr/local、Apple Siliconは/opt/homebrew）
+if [ "$(uname|awk '{print tolower($0)}')" = "darwin" ]; then
+ for pp_gnu_dir in /opt/homebrew/opt/gnu-sed/libexec/gnubin /opt/homebrew/opt/coreutils/libexec/gnubin /usr/local/opt/gnu-sed/libexec/gnubin /usr/local/opt/coreutils/libexec/gnubin; do
+  if [ -d "$pp_gnu_dir" ]; then export PATH="$pp_gnu_dir:$PATH"; fi
+ done
+fi
+
+# 以降は物理パスで統一する（container_setupはreadlink -fでディレクトリを正規化し、ENV_*文字列は
+# $PWDと$workdirを前方一致で比較するため）。結果ディレクトリの途中にシンボリックリンクがあっても
+# 両者がずれないようにしておく。
+cd -P .
 workdir="$PWD"
-scriptdir=$(dirname `readlink -f "$0" || echo "$0"`)
+scriptdir="$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 #export IM_CENTOS6=centos:centos6
 begintrap
 container_setup
 parallel_setup
-
-#for MacOS
-if [ `uname|awk '{print tolower($0)}'` = "darwin" ]; then
- export PATH=$(dirname `find /usr/local/|grep /gnu|grep /readlink$|head -n 1`):$PATH
- export PATH=$(dirname `find /usr/local/|grep /gnu|grep /sed$|head -n 1`):$PATH
-fi
 
 post_processing(){
  if [ "$N_SCRIPT" = 1 ]; then

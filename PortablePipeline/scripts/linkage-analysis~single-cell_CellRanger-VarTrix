@@ -26,13 +26,13 @@ export IM_SELDLA="c2997108/seldla:2.1.2_2"
 export IM_VARTRIX="c2997108/vartrix:1.1.16"
 export IM_BASE="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinotate-3.1.1-R_4-kegg_4"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 #decompress input files
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 
 #r1=`ls -Lr "$input_3"/*.fastq.gz "$input_3"/*.fq.gz "$input_3"/*.fastq "$input_3"/*.fq 2> /dev/null |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$'|head -n 1|| true`
 #if [ `echo "$r1"|egrep "[.]gz$"|wc -l||true` = 1 ]; then catcmd="zcat"; else catcmd="cat"; fi
@@ -43,51 +43,55 @@ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$
 #fi
 
 #FASTQ check
-r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
-r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
-if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
+r1gz=()
+while IFS= read -r pp_line; do r1gz+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true)
+if [ ${#r1[@]} = 0 -a ${#r1gz[@]} = 0 ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
 
-r2=$(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+r2=()
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  r2+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
-r2gz=$(for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+done
+r2gz=()
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  r2gz+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2gz+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
+done
 
 echo "#Check paired-end"
-ls $r2 $r2gz > /dev/null
+ls -- ${r2[@]+"${r2[@]}"} ${r2gz[@]+"${r2gz[@]}"} > /dev/null
 
 mkdir -p 10x_input
 j=0
-for i in $r1; do
+for i in ${r1[@]+"${r1[@]}"}; do
  j=`expr $j + 1`;
  k=`printf "%03d" "${j}"`
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  i2=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  i2="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')"
  else
-  i2=`echo $i|sed 's/_R1/_R2/'`
+  i2="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- ln -s "`readlink -f $i`" 10x_input/input_S1_L${k}_R1_001.fastq
- ln -s "`readlink -f $i2`" 10x_input/input_S1_L${k}_R2_001.fastq
+ ln -s "$(readlink -f "$i")" "10x_input/input_S1_L${k}_R1_001.fastq"
+ ln -s "$(readlink -f "$i2")" "10x_input/input_S1_L${k}_R2_001.fastq"
 done
-for i in $r1gz; do
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
  j=`expr $j + 1`;
  k=`printf "%03d" "${j}"`
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
-  i2=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  i2="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')"
  else
-  i2=`echo $i|sed 's/_R1/_R2/'`
+  i2="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- ln -s "`readlink -f $i`" 10x_input/input_S1_L${k}_R1_001.fastq.gz
- ln -s "`readlink -f $i2`" 10x_input/input_S1_L${k}_R2_001.fastq.gz
+ ln -s "$(readlink -f "$i")" "10x_input/input_S1_L${k}_R1_001.fastq.gz"
+ ln -s "$(readlink -f "$i2")" "10x_input/input_S1_L${k}_R2_001.fastq.gz"
 done
 
 ref="$input_2"
@@ -99,8 +103,8 @@ DO_EXONERATE fastareformat pseudochr.fa > pseudochr.re.fa
 cat pseudochr.txt |awk '{print $2"\t"$3-1"\t"$4"\t"$1"\t0\t+"}' > pseudochr.bed
 
 set +o pipefail
-(for i in $r1; do cat $i; done; for i in $r1gz; do DO_SELDLA zcat $i; done)|awk 'FILENAME==ARGV[1]{n+=$2} FILENAME==ARGV[2]{if(FNR%4==1){s1=$0}else if(FNR%4==2){cnt+=length($0)-16; if(cnt>n*50){exit}; s2=substr($0,17)}else if(FNR%4==3){s3=$0}else{print s1; print s2; print s3; print substr($0,17)}}' "$ref".fai /dev/stdin > temp100xtrim_1.fastq
-(for i in $r2; do cat $i; done; for i in $r2gz; do DO_SELDLA zcat $i; done)|head -n `cat temp100xtrim_1.fastq|wc -l` > temp100xtrim_2.fastq
+(for i in ${r1[@]+"${r1[@]}"}; do cat "$i"; done; for i in ${r1gz[@]+"${r1gz[@]}"}; do DO_SELDLA zcat "$i"; done)|awk 'FILENAME==ARGV[1]{n+=$2} FILENAME==ARGV[2]{if(FNR%4==1){s1=$0}else if(FNR%4==2){cnt+=length($0)-16; if(cnt>n*50){exit}; s2=substr($0,17)}else if(FNR%4==3){s3=$0}else{print s1; print s2; print s3; print substr($0,17)}}' "$ref".fai /dev/stdin > temp100xtrim_1.fastq
+(for i in ${r2[@]+"${r2[@]}"}; do cat "$i"; done; for i in ${r2gz[@]+"${r2gz[@]}"}; do DO_SELDLA zcat "$i"; done)|head -n `cat temp100xtrim_1.fastq|wc -l` > temp100xtrim_2.fastq
 set -o pipefail
 
 DO_SAMTOOLS samtools faidx pseudochr.re.fa

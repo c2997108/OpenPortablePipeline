@@ -21,97 +21,101 @@ runcmd="$0 -c #opt_c# -m #opt_m# -t #opt_t# -i #opt_i# -a #opt_a# -s #opt_s# -l 
 
 export IM_PLATANUS="cmonjeau/platanus:1.2.4"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
-if [ "$r1" = "" ]; then echo Place paired-end fastq files in this folder; post_processing; fi
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
+if [ ${#r1[@]} = 0 ]; then echo Place paired-end fastq files in this folder; post_processing; fi
 
-r2=$(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+r2=()
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  r2+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
+done
 
 echo "#Check paired-end"
-ls $r2 > /dev/null
+ls -- ${r2[@]+"${r2[@]}"} > /dev/null
 
-for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- echo $ENV_PLATANUS Platanus_trim $opt_t $i $j
+ echo "$ENV_PLATANUS Platanus_trim $opt_t $(pp_shell_quote "$i") $(pp_shell_quote "$j")"
 done|DOPARALLELONE
 
 WAITPARALLEL
 
 n_read=0
-ipop=""
-fastqtrim=""
-for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+ipop=()
+fastqtrim=()
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- fastqtrim="$fastqtrim $i.trimmed $j.trimmed"
+ fastqtrim+=("$i.trimmed" "$j.trimmed")
  n_read=`expr $n_read + 1`
- ipop="$ipop -IP$n_read $i.trimmed $j.trimmed"
+ ipop+=("-IP$n_read" "$i.trimmed" "$j.trimmed")
 done
 
 
 if [ "$input_2" != "" ] ;then
-r1m="`find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1m=()
+while IFS= read -r pp_line; do r1m+=("$pp_line"); done < <(find "$input_2"/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
 
-r2m=$(for i in $r1m; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+r2m=()
+for i in ${r1m[@]+"${r1m[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  r2m+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2m+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
+done
 
-if [ "$r1m" != "" ]; then
+if [ ${#r1m[@]} != 0 ]; then
 echo "#Check paired-end"
-ls $r2m > /dev/null
+ls -- ${r2m[@]+"${r2m[@]}"} > /dev/null
 
-for i in $r1m; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+for i in ${r1m[@]+"${r1m[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- i2=`basename $i`
- j2=`basename $j`
+ i2="$(basename "$i")"
+ j2="$(basename "$j")"
  n_read=`expr $n_read + 1`
- ipop="$ipop -OP$n_read $i.trimmed $j.trimmed"
- echo $ENV_PLATANUS Platanus_internal_trim $opt_i $i $j
+ ipop+=("-OP$n_read" "$i.trimmed" "$j.trimmed")
+ echo "$ENV_PLATANUS Platanus_internal_trim $opt_i $(pp_shell_quote "$i") $(pp_shell_quote "$j")"
 done|DOPARALLELONE
 
 WAITPARALLEL
 
-for i in $r1m; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+for i in ${r1m[@]+"${r1m[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
  n_read=`expr $n_read + 1`
- ipop="$ipop -OP$n_read $i.trimmed $j.trimmed"
+ ipop+=("-OP$n_read" "$i.trimmed" "$j.trimmed")
 done
 
 fi
 fi
 
-DO_PLATANUS Platanus assemble -o platanus $opt_a -f $fastqtrim -t $N_CPU -m $N_MEM_G
-DO_PLATANUS Platanus scaffold -o platanus $opt_s -c platanus_contig.fa -b platanus_contigBubble.fa -t $N_CPU $ipop
-DO_PLATANUS Platanus gap_close -o platanus $opt_l -c platanus_scaffold.fa -t $N_CPU $ipop
+DO_PLATANUS Platanus assemble -o platanus $opt_a -f ${fastqtrim[@]+"${fastqtrim[@]}"} -t $N_CPU -m $N_MEM_G
+DO_PLATANUS Platanus scaffold -o platanus $opt_s -c platanus_contig.fa -b platanus_contigBubble.fa -t $N_CPU ${ipop[@]+"${ipop[@]}"}
+DO_PLATANUS Platanus gap_close -o platanus $opt_l -c platanus_scaffold.fa -t $N_CPU ${ipop[@]+"${ipop[@]}"}
 
 post_processing
 

@@ -1,6 +1,7 @@
 package application;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -58,7 +59,7 @@ public class PortablePipelineCLI {
                 showSettings();
                 break;
             case "configure":
-                configureInteractive(new Scanner(System.in));
+                configureInteractive(new Scanner(System.in, stdinCharset()));
                 break;
             default:
                 System.err.println("Unknown command: " + args[0]);
@@ -73,7 +74,7 @@ public class PortablePipelineCLI {
     }
 
     private static void runInteractive() throws Exception {
-        Scanner scanner = new Scanner(System.in);
+        Scanner scanner = new Scanner(System.in, stdinCharset());
         printBanner();
         printHelp();
         while (true) {
@@ -85,7 +86,7 @@ public class PortablePipelineCLI {
             if (line.isEmpty()) {
                 continue;
             }
-            String[] tokens = line.split("\\s+");
+            String[] tokens = tokenize(line);
             String command = tokens[0].toLowerCase(Locale.ROOT);
             try {
                 switch (command) {
@@ -337,7 +338,7 @@ public class PortablePipelineCLI {
             return;
         }
         for (JobNode job : jobs) {
-            System.out.println(job.id + "\t" + job.status + "\t" + job.desc);
+            System.out.println(job.id + "\t" + job.status + "\t" + job.summary());
         }
     }
 
@@ -547,6 +548,72 @@ public class PortablePipelineCLI {
             builder.append(args[i]);
         }
         return builder.toString();
+    }
+
+    /**
+     * 対話モードで入力された1行を引数に分割する。ダブルクォートまたはシングルクォートで囲んだ引数には
+     * スペースを含められる。例: --input "input_1=C:\Users\山田 太郎\data\sample.fastq"
+     * 引数の区切りはASCIIの空白だけ（全角スペースU+3000は従来の\s+分割と同様に名前の一部として扱う）。
+     * バックスラッシュは通常の文字として扱う（Windowsのパス用）。
+     */
+    static String[] tokenize(String line) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        char quote = 0;
+        boolean inToken = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                } else {
+                    current.append(c);
+                }
+            } else if ((c == '"' || c == '\'') && !inToken) {
+                // クォートは引数の先頭にあるときだけ引用の開始とみなす。クォートしていないパスの途中にある
+                // 「'」（C:\Users\O'Brien\... など）はそのままの文字として扱う
+                quote = c;
+                inToken = true;
+            } else if (isAsciiSpace(c)) {
+                if (inToken) {
+                    tokens.add(current.toString());
+                    current.setLength(0);
+                    inToken = false;
+                }
+            } else {
+                current.append(c);
+                inToken = true;
+            }
+        }
+        if (inToken) {
+            tokens.add(current.toString());
+        }
+        return tokens.toArray(new String[0]);
+    }
+
+    private static boolean isAsciiSpace(char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == 0x0B;
+    }
+
+    /**
+     * 対話コンソールの文字コード。WindowsのコンソールはOEMコードページ（日本語環境なら932）で入力を渡すが、
+     * Java 18以降のSystem.inはUTF-8を前提にするため、そのままではプロンプトに入力した非ASCIIのパスが
+     * 文字化けしてしまう。
+     */
+    private static Charset stdinCharset() {
+        java.io.Console console = System.console();
+        if (console != null) {
+            return console.charset();
+        }
+        String encoding = System.getProperty("stdin.encoding");
+        if (encoding != null && !encoding.isEmpty()) {
+            try {
+                return Charset.forName(encoding);
+            } catch (Exception e) {
+                // 変換できなければ下の既定値を使う
+            }
+        }
+        return Charset.defaultCharset();
     }
 
     private static void ensureArgs(String[] args, int min, String usage) {

@@ -35,7 +35,7 @@ export IM_R="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-trinot
 export IM_BLASTN="c2997108/centos7:1-blast_2.9.0-nt_20190618-13"
 export IM_MERGE="c2997108/centos7:3-java"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -45,41 +45,45 @@ set -o pipefail
 #input_4="${opt_s:-}"
 p=$opt_f
 
-r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
-r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || echo ''`"
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
+r1gz=()
+while IFS= read -r pp_line; do r1gz+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true)
 
-if [ "$r1$r1gz" = "" ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
+if [ ${#r1[@]} = 0 -a ${#r1gz[@]} = 0 ]; then echo Place paired-end fastq.gz files in this folder; post_processing; fi
 
 
-r2=$(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+r2=()
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  r2+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
-r2gz=$(for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+done
+r2gz=()
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  r2gz+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2gz+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
+done
 
 echo "#Check paired-end"
-ls $r2 $r2gz > /dev/null
+ls -- ${r2[@]+"${r2[@]}"} ${r2gz[@]+"${r2gz[@]}"} > /dev/null
 
 #decompress input files
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > "$(echo "$input_3"|sed 's/[.]gz$//')"; input_3="$(echo "$input_3"|sed 's/[.]gz$//')"; fi
 if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
- temp_3=`echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
+ temp_3="$(echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/')"
  DO_BASE gff3ToGenePred "$input_3" /dev/stdout | (DO_BASE genePredToGtf file stdin "$temp_3")
  input_3="$temp_3"
 fi
 DO_SAMTOOLS samtools faidx "$input_2"
 if [ "$input_3" != "" ];then
- tempgtf=`echo "$input_3"|sed 's/[.]gtf$//'`.corrected.gtf
+ tempgtf="$(echo "$input_3"|sed 's/[.]gtf$//').corrected.gtf"
  awk -F'\t' 'FILENAME==ARGV[1]{a[$1]=1} FILENAME==ARGV[2]&&$1 in a{print $0}' "$input_2".fai "$input_3" > "$tempgtf"
  input_3="$tempgtf"
  DO_HISAT2 hisat2_extract_splice_sites.py "$input_3" > "$input_3".ss
@@ -91,45 +95,47 @@ fi
 
 
 mkdir -p output.prinseq
-(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+(for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- i2=`basename $i`
- j2=`basename $j`
- echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p ">" log.prinseq.`basename $i` "2>&1" ";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
+ i2="$(basename "$i")"
+ j2="$(basename "$j")"
+ echo "$ENV_PRINSEQ prinseq-lite.pl -fastq $(pp_shell_quote "$i") -fastq2 $(pp_shell_quote "$j") -out_good $(pp_shell_quote "output.prinseq/$i2") -out_bad null -out_format 3 $opt_p > $(pp_shell_quote "log.prinseq.$(basename "$i")") 2>&1 ; mv $(pp_shell_quote "output.prinseq/${i2}_1.fastq") $(pp_shell_quote "output.prinseq/$i2") ; mv $(pp_shell_quote "output.prinseq/${i2}_2.fastq") $(pp_shell_quote "output.prinseq/$j2")"
 done
-for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- i2=`basename $i .gz`
- j2=`basename $j .gz`
- echo zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p ">" log.prinseq.`basename $i` "2>&1" ";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+ i2="$(basename "$i" .gz)"
+ j2="$(basename "$j" .gz)"
+ echo "zcat $(pp_shell_quote "$i") > $(pp_shell_quote "$i2") ; zcat $(pp_shell_quote "$j") > $(pp_shell_quote "$j2") ; $ENV_PRINSEQ prinseq-lite.pl -fastq $(pp_shell_quote "$i2") -fastq2 $(pp_shell_quote "$j2") -out_good $(pp_shell_quote "output.prinseq/$i2") -out_bad null -out_format 3 $opt_p > $(pp_shell_quote "log.prinseq.$(basename "$i")") 2>&1 ; mv $(pp_shell_quote "output.prinseq/${i2}_1.fastq") $(pp_shell_quote "output.prinseq/$i2") ; mv $(pp_shell_quote "output.prinseq/${i2}_2.fastq") $(pp_shell_quote "output.prinseq/$j2") ; rm -f $(pp_shell_quote "$i2") $(pp_shell_quote "$j2")"
 done)|DOPARALLELONE
 
 WAITPARALLEL
 
 rm -f output.prinseq/*_singletons.fastq
-r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || echo ''`"
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
 
-(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+(for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l||true` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i" "2>" log.hisat2.`basename $i` '|('$ENV_SAMTOOLS samtools sort -@ $N_CPU -o `basename "$i"`.bam ');' $ENV_SAMTOOLS samtools index `basename "$i"`.bam';' $ENV_STRINGTIE stringtie $opt_t -p $N_CPU -o output.stringtie/`basename "$i"`.gtf `basename "$i"`.bam
+ rgid="$(pp_safe_name "$i")" #リードグループ(ID/SM)は識別子なので空白などを_に畳む(パスや出力名に使う"$i"はそのまま)
+ echo "$ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x hisat2_index -1 $(pp_shell_quote "$i") -2 $(pp_shell_quote "$j") --rg-id $(pp_shell_quote "$rgid") --rg $(pp_shell_quote "SM:$rgid") 2> $(pp_shell_quote "log.hisat2.$(basename "$i")") | ( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o $(pp_shell_quote "$(basename "$i").bam") ) ; $ENV_SAMTOOLS samtools index $(pp_shell_quote "$(basename "$i").bam") ; $ENV_STRINGTIE stringtie $opt_t -p $N_CPU -o $(pp_shell_quote "output.stringtie/$(basename "$i").gtf") $(pp_shell_quote "$(basename "$i").bam")"
 done)|DOPARALLEL
 
 WAITPARALLEL
 
 mkdir -p output_bam
-for i in *.bam *.bam.bai; do ln -sf ../$i output_bam/; done
+for i in *.bam *.bam.bai; do ln -sf ../"$i" output_bam/; done
 
 if [ "$input_3" != "" ];then
  DO_STRINGTIE stringtie --merge -G "$input_3" -o stringtie.merge.gtf output.stringtie/*.gtf
@@ -139,9 +145,9 @@ fi
 
 mkdir -p input.ballgown
 mkdir -p output.cuffquant
-for i in $r1; do
- echo $ENV_STRINGTIE stringtie $opt_t -b input.ballgown/`basename "$i"` -G stringtie.merge.gtf -p $N_CPU `basename "$i"`.bam '>' /dev/null"; cd input.ballgown;" tar zvcf `basename "$i"`.stringtie.tar.gz `basename "$i"`
- echo $ENV_CUFF cuffquant $opt_l -b "$input_2"  -p $N_CPU -o output.cuffquant/`basename "$i"`  stringtie.merge.gtf `basename "$i"`.bam"; cd output.cuffquant;" tar zvcf `basename "$i"`.cuffquant.tar.gz `basename "$i"`
+for i in ${r1[@]+"${r1[@]}"}; do
+ echo "$ENV_STRINGTIE stringtie $opt_t -b $(pp_shell_quote "input.ballgown/$(basename "$i")") -G stringtie.merge.gtf -p $N_CPU $(pp_shell_quote "$(basename "$i").bam") > /dev/null; cd input.ballgown; tar zvcf $(pp_shell_quote "$(basename "$i").stringtie.tar.gz") $(pp_shell_quote "$(basename "$i")")"
+ echo "$ENV_CUFF cuffquant $opt_l -b $(pp_shell_quote "$input_2") -p $N_CPU -o $(pp_shell_quote "output.cuffquant/$(basename "$i")") stringtie.merge.gtf $(pp_shell_quote "$(basename "$i").bam") ; cd output.cuffquant; tar zvcf $(pp_shell_quote "$(basename "$i").cuffquant.tar.gz") $(pp_shell_quote "$(basename "$i")")"
 done|DOPARALLEL
 
 WAITPARALLEL
@@ -151,15 +157,15 @@ mv input.ballgown/*.stringtie.tar.gz input.ballgown.tar.gz
 mkdir -p output.cuffquant.tar.gz
 mv output.cuffquant/*.cuffquant.tar.gz output.cuffquant.tar.gz
 
-DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/util/gtf_genome_to_cdna_fasta.pl stringtie.merge.gtf $input_2 >  transcripts.fasta
+DO_TRINOTATE /usr/local/TransDecoder-TransDecoder-v5.5.0/util/gtf_genome_to_cdna_fasta.pl stringtie.merge.gtf "$input_2" >  transcripts.fasta
 
 #sample.txt
 if [ -e "$input_4" ]; then
- cat "$input_4" |sed 's/\r//g'|sed '/^$/d'|sed 's/ \+/\t/g; s/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
+ cat "$input_4" |sed 's/\r//g'|sed '/^$/d'|awk '{if(index($0,"\t")==0){gsub(/ +/,"\t")}; print $0}'|sed 's/\t\+/\t/g; s/\t\+$//'|awk -F'\t' '{OFS="\t"; sub(/[.]gz$/,"",$1); print $0}'|awk -F'\t' '{gsub(/[^A-Za-z0-9._\t-]/,"_",$0); print $0}' > sample.txt2
 else
  touch sample.txt2
 fi
-ls input.ballgown| (DO_BASE sort -V)| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; if(cat[$1]==""){cat[$1]=$1}; print $1"\t"cat[$1]}' sample.txt2 /dev/stdin > sample.input.txt
+ls input.ballgown| (DO_BASE sort -V)| awk -F'\t' 'FILENAME==ARGV[1]{cat[$1]=$2} FILENAME==ARGV[2]{if(FNR==1){print "id\tcondition"}; k=$1; gsub(/[^A-Za-z0-9._-]/,"_",k); if(cat[k]!=""){c=cat[k]}else{c=k}; print $1"\t"c}' sample.txt2 /dev/stdin > sample.input.txt
 cat << 'EOF' > run-estimate-fpkm.R
 library(ballgown)
 pheno_data = read.table(file ="sample.input.txt", header = TRUE, sep = "\t")
@@ -176,7 +182,13 @@ awk -F'\t' '{ORS=""; if(NR==1){gsub(/\tFPKM[.]/,"\t",$0)}; print $6; for(i=12;i<
 cat isoforms.ballgown.txt| (DO_BASE awk -F'\t' '{if(NR==1){gsub(/\tcov[.]/,"\t",$0); name[9]=$9; for(i=11;i<NF;i=i+2){name[i]=$i}}else{for(i=11;i<NF;i=i+2){cnt[$9][i]+=$i}}} END{ORS=""; print name[9]; for(i=11;i<=NF;i=i+2){print "\t"name[i]}; print "\n"; for(j in cnt){print j; for(i=11;i<=NF;i=i+2){print "\t"cnt[j][i]}; print "\n"}}') > genes.count_table
 awk -F'\t' '{if(NR==1){gsub(/^FPKM[.]/,"",$0); gsub(/\tFPKM[.]/,"\t",$0); print "id\t"$0}else{print $0}}' genes.ballgown.txt > genes.fpkm_table
 
-DO_CUFF cuffnorm $opt_n -o output.cuffnorm -p $N_CPU -L $(echo `ls output.cuffquant/`|sed 's/ /,/g') stringtie.merge.gtf $(for i in `ls output.cuffquant/`; do echo output.cuffquant/$i/abundances.cxb; done)
+cufflabels=""
+cuffcxb=()
+while IFS= read -r pp_line; do
+ if [ "$cufflabels" = "" ]; then cufflabels="$pp_line"; else cufflabels="$cufflabels,$pp_line"; fi
+ cuffcxb+=("output.cuffquant/$pp_line/abundances.cxb")
+done < <(ls output.cuffquant/)
+DO_CUFF cuffnorm $opt_n -o output.cuffnorm -p $N_CPU -L "$cufflabels" stringtie.merge.gtf ${cuffcxb[@]+"${cuffcxb[@]}"}
 mkdir -p output.cuffnorm.forplot
 awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/isoforms.count_table > output.cuffnorm.forplot/isoforms.count_table
 awk -F'\t' '{if(NR==1){gsub(/_0\t/,"\t",$0); sub(/_0$/,"",$0); print $0}else{print $0}}' output.cuffnorm/isoforms.fpkm_table > output.cuffnorm.forplot/isoforms.fpkm_table
@@ -221,9 +233,9 @@ DO_MERGE merge_table.pl -k output.cuffnorm.forplot/genes.count_table.ren output.
 
 
 #make html
-i=output.cuffnorm.forplot/Trinotate.xls3.isoform.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > `basename ${i}`.temp
-i=output.cuffnorm.forplot/Trinotate.xls3.gene.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > `basename ${i}`.temp
-i=Trinotate.xls3.go.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' $i ./$i|sed 's/\t$//' > ${i}.temp
+i=output.cuffnorm.forplot/Trinotate.xls3.isoform.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' "$i" "./$i"|sed 's/\t$//' > "$(basename "$i").temp"
+i=output.cuffnorm.forplot/Trinotate.xls3.gene.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' "$i" "./$i"|sed 's/\t$//' > "$(basename "$i").temp"
+i=Trinotate.xls3.go.cnt; awk -F'\t' -v maxlen=30000 'FILENAME==ARGV[1]{for(i=1;i<=NF;i++){n=int((length($i)-1)/maxlen)+1; if(n>a[i]){a[i]=n}}} FILENAME==ARGV[2]{if(FNR==1){ORS=""; for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print $i" (split "j")\t"}}}; print "\n"}else{for(i=1;i<=NF;i++){if(a[i]<=1){print $i"\t"}else{for(j=1;j<=a[i];j++){print substr($i,(j-1)*maxlen+1,maxlen)"\t" }}}; print "\n"}}' "$i" "./$i"|sed 's/\t$//' > "$i.temp"
 DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.isoform.cnt.temp result.isoform.xlsx
 DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.gene.cnt.temp result.gene.xlsx
 DO_MERGE java -Xmx1G -jar /usr/local/bin/excel2.jar Trinotate.xls3.go.cnt.temp result.go.xlsx
@@ -409,24 +421,26 @@ awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]
 awk -F'\\t' -v g1=$g1 -v g2=$g2 'FILENAME==ARGV[1]{if(\$2==g1||\$2==g2){flag[NR]=1}} FILENAME==ARGV[2]{ORS=""; print \$1; for(i=2;i<=NF;i++){if(flag[i]==1){print "\\t"\$i}}; print "\\n"}' sample.input.txt $countgenefilecuff > $countgenefilecuff.$g1.$g2.txt
 
 #DESeq2
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~DESeq2 -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-DESeq2.$g1.$g2.go.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~DESeq2' -s run-DESeq2.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-DESeq2.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~DESeq2' -s run-DESeq2.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-DESeq2.$g1.$g2.gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~DESeq2' -s run-DESeq2.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-DESeq2.$g1.$g2.go.txt 2>&1"
 #edgeR
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-edgeR.$g1.$g2.gene.txt 2>&1"
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~edgeR -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-edgeR.$g1.$g2.go.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~edgeR' -s run-edgeR.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p $countfile.$g1.$g2.txt sample.input.$g1.$g2.txt $annfile "> log-edgeR.$g1.$g2.isoform.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~edgeR' -s run-edgeR.$g1.$g2.gene.R -i $g1 -j $g2 -p $p $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngenefile "> log-edgeR.$g1.$g2.gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~edgeR' -s run-edgeR.$g1.$g2.go.R -i $g1 -j $g2 -p $p $countgofile.$g1.$g2.txt sample.input.$g1.$g2.txt $anngofile "> log-edgeR.$g1.$g2.go.txt 2>&1"
 #ballgown
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~ballgown -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~ballgown' -f input.ballgown -s run-ballgown.$g1.$g2.isoform.R -i $g1 -j $g2 -p $p -a Trinotate.xls3.isoform.cnt -b Trinotate.xls3.gene.cnt $countfile.$g1.$g2.txt $countgenefile.$g1.$g2.txt sample.input.$g1.$g2.txt input.ballgown.tar.gz "> log-ballgown.$g1.$g2.isoform-gene.txt 2>&1"
 #Cuffdiff
-echo N_SCRIPT=$N_SCRIPT bash "$scriptdir"/statistics~cuffdiff -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d '"'"$opt_d"'"' $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $input_2 stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
+echo N_SCRIPT=$N_SCRIPT bash '"$scriptdir"/statistics~cuffdiff' -f output.cuffquant -c 1 -s cuffdiff.$g1.$g2.sh -i $g1 -j $g2 -p $p -a $annfilecuff -b $anngenefilecuff -d '"'"$opt_d"'"' $countfilecuff.$g1.$g2.txt $countgenefilecuff.$g1.$g2.txt sample.input.$g1.$g2.txt output.cuffquant.tar.gz $(pp_shell_quote "$(pp_shell_quote "$input_2")") stringtie.merge.gtf "> log-cuffdiff.$g1.$g2.isoform-gene.txt 2>&1"
 
 EOF
 
  DO_R bash run-DE.$g1.$g2.sh
-done|DOPARALLELONE
+#最後の統計解析は、サンプル数が1つしかない・DEGが無いなどの理由で一部が失敗するのが正常な場合があるので、
+#失敗してもパイプライン全体はエラーにしない（失敗した解析はlogにWARNINGとして残る）
+done|DOPARALLELONE_TOLERANT
 
-WAITPARALLEL
+WAITPARALLEL_TOLERANT
 
 
 post_processing

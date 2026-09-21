@@ -20,12 +20,15 @@ export IM_MINIMAP2="c2997108/minimap2:2.28_lambda-phage"
 export IM_PIGZ="rtibiocloud/pigz:v2.4_b243f9"
 export IM_CUTADAPT="quay.io/biocontainers/cutadapt:5.0--py310h1fe012e_0"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true`; do
+ppfiles=()
+while IFS= read -r pp_line; do ppfiles+=( "$pp_line" ); done < <(find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true)
+
+for i in ${ppfiles[@]+"${ppfiles[@]}"}; do
  if [ `echo "$i"|grep "[.]gz$"|wc -l||true` = 1 ]; then
   zcat "$i"
  else
@@ -45,7 +48,7 @@ done | awk -v qt=$opt_q '
    }
   }' | DO_MINIMAP2 minimap2 -x map-ont -t $N_CPU /usr/local/lambda.fasta /dev/stdin | awk -v l="$opt_l" '$4-$3>=$2*l{print $1}' > lambda.reads
 
-for i in `find "$input_1"/ -maxdepth 1 |grep -E '[.](fastq|fq)(|[.]gz)$' || true`; do
+for i in ${ppfiles[@]+"${ppfiles[@]}"}; do
  if [ `echo "$i"|grep "[.]gz$"|wc -l||true` = 1 ]; then
   zcat "$i"
  else

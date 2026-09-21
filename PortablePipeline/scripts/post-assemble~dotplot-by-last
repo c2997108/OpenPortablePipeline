@@ -23,44 +23,46 @@ export IM_LAST="quay.io/biocontainers/last:1642--h5ca1c30_0"
 export IM_IMAGEMAGICK="c2997108/centos6:2-imagemagick"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 
-db=$input_2
-q=$input_1
-outbase=split_query/`basename $q`-`basename ${db}`
+db="$input_2"
+q="$input_1"
+outbase="split_query/$(basename "$q")-$(basename "$db")"
 
 mkdir -p split_query
-DO_LAST lastdb -P$N_CPU $opt_d $outbase.lastdb $db
-awk -v nsplit=100 '{if($0~"^>"){n++; if(n>nsplit){n=1}}; print $0 > "'"$outbase"'.split."n".fa"}' $q
+DO_LAST lastdb -P$N_CPU $opt_d "$outbase.lastdb" "$db"
+awk -v nsplit=100 '{if($0~"^>"){n++; if(n>nsplit){n=1}}; print $0 > "'"$outbase"'.split."n".fa"}' "$q"
 
-for i in `ls $outbase.split.*.fa`; do
- echo "($ENV_LAST lastal $opt_a -P1 $outbase.lastdb $i ) | ($ENV_LAST maf-convert tab - ) | grep -v '^#'|awk -F'\t' -v e=$opt_e '{if(substr(\$13,5)+0 <= e){print \$0}}' > $i.maf.tab"
+r=()
+while IFS= read -r pp_line; do r+=("$pp_line"); done < <(ls "$outbase".split.*.fa)
+for i in ${r[@]+"${r[@]}"}; do
+ echo "($ENV_LAST lastal $opt_a -P1 $(pp_shell_quote "$outbase.lastdb") $(pp_shell_quote "$i") ) | ($ENV_LAST maf-convert tab - ) | grep -v '^#'|awk -F'\t' -v e=$opt_e '{if(substr(\$13,5)+0 <= e){print \$0}}' > $(pp_shell_quote "$i.maf.tab")"
 done | DOPARALLELONE
 
 WAITPARALLEL
 
-cat $outbase.split.*.fa.maf.tab > $outbase.maf.all.tsv
+cat "$outbase".split.*.fa.maf.tab > "$outbase.maf.all.tsv"
 
-ln -sf ../$db $outbase.db.fa
-ln -sf ../$q $outbase.q.fa
-DO_SAMTOOLS samtools faidx $outbase.db.fa
-DO_SAMTOOLS samtools faidx $outbase.q.fa
+ln -sf "../$db" "$outbase.db.fa"
+ln -sf "../$q" "$outbase.q.fa"
+DO_SAMTOOLS samtools faidx "$outbase.db.fa"
+DO_SAMTOOLS samtools faidx "$outbase.q.fa"
 
-in=$outbase.maf.all.tsv
-fafai1=$outbase.db.fa.fai
-fafai2=$outbase.q.fa.fai
+in="$outbase.maf.all.tsv"
+fafai1="$outbase.db.fa.fai"
+fafai2="$outbase.q.fa.fai"
 
 
 DO_AWK awk -F'\t' '
  FILENAME==ARGV[1]{if($0!~"^#" && $6>=1*1000 && $11>=1*1000){if($10=="+"){aln[$2":"$7]["+"]+=$4}else if($10=="-"){aln[$2":"$7]["-"]+=$4}; aln3[$2":"$7]+=$4}}
  FILENAME==ARGV[2] && $0!~"^#"{if($6>=1*1000 && $11>=1*1000){if(aln[$2":"$7]["+"]>=aln[$2":"$7]["-"]){print aln3[$2":"$7]"\t+\t"$0}else{print aln3[$2":"$7]"\t-\t"$0}}}
-' $in ./$in|sort -k1,1gr -k6,6g > $in.da
+' "$in" "./$in"|sort -k1,1gr -k6,6g > "$in.da"
 DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{a[$4][$9]+=$6; b[$9][$4]+=$11; d[$4][$9][length(d[$4][$9])]=$0}
  FILENAME==ARGV[2]{
   if(n==0){
@@ -137,19 +139,19 @@ DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{a[$4][$9]+=$6; b[$9][$4]+=$11; d[$4][$9][le
     }
    };
   }
- }' $in.da ./$in.da > $in.da3
+ }' "$in.da" "./$in.da" > "$in.da3"
 DO_AWK awk -F'\t' 'FILENAME==ARGV[1]{if($7 in a){}else{a[$7][1]=tota*1; a[$7][2]=$11; a[$7][3]=$10; a[$7][4]=$2; tota+=$11;
-      if($2=="+"){print $7"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"}else{print ".\t"tota > "'$in'.xp.txt"; print $7"\t"tota > "'$in'.xm.txt"}};
+      if($2=="+"){print $7"\t"tota > "'"$in"'.xp.txt"; print ".\t"tota > "'"$in"'.xm.txt"}else{print ".\t"tota > "'"$in"'.xp.txt"; print $7"\t"tota > "'"$in"'.xm.txt"}};
      if($12 in b){}else{b[$12][1]=totb*1; b[$12][2]=$16; b[$12][3]=$15; b[$12][4]=$3; totb+=$16;
-      if($3=="+"){print $12"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}else{print ".\t"totb > "'$in'.yp.txt"; print $12"\t"totb > "'$in'.ym.txt"}}}
-    FILENAME==ARGV[2]{if($4 in a){}else{a[$4][1]=tota*1; a[$4][2]=$8; a[$4][3]="+"; a[$4][4]="+"; tota+=$8; print $4"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"};
+      if($3=="+"){print $12"\t"totb > "'"$in"'.yp.txt"; print ".\t"totb > "'"$in"'.ym.txt"}else{print ".\t"totb > "'"$in"'.yp.txt"; print $12"\t"totb > "'"$in"'.ym.txt"}}}
+    FILENAME==ARGV[2]{if($4 in a){}else{a[$4][1]=tota*1; a[$4][2]=$8; a[$4][3]="+"; a[$4][4]="+"; tota+=$8; print $4"\t"tota > "'"$in"'.xp.txt"; print ".\t"tota > "'"$in"'.xm.txt"};
      if($9 in b){}else{b[$9][1]=totb*1; b[$9][2]=$13; b[$9][3]=$12; b[$9][4]=$2; totb+=$13;
-      if($2=="+"){print $9"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}else{print ".\t"totb > "'$in'.yp.txt"; print $9"\t"totb > "'$in'.ym.txt"}};
+      if($2=="+"){print $9"\t"totb > "'"$in"'.yp.txt"; print ".\t"totb > "'"$in"'.ym.txt"}else{print ".\t"totb > "'"$in"'.yp.txt"; print $9"\t"totb > "'"$in"'.ym.txt"}};
      if($12=="+"){ystart=$10; ywidth=$11; ylen=$13}else{ystart=$13-$10-$11; ywidth=$11; ylen=$13};
      if(a[$4][4]=="+"){x1=a[$4][1]+$5; x2=a[$4][1]+$5+$6}else{x1=a[$4][1]+$8-$5; x2=a[$4][1]+$8-$5-$6};
      if((b[$9][4]=="+" && $12=="+") || (b[$9][4]=="-" && $12=="-")){y1=b[$9][1]+$10; y2=b[$9][1]+$10+$11}else{y1=b[$9][1]+$13-$10; y2=b[$9][1]+$13-$10-$11}; print x1"\t"x2"\t"y1"\t"y2}
-    FILENAME==ARGV[3]{if($1 in a){}else{tota+=$2; print $1"\t"tota > "'$in'.xp.txt"}}
-    FILENAME==ARGV[4]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'$in'.yp.txt"}}' $in.da3 $in.da $fafai1 $fafai2 > $in.da4
+    FILENAME==ARGV[3]{if($1 in a){}else{tota+=$2; print $1"\t"tota > "'"$in"'.xp.txt"}}
+    FILENAME==ARGV[4]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'"$in"'.yp.txt"}}' "$in.da3" "$in.da" "$fafai1" "$fafai2" > "$in.da4"
 
 cat << EOF > run-R.R
 xp=read.table("$in.xp.txt")
@@ -186,8 +188,8 @@ dev.off()
 EOF
 
 DO_R R --vanilla < run-R.R
-DO_IMAGEMAGICK convert -density 300 $in.pdf $in.png
-mv $in.pdf $in.png .
+DO_IMAGEMAGICK convert -density 300 "$in.pdf" "$in.png"
+mv "$in.pdf" "$in.png" .
 
 
 

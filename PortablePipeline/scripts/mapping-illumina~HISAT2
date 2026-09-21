@@ -23,44 +23,50 @@ export IM_PRINSEQ="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0-blast_2.9.0-
 export IM_HISAT2="quay.io/biocontainers/hisat2:2.1.0--py27h6bb024c_3"
 export IM_SAMTOOLS="c2997108/centos7:1-trinity_2.8.5-kallisto_0.46.0"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 if [ "$input_2$input_4" = "" ]; then echo reference genome or index is needed; post_processing; fi
 
-r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true`"
-r1gz="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true`"
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
+r1gz=()
+while IFS= read -r pp_line; do r1gz+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q[.]gz$' || true)
 
-rs="`find $input_1/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$'|egrep -v '(_R2.*|_2)[.]f(ast|)q$' || true`"
-rsgz="`find $input_1/ |egrep '[.]f(ast|)q[.]gz$'|egrep -v '(_R1.*|_1)[.]f(ast|)q[.]gz$'|egrep -v '(_R2.*|_2)[.]f(ast|)q[.]gz$' || true`"
+rs=()
+while IFS= read -r pp_line; do rs+=("$pp_line"); done < <(find "$input_1"/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$'|egrep -v '(_R2.*|_2)[.]f(ast|)q$' || true)
+rsgz=()
+while IFS= read -r pp_line; do rsgz+=("$pp_line"); done < <(find "$input_1"/ |egrep '[.]f(ast|)q[.]gz$'|egrep -v '(_R1.*|_1)[.]f(ast|)q[.]gz$'|egrep -v '(_R2.*|_2)[.]f(ast|)q[.]gz$' || true)
 
-if [ "$r1$r1gz$rs$rsgz" = "" ]; then echo Place FASTQ files in this folder; post_processing; fi
+if [ ${#r1[@]} = 0 -a ${#r1gz[@]} = 0 -a ${#rs[@]} = 0 -a ${#rsgz[@]} = 0 ]; then echo Place FASTQ files in this folder; post_processing; fi
 
-r2=$(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/';
+r2=()
+for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  r2+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
-r2gz=$(for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
-  echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/';
+done
+r2gz=()
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+  r2gz+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')");
  else
-  echo $i|sed 's/_R1/_R2/'
+  r2gz+=("$(echo "$i"|sed 's/_R1/_R2/')")
  fi
-done)
+done
 
 echo "#Check paired-end"
-ls $r2 $r2gz > /dev/null
+ls -- ${r2[@]+"${r2[@]}"} ${r2gz[@]+"${r2gz[@]}"} > /dev/null
 
 #decompress input files
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > "$(echo "$input_3"|sed 's/[.]gz$//')"; input_3="$(echo "$input_3"|sed 's/[.]gz$//')"; fi
 if [ `echo "$input_3"|egrep "[.](gff|gff3)$"|wc -l||true` = 1 ];then
- temp_3=`echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/'`
+ temp_3="$(echo "$input_3"|sed 's/[.]\(gff\|gff3\)$/.gtf/')"
  #DO_BASE gff3ToGenePred "$input_3" /dev/stdout | (DO_BASE genePredToGtf file stdin "$temp_3")
  bash "$scriptdir"/convert~gff3_to_gtf "$input_3"
  input_3="$temp_3"
@@ -76,57 +82,61 @@ if [ "$input_4" = "" ];then
  fi
  index=hisat2_index
 else
- index=`ls $input_4/*.1.ht2|sed 's/.1.ht2$//'`
+ index="$(ls "$input_4"/*.1.ht2|sed 's/.1.ht2$//')"
 fi
 
 mkdir -p output.prinseq
-(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+(for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- i2=`basename $i`
- j2=`basename $j`
- echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -fastq2 $j -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2
+ i2="$(basename "$i")"
+ j2="$(basename "$j")"
+ echo "$ENV_PRINSEQ prinseq-lite.pl -fastq $(pp_shell_quote "$i") -fastq2 $(pp_shell_quote "$j") -out_good $(pp_shell_quote "output.prinseq/$i2") -out_bad null -out_format 3 $opt_p ; mv $(pp_shell_quote "output.prinseq/${i2}_1.fastq") $(pp_shell_quote "output.prinseq/$i2") ; mv $(pp_shell_quote "output.prinseq/${i2}_2.fastq") $(pp_shell_quote "output.prinseq/$j2")"
 done
-for i in $r1gz; do
- if [ `echo $i|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/'`;
+for i in ${r1gz[@]+"${r1gz[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q[.]gz$"|wc -l` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q[.]gz/_2.f\1q.gz/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- i2=`basename $i .gz`
- j2=`basename $j .gz`
- echo $ENV_BASE zcat $i ">" $i2";" zcat $j ">" $j2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -fastq2 $j2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}_1.fastq output.prinseq/$i2";" mv output.prinseq/${i2}_2.fastq output.prinseq/$j2";"rm -f $i2 $j2
+ i2="$(basename "$i" .gz)"
+ j2="$(basename "$j" .gz)"
+ echo "$ENV_BASE zcat $(pp_shell_quote "$i") > $(pp_shell_quote "$i2") ; zcat $(pp_shell_quote "$j") > $(pp_shell_quote "$j2") ; $ENV_PRINSEQ prinseq-lite.pl -fastq $(pp_shell_quote "$i2") -fastq2 $(pp_shell_quote "$j2") -out_good $(pp_shell_quote "output.prinseq/$i2") -out_bad null -out_format 3 $opt_p ; mv $(pp_shell_quote "output.prinseq/${i2}_1.fastq") $(pp_shell_quote "output.prinseq/$i2") ; mv $(pp_shell_quote "output.prinseq/${i2}_2.fastq") $(pp_shell_quote "output.prinseq/$j2") ; rm -f $(pp_shell_quote "$i2") $(pp_shell_quote "$j2")"
 done
-for i in $rs; do
- i2=`basename $i`
- echo $ENV_PRINSEQ prinseq-lite.pl -fastq $i -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}.fastq output.prinseq/$i2
+for i in ${rs[@]+"${rs[@]}"}; do
+ i2="$(basename "$i")"
+ echo "$ENV_PRINSEQ prinseq-lite.pl -fastq $(pp_shell_quote "$i") -out_good $(pp_shell_quote "output.prinseq/$i2") -out_bad null -out_format 3 $opt_p ; mv $(pp_shell_quote "output.prinseq/${i2}.fastq") $(pp_shell_quote "output.prinseq/$i2")"
 done
-for i in $rsgz; do
- i2=`basename $i .gz`
- echo $ENV_BASE zcat $i ">" $i2";" $ENV_PRINSEQ prinseq-lite.pl -fastq $i2 -out_good output.prinseq/$i2 -out_bad null -out_format 3 $opt_p";" mv output.prinseq/${i2}.fastq output.prinseq/$i2";"rm -f $i2
+for i in ${rsgz[@]+"${rsgz[@]}"}; do
+ i2="$(basename "$i" .gz)"
+ echo "$ENV_BASE zcat $(pp_shell_quote "$i") > $(pp_shell_quote "$i2") ; $ENV_PRINSEQ prinseq-lite.pl -fastq $(pp_shell_quote "$i2") -out_good $(pp_shell_quote "output.prinseq/$i2") -out_bad null -out_format 3 $opt_p ; mv $(pp_shell_quote "output.prinseq/${i2}.fastq") $(pp_shell_quote "output.prinseq/$i2") ; rm -f $(pp_shell_quote "$i2")"
 done
 )|DOPARALLELONE
 
 WAITPARALLEL
 
 rm -f output.prinseq/*_singletons.fastq || true
-r1="`find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true`"
-rs="`find output.prinseq/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$'|egrep -v '(_R2.*|_2)[.]f(ast|)q$' || true`"
+r1=()
+while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find output.prinseq/ |egrep '(_R1.*|_1)[.]f(ast|)q$' || true)
+rs=()
+while IFS= read -r pp_line; do rs+=("$pp_line"); done < <(find output.prinseq/ |egrep '[.]f(ast|)q$'|egrep -v '(_R1.*|_1)[.]f(ast|)q$'|egrep -v '(_R2.*|_2)[.]f(ast|)q$' || true)
 
 mkdir -p output.unsorted_bam
-(for i in $r1; do
- if [ `echo $i|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
-  j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+(for i in ${r1[@]+"${r1[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q$"|wc -l` = 1 ]; then
+  j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
  else
-  j=`echo $i|sed 's/_R1/_R2/'`
+  j="$(echo "$i"|sed 's/_R1/_R2/')"
  fi
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -1 "$i" -2 "$j" --rg-id $i --rg "SM:$i"'|('$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted_bam/`basename "$i"`.bam")"
+ rgid="$(pp_safe_name "$i")" #リードグループ(ID/SM)は識別子なので空白などを_に畳む(パスとして使う"$i"はそのまま)
+ echo "$ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $(pp_shell_quote "$index") -1 $(pp_shell_quote "$i") -2 $(pp_shell_quote "$j") --rg-id $(pp_shell_quote "$rgid") --rg $(pp_shell_quote "SM:$rgid") | ( $ENV_SAMTOOLS samtools view -@ $N_CPU -b -o $(pp_shell_quote "output.unsorted_bam/$(basename "$i").bam") )"
 done
-for i in $rs; do
- echo $ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $index -U "$i" --rg-id $i --rg "SM:$i"'|('$ENV_SAMTOOLS samtools view -@ $N_CPU -b -o output.unsorted_bam/`basename "$i"`.bam")"
+for i in ${rs[@]+"${rs[@]}"}; do
+ rgid="$(pp_safe_name "$i")"
+ echo "$ENV_HISAT2 hisat2 $opt_i -p $N_CPU --dta --dta-cufflinks -x $(pp_shell_quote "$index") -U $(pp_shell_quote "$i") --rg-id $(pp_shell_quote "$rgid") --rg $(pp_shell_quote "SM:$rgid") | ( $ENV_SAMTOOLS samtools view -@ $N_CPU -b -o $(pp_shell_quote "output.unsorted_bam/$(basename "$i").bam") )"
 done)|DOPARALLEL
 
 WAITPARALLEL
@@ -136,7 +146,7 @@ rm -rf output.prinseq
 mkdir -p output.sorted_bam
 MEMM=`echo ${N_MEM}|awk -v N_CPU=$N_CPU '{print int($1/1024/N_CPU*0.8)}'`
 (for i in output.unsorted_bam/*.bam; do
- echo $ENV_SAMTOOLS samtools sort -m ${MEMM}M -@ $N_CPU -o output.sorted_bam/`basename $i` $i";" $ENV_SAMTOOLS samtools index output.sorted_bam/`basename $i`
+ echo "$ENV_SAMTOOLS samtools sort -m ${MEMM}M -@ $N_CPU -o $(pp_shell_quote "output.sorted_bam/$(basename "$i")") $(pp_shell_quote "$i") ; $ENV_SAMTOOLS samtools index $(pp_shell_quote "output.sorted_bam/$(basename "$i")")"
 done)|DOPARALLEL
 
 WAITPARALLEL

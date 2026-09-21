@@ -17,44 +17,44 @@ runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -n #input_2# -s #input_3# #input_1#"
 
 export IM_HIFI="c2997108/biocontainers:hifiasm_0.25.0"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 #HiFi reads
-input_hifi=""
-while read i; do
- if [ "$input_hifi" = "" ];then
-  input_hifi="$i"
- else
-  input_hifi="$input_hifi $i"
- fi
+input_hifi=()
+while IFS= read -r i; do
+ input_hifi+=("$i")
 done < <(find "$input_1/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
 
-echo HiFi reads: "$input_hifi"
+echo HiFi reads: ${input_hifi[@]+"${input_hifi[@]}"}
 
 #Nanopore reads
-input_nanopore=""
+input_nanopore=()
+ppnanopore=""
 if [ "$input_2" != "" ]; then
- while read i; do
-  if [ "$input_nanopore" = "" ];then
-   input_nanopore="--ul $i"
+ while IFS= read -r i; do
+  if [ "$ppnanopore" = "" ];then
+   ppnanopore="$i"
   else
-   input_nanopore="$input_nanopore,$i"
+   ppnanopore="$ppnanopore,$i"
   fi
  done < <(find "$input_2/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
- echo Nanopore reads: "$input_nanopore"
+ if [ "$ppnanopore" != "" ]; then
+  input_nanopore=(--ul "$ppnanopore")
+ fi
+ echo Nanopore reads: ${input_nanopore[@]+"${input_nanopore[@]}"}
 fi
 
 #HiC reads
-input_hic=""
+input_hic=()
 if [ "$input_3" != "" ]; then
 pppair1=()
 pppair2=()
 ppsingle=()
 #フォワード側のリードを探して対応するリバース側のリードがあるか調べる
-while read i; do
+while IFS= read -r i; do
  if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
   temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
  else
@@ -69,9 +69,9 @@ while read i; do
 done < <(find "$input_3/" |egrep '(_R1.*|_1)[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
 
 #全ファイルの中から_1.fq, _R1_などのフォワードリード名を持たないファイルを調べる
-while read i; do
+while IFS= read -r i; do
  ppinputcheck=0
- for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+ for j in ${pppair1[@]+"${pppair1[@]}"} ${pppair2[@]+"${pppair2[@]}"} ${ppsingle[@]+"${ppsingle[@]}"}; do
   if [ "$j" = "$i" ]; then
    ppinputcheck=1
    break
@@ -83,7 +83,7 @@ while read i; do
 done < <(find "$input_3/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
 
 #for single-end reads
-for i in ${ppsingle[@]:-}; do
+for i in ${ppsingle[@]+"${ppsingle[@]}"}; do
  echo "$i" is not used.
 done
 
@@ -92,23 +92,25 @@ temp_r2=""
 #for paired-end reads
 for ((i = 0; i < ${#pppair1[@]}; i++)) {
  if [ $i == 0 ];then
-  temp_r1="$pppair1[i]"
-  temp_r2="$pppair2[i]"
+  temp_r1="${pppair1[i]}"
+  temp_r2="${pppair2[i]}"
  else
-  temp_r1="$temp_r1,$pppair1[i]"
-  temp_r2="$temp_r2,$pppair2[i]"
+  temp_r1="$temp_r1,${pppair1[i]}"
+  temp_r2="$temp_r2,${pppair2[i]}"
  fi
 }
 
 if [ "$temp_r1" != "" ]; then
- input_hic="--h1 $temp_r1 --h2 $temp_r2"
+ input_hic=(--h1 "$temp_r1" --h2 "$temp_r2")
 fi
 
 fi
 
-DO_HIFI hifiasm -o output -t $N_CPU $opt_a $input_hic $input_nanopore $input_hifi
+DO_HIFI hifiasm -o output -t $N_CPU $opt_a ${input_hic[@]+"${input_hic[@]}"} ${input_nanopore[@]+"${input_nanopore[@]}"} ${input_hifi[@]+"${input_hifi[@]}"}
 
-for i in `ls output.*.gfa|grep -v noseq.gfa`; do awk '/^S/{print ">"$2;print $3}' $i > $i.fa; done
+ppgfa=()
+while IFS= read -r pp_line; do ppgfa+=("$pp_line"); done < <(ls output.*.gfa|grep -v noseq.gfa || true)
+for i in ${ppgfa[@]+"${ppgfa[@]}"}; do awk '/^S/{print ">"$2;print $3}' "$i" > "$i.fa"; done
 
 rm -f output.ec.bin output.ovlp.source.bin output.ovlp.reverse.bin
 

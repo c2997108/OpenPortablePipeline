@@ -18,7 +18,7 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# #input_1# #input_2# #input_3#"
 export IM_BWA="quay.io/biocontainers/bwa:0.7.17--pl5.22.0_1"
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -28,11 +28,12 @@ if [ "$input_3" = "" ]; then
  DO_BWA bwa index "$input_2"
  ref="$input_2"
 else
- ref="`ls -LS $input_3/*|grep [.]bwt$|head -n 1|sed 's/.bwt$//'||true`"
+ ref="$(ls -LS "$input_3"/*|grep '[.]bwt$'|head -n 1|sed 's/.bwt$//'||true)"
 fi
 
 mkdir -p output.bwa
 ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_BWA="$ENV_BWA" -v opt_b="$opt_b" -v N_CPU="$N_CPU" -v ref="$ref" -v ENV_SAMTOOLS="$ENV_SAMTOOLS" '
+  function q(s){ gsub(/'"'"'/, "'"'"'\"'"'"'\"'"'"'", s); return "'"'"'" s "'"'"'" }
   {file[$0]=1}
   END{
    PROCINFO["sorted_in"]="@ind_str_asc"
@@ -58,7 +59,8 @@ ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_B
       }
      }
      if(flag[r2]==1){
-      print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' '"'"'"input_1"/"r2"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam\n";
+      rg=samplename; gsub(/[^A-Za-z0-9._-]/,"_",rg); # リードグループ(ID/SM)は識別子なので空白などを_に畳む(pp_safe_name相当)。出力BAM名(samplename)は変えない
+      print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R "q("@RG\\tID:"rg"\\tSM:"rg"\\tLB:library")" "q(ref)" "q(input_1"/"r1)" "q(input_1"/"r2)" |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o "q("output.bwa/"samplename".bam")"); "ENV_SAMTOOLS "samtools index "q("output.bwa/"samplename".bam")"\n";
      }else{
       flag[r1]=0
      }
@@ -69,7 +71,8 @@ ls "$input_1/"|grep -E '[.]f(ast|)q(|[.]gz)$'|awk -v input_1="$input_1" -v ENV_B
      r1=i;
      samplename=gensub(/[.]f(ast|)q(|[.]gz)$/,"",1,i);
      flag[i]=1;
-     print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R '"'"'@RG\\tID:"samplename"\\tSM:"samplename"\\tLB:library'"'"' '"'"'"ref"'"'"' '"'"'"input_1"/"r1"'"'"' |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o output.bwa/'"'"'"samplename"'"'"'.bam); "ENV_SAMTOOLS "samtools index output.bwa/'"'"'"samplename"'"'"'.bam\n";
+     rg=samplename; gsub(/[^A-Za-z0-9._-]/,"_",rg);
+     print ENV_BWA" bwa mem "opt_b" -t "N_CPU" -M -R "q("@RG\\tID:"rg"\\tSM:"rg"\\tLB:library")" "q(ref)" "q(input_1"/"r1)" |( "ENV_SAMTOOLS" samtools sort -@ "N_CPU" -o "q("output.bwa/"samplename".bam")"); "ENV_SAMTOOLS "samtools index "q("output.bwa/"samplename".bam")"\n";
     }
    }
   }

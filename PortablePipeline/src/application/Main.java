@@ -60,7 +60,7 @@ public class Main extends Application {
 	        
 			BorderPane root = (BorderPane)FXMLLoader.load(getClass().getResource("JobWindow.fxml"));
 			Scene scene = new Scene(root,1500,900);
-	        Image icon = new Image( "file:"+ppBinDir+"/image/pipe.png" );
+	        Image icon = new Image( PortablePipelineCommon.fileUrl(ppBinDir, "image/pipe.png") );
 	        primaryStage.getIcons().add( icon );
 			scene.getStylesheets().add(getClass().getResource("application.css").toExternalForm());
 			primaryStage.setScene(scene);

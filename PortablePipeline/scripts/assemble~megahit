@@ -16,51 +16,54 @@ runcmd="$0 -c #opt_c# -m #opt_m# -o #opt_o# #input_1# #input_2#"
 
 export IM_MEGAHIT="c2997108/biocontainers:megahit_1.2.9"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-pairinput=""
+pairinput=()
 if [ "$input_1" != "" ]; then
- r1="`find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$' || true`"
- #if [ "$r1" = "" ]; then echo Place paired-end fastq files in this folder; post_processing; fi
+ r1=()
+ while IFS= read -r pp_line; do r1+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q([.]gz|)$' || true)
+ #if [ ${#r1[@]} = 0 ]; then echo Place paired-end fastq files in this folder; post_processing; fi
 
- r2=$(for i in $r1; do
-  if [ `echo $i|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
-   echo $i|sed 's/_1[.]f\(ast\|\)q\([.]gz\|\)/_2.f\1q\2/';
+ r2=()
+ for i in ${r1[@]+"${r1[@]}"}; do
+  if [ `echo "$i"|egrep "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+   r2+=("$(echo "$i"|sed 's/_1[.]f\(ast\|\)q\([.]gz\|\)/_2.f\1q\2/')");
   else
-   echo $i|sed 's/\(.*\)_R1/\1_R2/'
+   r2+=("$(echo "$i"|sed 's/\(.*\)_R1/\1_R2/')")
   fi
- done)
+ done
 
  echo "#Check paired-end"
- ls $r2 > /dev/null
+ ls -- ${r2[@]+"${r2[@]}"} > /dev/null
 
  r1input=""
- for i in $r1; do
+ for i in ${r1[@]+"${r1[@]}"}; do
   r1input="$r1input,$i"
  done
- r1input=`echo $r1input|cut -f 2- -d,`
+ r1input=`echo "$r1input"|cut -f 2- -d,`
  r2input=""
- for i in $r2; do
+ for i in ${r2[@]+"${r2[@]}"}; do
   r2input="$r2input,$i"
  done
- r2input=`echo $r2input|cut -f 2- -d,`
+ r2input=`echo "$r2input"|cut -f 2- -d,`
 
- if [ "$r1input" != "" ]; then pairinput="-1 $r1input -2 $r2input"; fi
+ if [ "$r1input" != "" ]; then pairinput=(-1 "$r1input" -2 "$r2input"); fi
 fi
 
-singleinput=""
+singleinput=()
 if [ "$input_2" != "" ]; then
- r1s="`find $input_2/ |egrep '[.]f(ast|)q([.]gz|)$' || true`"
+ r1s=()
+ while IFS= read -r pp_line; do r1s+=("$pp_line"); done < <(find "$input_2"/ |egrep '[.]f(ast|)q([.]gz|)$' || true)
  r1sinput=""
- for i in $r1s; do
+ for i in ${r1s[@]+"${r1s[@]}"}; do
   r1sinput="$r1sinput,$i"
  done
- r1sinput=`echo $r1sinput|cut -f 2- -d,`
+ r1sinput=`echo "$r1sinput"|cut -f 2- -d,`
 
- if [ "$r1sinput" != "" ]; then singleinput="-r $r1sinput"; fi
+ if [ "$r1sinput" != "" ]; then singleinput=(-r "$r1sinput"); fi
 fi
 
 TEMP_MEM=`cat /proc/meminfo 2> /dev/null |grep ^MemTotal:|awk -v mem=$N_MEM_K '{print mem/$2}' || true` #total MEM (kB)
@@ -68,7 +71,7 @@ PARAM_MEM=""
 if [ "$TEMP_MEM" != "" ]; then PARAM_MEM="-m $TEMP_MEM"; fi
 
 DO_MEGAHIT rm -rf megahit_out
-DO_MEGAHIT megahit -t $N_CPU $PARAM_MEM $pairinput $singleinput $opt_o
+DO_MEGAHIT megahit -t $N_CPU $PARAM_MEM ${pairinput[@]+"${pairinput[@]}"} ${singleinput[@]+"${singleinput[@]}"} $opt_o
 
 post_processing
 

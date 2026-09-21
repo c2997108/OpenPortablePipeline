@@ -29,15 +29,15 @@ export IM_CIRCOS="c2997108/circos:0.69.8"
 export IM_GFFREAD="quay.io/biocontainers/cufflinks:2.2.1--py36_1"
 export IM_BASE="c2997108/centos7:metacor7"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > `echo "$input_3"|sed 's/[.]gz$//'`; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_4"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_4" > `echo "$input_4"|sed 's/[.]gz$//'`; input_4=`echo "$input_4"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_3"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_3" > "$(echo "$input_3"|sed 's/[.]gz$//')"; input_3=`echo "$input_3"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_4"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_4" > "$(echo "$input_4"|sed 's/[.]gz$//')"; input_4=`echo "$input_4"|sed 's/[.]gz$//'`; fi
 
 mkdir -p reformat
 DO_EXONERATE fastareformat "$input_1" |sed 's/\r//g' > reformat/input_1.fa.tmp
@@ -53,19 +53,23 @@ mkdir -p split/input_2
 unset AUGUSTUS_CONFIG_PATH
 (if [ "$input_3" = "" ]; then
  DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_1.fa split/input_1
- for i in `ls split/input_1/*|grep -v "[.]gff$"`; do
-  j=`cat $i|wc -l`
-  if [ $j -gt 1 ]; then
-   echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $i > $i.gff";
+ pp_files=()
+ while IFS= read -r pp_line; do pp_files+=("$pp_line"); done < <(ls split/input_1/*|grep -v "[.]gff$")
+ for i in ${pp_files[@]+"${pp_files[@]}"}; do
+  j=`cat "$i"|wc -l`
+  if [ "$j" -gt 1 ]; then
+   echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $(pp_shell_quote "$i") > $(pp_shell_quote "$i.gff")";
   fi
  done
 fi
 if [ "$input_4" = "" ]; then
  DO_COR /ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit -c $N_CPU reformat/input_2.fa split/input_2
- for i in `ls split/input_2/*|grep -v "[.]gff$"`; do
-  j=`cat $i|wc -l`
-  if [ $j -gt 1 ]; then
-   echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $i > $i.gff";
+ pp_files=()
+ while IFS= read -r pp_line; do pp_files+=("$pp_line"); done < <(ls split/input_2/*|grep -v "[.]gff$")
+ for i in ${pp_files[@]+"${pp_files[@]}"}; do
+  j=`cat "$i"|wc -l`
+  if [ "$j" -gt 1 ]; then
+   echo "$ENV_AUGUSTUS augustus --species=$opt_s $opt_a $(pp_shell_quote "$i") > $(pp_shell_quote "$i.gff")";
   fi
  done
 fi) | DOPARALLELONE
@@ -101,7 +105,7 @@ else
 fi
 
 DO_ORTHOFINDER orthofinder -t $N_CPU $opt_b -f protein
-cat `ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1` |grep -v ", "|sed 's/\r//g'|(DO_COR awk 'FILENAME!="/dev/stdin"{a[$1]=$2} FILENAME=="/dev/stdin"{if(FNR==1){print $0}else{print $1"\t"a[$2]"\t"a[$3]}}' split/*.tab /dev/stdin) > orthogroups.tsv
+cat "$(ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1)" |grep -v ", "|sed 's/\r//g'|(DO_COR awk 'FILENAME!="/dev/stdin"{a[$1]=$2} FILENAME=="/dev/stdin"{if(FNR==1){print $0}else{print $1"\t"a[$2]"\t"a[$3]}}' split/*.tab /dev/stdin) > orthogroups.tsv
 
 DO_COR awk -F'\t' -v minlen=$opt_l 'FILENAME!="orthogroups.tsv"{if(FNR==1){n++}; len[n][$1]=$2} FILENAME=="orthogroups.tsv"{split($2,arr1,":"); split($3,arr2,":"); if(len[1][arr1[1]]>=minlen && len[2][arr2[1]]>=minlen){print $0} }' reformat/*.fai orthogroups.tsv > orthogroups.long.tsv
 DO_COR awk -F'\t' '{split($2,part,":"); split($3,arr,":"); cnt[arr[1]][part[1]]+=arr[3]-arr[2]} END{for(i in cnt){for(j in cnt[i]){print i"\t"j"\t"cnt[i][j]}}}' orthogroups.long.tsv |sort -k1,1V -k3,3nr > orthogroups.long.pair.tsv
@@ -112,7 +116,7 @@ cat ref1.txt ref2.txt > circos.karyotype.txt
 
 echo "karyotype= circos.karyotype.txt" > circos.conf
 echo "chromosomes_units= 1000000" >> circos.conf
-echo "chromosomes= "`cat circos.karyotype.txt |cut -f 3 -d ' '|sed 's/$/;/'|tr -d '\n'|sed 's/;$//'` >> circos.conf
+echo "chromosomes= $(cat circos.karyotype.txt |cut -f 3 -d ' '|sed 's/$/;/'|tr -d '\n'|sed 's/;$//')" >> circos.conf
 echo "<links>
 <link>
 file=circos.link.txt
@@ -121,12 +125,14 @@ color= red
 <rules>" >> circos.conf
 
 n=0
-for i in `cut -f 3 -d ' ' ref1.txt`; do
+pp_chrs=()
+while IFS= read -r pp_line; do pp_chrs+=("$pp_line"); done < <(cut -f 3 -d ' ' ref1.txt)
+for i in ${pp_chrs[@]+"${pp_chrs[@]}"}; do
  n=`expr $n + 1`;
  if [ $n -gt 11 ]; then n=1; fi
  echo "<rule>
-condition= from("$i")
-color= spectral-11-div-"$n"
+condition= from($i)
+color= spectral-11-div-$n
 </rule>" >> circos.conf
 done
 
@@ -166,7 +172,7 @@ DO_CIRCOS circos -conf circos.conf
 
 echo Predicted proteins of input_1 : `grep ">" protein/input_1.fa |wc -l` > result.txt
 echo Predicted proteins of input_2 : `grep ">" protein/input_2.fa |wc -l` >> result.txt
-awk 'END{print "Orthogroups : "NR-1}' `ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1` >> result.txt
+awk 'END{print "Orthogroups : "NR-1}' "$(ls -t protein/OrthoFinder/*/Orthogroups/Orthogroups.tsv|head -n 1)" >> result.txt
 awk 'END{print "Single copy orthologs : "NR-1}' orthogroups.tsv >> result.txt
 echo Single copy orthologs on long scafolds: `cat orthogroups.long.tsv|wc -l` >> result.txt
 

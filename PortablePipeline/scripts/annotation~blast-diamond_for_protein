@@ -24,13 +24,15 @@ export IM_BLAST="ncbi/blast:2.13.0"
 export IM_DIAMOND="quay.io/biocontainers/diamond:2.1.4--hb97b32f_0"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.9--h10a08f8_12"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-(find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]gz$"||true)|while read i; do
- echo "$ENV_BASE gzip -dc \"$i\" > "`echo "$i"|sed 's/[.]gz$//'`
+pp_gzfiles=()
+while IFS= read -r pp_line; do pp_gzfiles+=("$pp_line"); done < <((find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]gz$"||true))
+for i in ${pp_gzfiles[@]+"${pp_gzfiles[@]}"}; do
+ echo "$ENV_BASE gzip -dc $(pp_shell_quote "$i") > $(pp_shell_quote "$(echo "$i"|sed 's/[.]gz$//')")"
 done | DOPARALLELONE
 WAITPARALLEL
 
@@ -39,27 +41,35 @@ if [ `(find "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|
  post_processing
 fi
 
-(find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)$"||true)|while read i; do
- echo "$ENV_EXONERATE fastareformat \"$i\" |sed 's/\\r//g' > \"$i\".formatted.txt"
+pp_fafiles=()
+while IFS= read -r pp_line; do pp_fafiles+=("$pp_line"); done < <((find "$input_1" "$input_2" "$input_3" "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)$"||true))
+for i in ${pp_fafiles[@]+"${pp_fafiles[@]}"}; do
+ echo "$ENV_EXONERATE fastareformat $(pp_shell_quote "$i") |sed 's/\\r//g' > $(pp_shell_quote "$i.formatted.txt")"
 done | DOPARALLELONE
 WAITPARALLEL
 
-input=`echo "$input_1"|sed 's/[.]gz$//'`.formatted.txt
+input="$(echo "$input_1"|sed 's/[.]gz$//')".formatted.txt
 
 (
-(find "$input_2"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
- echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype nucl; $ENV_BLAST tblastn -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send sframe evalue bitscore stitle\" -out \"$input.tblastn."`basename $i`".tsv\" $opt_a"
+pp_db2=()
+while IFS= read -r pp_line; do pp_db2+=("$pp_line"); done < <((find "$input_2"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true))
+for i in ${pp_db2[@]+"${pp_db2[@]}"}; do
+ echo "$ENV_BLAST makeblastdb -in $(pp_shell_quote "$i") -dbtype nucl; $ENV_BLAST tblastn -db $(pp_shell_quote "$i") -query $(pp_shell_quote "$input") -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send sframe evalue bitscore stitle\" -out $(pp_shell_quote "$input.tblastn.$(basename "$i").tsv") $opt_a"
 done
-(find "$input_3"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
- echo "$ENV_BLAST makeblastdb -in \"$i\" -dbtype prot; $ENV_BLAST blastp -db \"$i\" -query \"$input\" -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send sframe evalue bitscore stitle\" -out \"$input.blastp."`basename $i`".tsv\" $opt_b"
+pp_db3=()
+while IFS= read -r pp_line; do pp_db3+=("$pp_line"); done < <((find "$input_3"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true))
+for i in ${pp_db3[@]+"${pp_db3[@]}"}; do
+ echo "$ENV_BLAST makeblastdb -in $(pp_shell_quote "$i") -dbtype prot; $ENV_BLAST blastp -db $(pp_shell_quote "$i") -query $(pp_shell_quote "$input") -num_threads $N_CPU -outfmt \"6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send sframe evalue bitscore stitle\" -out $(pp_shell_quote "$input.blastp.$(basename "$i").tsv") $opt_b"
 done
-(find "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true)|while read i; do
- echo "$ENV_DIAMOND diamond makedb --in \"$i\" -d \"$i\"; $ENV_DIAMOND diamond blastp -d \"$i\" -q \"$input\" --threads $N_CPU --outfmt 6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore salltitles -o \"$input.diamond."`basename $i`".tsv\" $opt_d"
+pp_db4=()
+while IFS= read -r pp_line; do pp_db4+=("$pp_line"); done < <((find "$input_4"||true)|(grep -E "(fa|fasta|fsa|fna|faa)[.]formatted[.]txt$"||true))
+for i in ${pp_db4[@]+"${pp_db4[@]}"}; do
+ echo "$ENV_DIAMOND diamond makedb --in $(pp_shell_quote "$i") -d $(pp_shell_quote "$i"); $ENV_DIAMOND diamond blastp -d $(pp_shell_quote "$i") -q $(pp_shell_quote "$input") --threads $N_CPU --outfmt 6 qseqid sseqid qlen slen pident length mismatch gapopen qstart qend sstart send qframe evalue bitscore salltitles -o $(pp_shell_quote "$input.diamond.$(basename "$i").tsv") $opt_d"
 done
 ) | DOPARALLEL
 WAITPARALLEL
 
-for i in "$input".*.tsv; do awk -F'\t' -v name=`basename $i|sed 's/.*[.]formatted[.]txt[.]\(.*\)[.]formatted[.]txt[.]tsv$/\1/'` 'BEGIN{print "qseqid\t"name":sseqid\tqlen\tslen\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tsframe\tevalue\tbitscore\tstitle"} {if($1!=old){print $0; old=$1}}' "$i" > "$i".txt; done
+for i in "$input".*.tsv; do awk -F'\t' -v name="$(basename "$i"|sed 's/.*[.]formatted[.]txt[.]\(.*\)[.]formatted[.]txt[.]tsv$/\1/')" 'BEGIN{print "qseqid\t"name":sseqid\tqlen\tslen\tpident\tlength\tmismatch\tgapopen\tqstart\tqend\tsstart\tsend\tsframe\tevalue\tbitscore\tstitle"} {if($1!=old){print $0; old=$1}}' "$i" > "$i".txt; done
 
 DO_SAMTOOLS samtools faidx "$input"
 awk -F'\t' 'BEGIN{print "qseqid\tlength"} {print $1"\t"$2}' "$input".fai > "$input".fai.tsv

@@ -24,13 +24,13 @@ export IM_GATK="quay.io/biocontainers/gatk4:4.1.0.0--0"
 export IM_TRINITY="quay.io/biocontainers/trinity:2.8.4--py36pl526h447964c_0"
 export IM_EXONERATE="quay.io/biocontainers/exonerate:2.2.0--1"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
 refbase=`echo "$input_2"|sed 's/[.]\(fa\|fasta\|fsa\|fna\)$//'`
 if [ -e "$refbase".dict ]; then DO_PICARD rm -f "$refbase".dict; fi
 DO_PICARD picard CreateSequenceDictionary R="$input_2" O="$refbase".dict
@@ -49,36 +49,43 @@ DO_PICARD picard CreateSequenceDictionary R=pseudochr.re.fa O=pseudochr.re.dict
 ref=pseudochr.re.fa
 MEMG=`echo ${N_MEM}|awk -v N_CPU=$N_CPU '{print int($1/1024/1024/N_CPU*0.8)}'`
 mkdir -p output.bwa
-for i in `find $input_1/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$'`; do
- if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
-  i2=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
+pp_fastqs=()
+while IFS= read -r pp_line; do pp_fastqs+=("$pp_line"); done < <(find "$input_1"/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$')
+for i in ${pp_fastqs[@]+"${pp_fastqs[@]}"}; do
+ if [ `echo "$i"|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+  i2=`echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
  else
-  i2=`echo $i|sed 's/_R1/_R2/'`;
+  i2=`echo "$i"|sed 's/_R1/_R2/'`;
  fi
- outbase=output.bwa/`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
- samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
- echo "$ENV_BWA bwa mem $opt_b -t $N_CPU -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$i2' |( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o '$outbase'.bam); $ENV_SAMTOOLS samtools index '$outbase'.bam; $ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' HaplotypeCaller -R '$ref' -I '$outbase'.bam -O '$outbase'.g.vcf.gz -ERC GVCF"
+ outbase=output.bwa/`basename "$i"|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
+ samplename="$(pp_safe_name "$(basename "$i"|sed 's/_1[.]f.*//'|sed 's/_R1.*//')")"; #リードグループ(ID/SM)は識別子なので空白などを_に畳む。出力名($outbase)は変えない
+ echo "$ENV_BWA bwa mem $opt_b -t $N_CPU -R $(pp_shell_quote "@RG\tID:$samplename\tSM:$samplename\tLB:library") $(pp_shell_quote "$ref") $(pp_shell_quote "$i") $(pp_shell_quote "$i2") |( $ENV_SAMTOOLS samtools sort -@ $N_CPU -o $(pp_shell_quote "$outbase.bam")); $ENV_SAMTOOLS samtools index $(pp_shell_quote "$outbase.bam"); $ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' HaplotypeCaller -R $(pp_shell_quote "$ref") -I $(pp_shell_quote "$outbase.bam") -O $(pp_shell_quote "$outbase.g.vcf.gz") -ERC GVCF"
 done | DOPARALLEL
 
 WAITPARALLEL
 
 ls output.bwa/*.g.vcf.gz > gvcf.list.txt
-cat gvcf.list.txt |sed 's%output.bwa/%%; s/.g.vcf.gz//' > gvcf.list.txt2
+#sample-name-mapのサンプル名はファイル名から作り直すので、bwa memのSM(pp_safe_name)と同じ畳み方にする
+cat gvcf.list.txt |sed 's%output.bwa/%%; s/.g.vcf.gz//' |LC_ALL=C sed 's%[^A-Za-z0-9._/-]%_%g' > gvcf.list.txt2
 paste gvcf.list.txt2 gvcf.list.txt > gvcf.list.txt3
 mkdir -p output.gatk
-for i in `cat $ref.fai |cut -f 1`; do
- if [ -e output.gatk/genomicsdb.$i ]; then DO_GATK rm -rf output.gatk/genomicsdb.$i; fi
- echo "$ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' GenomicsDBImport --genomicsdb-workspace-path output.gatk/genomicsdb.$i --batch-size 5 -L $i --sample-name-map gvcf.list.txt3 --reader-threads 1; $ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' GenotypeGVCFs $opt_g -R $ref -O output.gatk/out.$i.vcf.gz -V gendb://output.gatk/genomicsdb.$i -L $i"
+pp_chrs=()
+while IFS= read -r pp_line; do pp_chrs+=("$pp_line"); done < <(cat "$ref".fai |cut -f 1)
+for i in ${pp_chrs[@]+"${pp_chrs[@]}"}; do
+ if [ -e "output.gatk/genomicsdb.$i" ]; then DO_GATK rm -rf "output.gatk/genomicsdb.$i"; fi
+ echo "$ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' GenomicsDBImport --genomicsdb-workspace-path $(pp_shell_quote "output.gatk/genomicsdb.$i") --batch-size 5 -L $(pp_shell_quote "$i") --sample-name-map gvcf.list.txt3 --reader-threads 1; $ENV_GATK gatk --java-options '-Xmx${N_MEM_G}g -XX:ParallelGCThreads=1' GenotypeGVCFs $opt_g -R $(pp_shell_quote "$ref") -O $(pp_shell_quote "output.gatk/out.$i.vcf.gz") -V $(pp_shell_quote "gendb://output.gatk/genomicsdb.$i") -L $(pp_shell_quote "$i")"
 done | DOPARALLEL
 
 WAITPARALLEL
 
 DO_GATK rm -rf output.gatk/genomicsdb.*
 
-(DO_BASE zcat output.gatk/out.`head -n 1 pseudochr.re.fa.fai |cut -f 1`.vcf.gz|grep "^##"|grep -v "^##contig=<ID=";
+(DO_BASE zcat "output.gatk/out.$(head -n 1 pseudochr.re.fa.fai |cut -f 1).vcf.gz"|grep "^##"|grep -v "^##contig=<ID=";
  awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{print "##contig=<ID="$1",length="len[$1]">"}' "$input_2".fai pseudochr.txt;
- (DO_BASE zcat output.gatk/out.`head -n 1 pseudochr.re.fa.fai |cut -f 1`.vcf.gz;
-  for i in `tail -n+2 pseudochr.re.fa.fai |cut -f 1`; do DO_BASE zcat output.gatk/out.$i.vcf.gz|grep -v "^#" ||true; done
+ (DO_BASE zcat "output.gatk/out.$(head -n 1 pseudochr.re.fa.fai |cut -f 1).vcf.gz";
+  pp_chrs2=()
+  while IFS= read -r pp_line; do pp_chrs2+=("$pp_line"); done < <(tail -n+2 pseudochr.re.fa.fai |cut -f 1)
+  for i in ${pp_chrs2[@]+"${pp_chrs2[@]}"}; do DO_BASE zcat "output.gatk/out.$i.vcf.gz"|grep -v "^#" ||true; done
  )|grep -v "^##" |awk -F'\t' '
     FILENAME==ARGV[1]{chr0[NR]=$1; chr1[NR]=$2; poss[NR]=$3; pose[NR]=$4; n=NR; m=1}
     FILENAME==ARGV[2]{if(FNR==1){print $0}else{for(i=m;i<=n;i++){m=i; if(chr1[i]==$1 && poss[i]<=$2 && pose[i]>=$2){f=1; break}}; if(f==1){$1=chr0[m]; $2=$2-poss[m]+1; OFS="\t"; print $0; f=0}}}

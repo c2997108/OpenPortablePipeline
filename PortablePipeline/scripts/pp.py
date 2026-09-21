@@ -7,7 +7,8 @@ import sys
 import re
 import shlex
 
-# This script will work with python 2.7 or later, 3.x is OK. Python 2.6 can not stop the running command with signal.
+# Python 3.3以降が必要（shlex.quoteのため）。パイプラインの出力はバイト列のまま転送するので、
+# Pythonインタプリタのロケールに依存しない（パスやメッセージに非ASCII文字が入っていてもよい）。
 
 def handler(signum, frame):
     #print(os.getpid())
@@ -37,7 +38,7 @@ def handler(signum, frame):
             print('qsub.log might not exist')
 
         #for docker on tty
-        for i in o2.decode().strip().split('\n'):
+        for i in o2.decode(errors='replace').strip().split('\n'):
             m = re.match(r'.*docker run --name ([^ ]+)', i)
             try:
                 print("docker stop -t 10 "+m.group(1))
@@ -60,7 +61,7 @@ def handler(signum, frame):
             print('pp-docker-list might not exist')
 
         #for podman on tty
-        for i in o2.decode().strip().split('\n'):
+        for i in o2.decode(errors='replace').strip().split('\n'):
             m = re.match(r'.*podman run --name ([^ ]+)', i)
             try:
                 print("podman stop -t 10 "+m.group(1))
@@ -83,7 +84,7 @@ def handler(signum, frame):
             print('pp-podman-list might not exist')
 
         #for singularity and pp.py process
-        for i in o.decode().strip().split('\n'):
+        for i in o.decode(errors='replace').strip().split('\n'):
             m = re.match(r'.*,([0-9]+)[^0-9]*', i)
             try:
                 print("kill "+m.group(1))
@@ -100,7 +101,7 @@ signal.signal(signal.SIGINT, handler)
 signal.signal(signal.SIGUSR2, handler)
 
 if len(sys.argv) == 1:
-    subprocess.check_call('ls '+os.path.dirname(os.path.realpath(__file__))+'|grep "~"|column', shell=True)
+    subprocess.check_call('ls '+shlex.quote(os.path.dirname(os.path.realpath(__file__)))+'|grep "~"|column', shell=True)
     sys.exit()
 
 try:
@@ -114,11 +115,17 @@ except:
 exit_code = 1
 
 try:
-    log_file = open("pp_log.txt", "w")
+    # すべてバイナリモードで扱う。引数（パス）やパイプラインの出力に非ASCIIのバイトが入ることがあり、
+    # 実行先のロケールもPythonのバージョンも当てにできないため（計算ノードではLANGが未設定のことが多い）。
+    # os.fsencode()で引数を元のバイト列に戻している。
+    log_file = open("pp_log.txt", "wb")
     escaped_args = [shlex.quote(arg) for arg in sys.argv]
     argv_str = " ".join(escaped_args)
-    print(argv_str)
-    log_file.write(argv_str+"\n")
+    argv_bytes = os.fsencode(argv_str) + b"\n"
+    sys.stdout.flush()
+    sys.stdout.buffer.write(argv_bytes)
+    sys.stdout.buffer.flush()
+    log_file.write(argv_bytes)
 
     argv2 = sys.argv[1:]
     my_env = os.environ.copy()
@@ -137,11 +144,10 @@ try:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         env=my_env,
-        universal_newlines=True,
     )
     for output in process.stdout:
-        sys.stdout.write(output)
-        sys.stdout.flush()
+        sys.stdout.buffer.write(output)
+        sys.stdout.buffer.flush()
         log_file.write(output)
     exit_code = process.wait()
     if exit_code < 0:

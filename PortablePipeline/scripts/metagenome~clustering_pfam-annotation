@@ -22,41 +22,46 @@ export IM_BWA="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_R="c2997108/centos6:2-bwa-0.7.17-r1198-dirty"
 export IM_COR="c2997108/centos7:metacor7"
 export IM_MERGE="c2997108/centos7:3-java"
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 
-ref=$input_1
-DO_BWA bwa index $ref
-DO_SAMTOOLS samtools faidx $ref
+ref="$input_1"
+DO_BWA bwa index "$ref"
+DO_SAMTOOLS samtools faidx "$ref"
 
 if [ "$input_2" = "" ] && [ "$input_3" = "" ]; then echo No input FASTQ; exit 1; fi
 (if [ "$input_2" != "" ]; then
-  for i in `find $input_2/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true`; do
-  if [ `echo $i|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
-   j=`echo $i|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/'`;
-  elif [ `echo $i|egrep "_R1"|wc -l||true` = 1 ]; then
-   j=`echo $i|sed 's/_R1/_R2/'`;
+  pp_files2=()
+  while IFS= read -r pp_line; do pp_files2+=("$pp_line"); done < <(find "$input_2"/ |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$' || true)
+  for i in ${pp_files2[@]+"${pp_files2[@]}"}; do
+  if [ `echo "$i"|egrep "_1[.]f(ast|)q(|[.]gz)$"|wc -l||true` = 1 ]; then
+   j="$(echo "$i"|sed 's/_1[.]f\(ast\|\)q/_2.f\1q/')";
+  elif [ `echo "$i"|egrep "_R1"|wc -l||true` = 1 ]; then
+   j="$(echo "$i"|sed 's/_R1/_R2/')";
   else
    j=none
   fi
-  i2=`basename $i`
+  i2="$(basename "$i")"
   if [ -e "$j" ]; then
-   samplename=`basename $i|sed 's/_1[.]f.*//'|sed 's/_R1.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' '$j' > '$i2.sam'"
+   #リードグループ(ID/SM)はSAMヘッダーの識別子なので空白などを_に畳む。出力ファイル名($i2.sam)は変えない
+   samplename="$(pp_safe_name "$(basename "$i"|sed 's/_1[.]f.*//'|sed 's/_R1.*//')")";
+   echo "$ENV_BWA bwa mem -t $N_CPU -M -R $(pp_shell_quote "@RG\tID:$samplename\tSM:$samplename\tLB:library") $(pp_shell_quote "$ref") $(pp_shell_quote "$i") $(pp_shell_quote "$j") > $(pp_shell_quote "$i2.sam")"
   else
-   samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-   echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' > '$i2.sam'"
+   samplename="$(pp_safe_name "$(basename "$i"|sed 's/[.]f\(ast\|\)q.*//')")";
+   echo "$ENV_BWA bwa mem -t $N_CPU -M -R $(pp_shell_quote "@RG\tID:$samplename\tSM:$samplename\tLB:library") $(pp_shell_quote "$ref") $(pp_shell_quote "$i") > $(pp_shell_quote "$i2.sam")"
   fi
  done
 fi
 if [ "$input_3" != "" ]; then
- for i in `find $input_3/ |egrep '[.]f(ast|)q(|[.]gz)$' || true`; do
-  i2=`basename $i`
-  samplename=`basename $i|sed 's/[.]f\(ast\|\)q.*//'`;
-  echo "$ENV_BWA bwa mem -t $N_CPU -M -R '@RG\tID:$samplename\tSM:$samplename\tLB:library' '$ref' '$i' > '$i2.sam'"
+ pp_files3=()
+ while IFS= read -r pp_line; do pp_files3+=("$pp_line"); done < <(find "$input_3"/ |egrep '[.]f(ast|)q(|[.]gz)$' || true)
+ for i in ${pp_files3[@]+"${pp_files3[@]}"}; do
+  i2="$(basename "$i")"
+  samplename="$(pp_safe_name "$(basename "$i"|sed 's/[.]f\(ast\|\)q.*//')")";
+  echo "$ENV_BWA bwa mem -t $N_CPU -M -R $(pp_shell_quote "@RG\tID:$samplename\tSM:$samplename\tLB:library") $(pp_shell_quote "$ref") $(pp_shell_quote "$i") > $(pp_shell_quote "$i2.sam")"
  done
 fi
 ) | DOPARALLEL
@@ -79,12 +84,13 @@ samtools index "$outname".clean.bam
 EOF
 
 for i in *.sam; do
- echo "$ENV_SAMTOOLS bash run-count.sh '$i' '$ref' '$N_CPU'"
+ echo "$ENV_SAMTOOLS bash run-count.sh $(pp_shell_quote "$i") $(pp_shell_quote "$ref") '$N_CPU'"
 done | DOPARALLEL
 WAITPARALLEL
 
 for i in *.sam.coverage.txt; do
- echo -e 'id\t'`basename "$i" .sam.coverage.txt` > "$i".input
+ #入力ファイル名がカバレッジ表(all.coverage.txt/OUTPUT.tsv)の列見出し＝サンプル名になるので識別子として畳む
+ echo -e 'id\t'"$(pp_safe_name "$(basename "$i" .sam.coverage.txt)")" > "$i".input
  tail -n+2 "$i"|cut -f 1-2 >> "$i".input
 done
 DO_MERGE merge_table.pl -k *.coverage.txt.input|sed 's/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/' > all.coverage.txt
@@ -98,25 +104,27 @@ cut -f 2 temp.txt >> cluster.txt
 paste all.coverage.txt cluster.txt > all.coverage.cluster.txt
 rm -f temp.txt all.coverage.txt cluster.txt *.coverage.txt
 
-echo "/ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit $ref . -c $N_CPU" > run.temp.sh
+echo "/ddca/tool/exonerate-2.2.0-x86_64/bin/fastasplit $(pp_shell_quote "$ref") . -c $N_CPU" > run.temp.sh
 DO_COR bash run.temp.sh
 
-base=`basename ${ref}`
-echo 'i=$1; /ddca/tool/EMBOSS-6.6.0/bin/transeq -frame 6 $i -outseq $i.aa' > run.temp.sh
-for i in `ls ${base}_chunk_*|grep -v [.]aa$|grep -v [.]pfam`; do DO_COR bash run.temp.sh "$i" ; done
-echo 'i=$1; export PATH=$PATH:/ddca/tool/hmmer-3.1b2/bin;
- PERL5LIB=/ddca/download/PfamScan:/perl5/lib/perl5 /ddca/download/PfamScan/pfam_scan.pl -fasta $i -dir /ddca/download/PfamScan -cpu 1 > $i.pfam' > run.temp.sh
-for i in ${base}_chunk_*.aa; do DO_COR bash run.temp.sh "$i" & done
+base="$(basename "$ref")"
+echo 'i="$1"; /ddca/tool/EMBOSS-6.6.0/bin/transeq -frame 6 "$i" -outseq "$i.aa"' > run.temp.sh
+pp_chunks=()
+while IFS= read -r pp_line; do pp_chunks+=("$pp_line"); done < <(ls -- "$base"_chunk_*|grep -v [.]aa$|grep -v [.]pfam)
+for i in ${pp_chunks[@]+"${pp_chunks[@]}"}; do DO_COR bash run.temp.sh "$i" ; done
+echo 'i="$1"; export PATH=$PATH:/ddca/tool/hmmer-3.1b2/bin;
+ PERL5LIB=/ddca/download/PfamScan:/perl5/lib/perl5 /ddca/download/PfamScan/pfam_scan.pl -fasta "$i" -dir /ddca/download/PfamScan -cpu 1 > "$i.pfam"' > run.temp.sh
+for i in "$base"_chunk_*.aa; do DO_COR bash run.temp.sh "$i" & done
 wait
 
-cat ${base}_chunk_*.aa.pfam |grep -v "^#" |sed '/^$/d' > all.pfam
+cat "$base"_chunk_*.aa.pfam |grep -v "^#" |sed '/^$/d' > all.pfam
 cat all.pfam |awk '{print $1"\t"$6}'|sed 's/_.\t/\t/' > all.pfam.tsv
 DO_AWK awk -F'\t' '
  FILENAME==ARGV[1]{cluster[$1]=$NF; a[$NF]++}
  FILENAME==ARGV[2]{b[$2]++; res[cluster[$1]][$2]++}
  END{ORS="\t"; print "id"; for(j in a){print j}; ORS="\n"; print ""; for(i in b){ORS="\t"; print i; for(j in a){print res[j][i]; delete res[j][i]}; ORS="\n"; print ""}}
 ' all.coverage.cluster.txt all.pfam.tsv |sed 's/\t$//; s/\t\t/\t0\t/g; s/\t\t/\t0\t/g; s/\t$/\t0/' > all.pfam.tsv2
-rm -f ${base}_chunk_* all.pfam all.pfam.tsv cluster.txt
+rm -f "$base"_chunk_* all.pfam all.pfam.tsv cluster.txt
 
 
 cat all.pfam.tsv2|tail -n+2|awk -F'\t' '{for(i=2;i<=NF;i++){a[i]+=$i}; n=NF} END{for(i=2; i<=n; i++){if(a[i]==0){print i}}}' > all.pfam.tsv2.zero

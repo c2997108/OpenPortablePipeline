@@ -21,31 +21,31 @@ export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.28--h577a1d6_4"
 export IM_IMAGEMAGICK="c2997108/centos6:2-imagemagick"
 export IM_SAMTOOLS="quay.io/biocontainers/samtools:1.19--h50ea8bc_0"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_AWK gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 
-db=$input_2
-q=$input_1
-outbase=`basename $q`-`basename ${db}`
+db="$input_2"
+q="$input_1"
+outbase="$(basename "$q")-$(basename "$db")"
 cpu=$N_CPU
 
-DO_MINIMAP2 minimap2 $opt_a -t $cpu $db $q > $outbase.for.paf
-DO_MINIMAP2 minimap2 $opt_a -t $cpu $q $db|awk -F'\t' '{print $6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11}' > $outbase.rev.paf
-cat $outbase.for.paf $outbase.rev.paf|cut -f 1-11|awk 'a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]==0{a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]=1; print $0}' > $outbase.paf
+DO_MINIMAP2 minimap2 $opt_a -t $cpu "$db" "$q" > "$outbase.for.paf"
+DO_MINIMAP2 minimap2 $opt_a -t $cpu "$q" "$db"|awk -F'\t' '{print $6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11}' > "$outbase.rev.paf"
+cat "$outbase.for.paf" "$outbase.rev.paf"|cut -f 1-11|awk 'a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]==0{a[$6"\t"$7"\t"$8"\t"$9"\t"$5"\t"$1"\t"$2"\t"$3"\t"$4"\t"$10"\t"$11]=1; print $0}' > "$outbase.paf"
 
-ln -sf $db $outbase.db.fa
-ln -sf $q $outbase.q.fa
-DO_SAMTOOLS samtools faidx $outbase.db.fa
-DO_SAMTOOLS samtools faidx $outbase.q.fa
+ln -sf "$db" "$outbase.db.fa"
+ln -sf "$q" "$outbase.q.fa"
+DO_SAMTOOLS samtools faidx "$outbase.db.fa"
+DO_SAMTOOLS samtools faidx "$outbase.q.fa"
 
-in=$outbase.paf
-fafai1=$outbase.db.fa.fai
-fafai2=$outbase.q.fa.fai
+in="$outbase.paf"
+fafai1="$outbase.db.fa.fai"
+fafai2="$outbase.q.fa.fai"
 DO_AWK awk -F'\t' '
   #function abs(x){if(x<0){return -x}else{return x}}
   #function calcarea(x1, x2, y1, y2, m1, m2){return x2*y1-x1*y2+(x2*(x2+1)-x1*(x1+1))*((y2-y1)/(x2-x1)-m2/m1)/2}
@@ -61,7 +61,7 @@ DO_AWK awk -F'\t' '
     if(cntalign[$1":"$6]["+"]>=cntalign[$1":"$6]["-"]){print aln3[$1":"$6]"\t+\t"$0}else{print aln3[$1":"$6]"\t-\t"$0}
    }
   }
- ' $in ./$in|sort -k1,1gr -k6,6g > $in.da
+ ' "$in" "./$in"|sort -k1,1gr -k6,6g > "$in.da"
 
 DO_AWK awk -F'\t' '
  FILENAME==ARGV[1]{a[$3][$8]+=$1; b[$8][$3]+=$1; d[$3][$8][length(d[$3][$8])]=$0}
@@ -136,29 +136,29 @@ DO_AWK awk -F'\t' '
    for(m in eafter){print "info: "eafter[m]"\t"check1[m]"\t"check2[$8]"\t"d[m][$8][0]}
   }
  }
-' $in.da ./$in.da > $in.da3
+' "$in.da" "./$in.da" > "$in.da3"
 DO_AWK awk -F'\t' '
  FILENAME==ARGV[1]{
     if(!($6 in a)){
         a[$6][1]=tota*1; a[$6][4]=$2; tota+=$7;
-        if($2=="+"){print $6"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"}
-        else{print ".\t"tota > "'$in'.xp.txt"; print $6"\t"tota > "'$in'.xm.txt"}
+        if($2=="+"){print $6"\t"tota > "'"$in"'.xp.txt"; print ".\t"tota > "'"$in"'.xm.txt"}
+        else{print ".\t"tota > "'"$in"'.xp.txt"; print $6"\t"tota > "'"$in"'.xm.txt"}
     };
     if(!($11 in b)){
         b[$11][1]=totb*1; b[$11][4]=$3; totb+=$12;
-        if($3=="+"){print $11"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}
-        else{print ".\t"totb > "'$in'.yp.txt"; print $11"\t"totb > "'$in'.ym.txt"}
+        if($3=="+"){print $11"\t"totb > "'"$in"'.yp.txt"; print ".\t"totb > "'"$in"'.ym.txt"}
+        else{print ".\t"totb > "'"$in"'.yp.txt"; print $11"\t"totb > "'"$in"'.ym.txt"}
     }
  }
  FILENAME==ARGV[2]{
     if(!($3 in a)){
         a[$3][1]=tota*1; a[$3][4]="+"; tota+=$4;
-        print $3"\t"tota > "'$in'.xp.txt"; print ".\t"tota > "'$in'.xm.txt"
+        print $3"\t"tota > "'"$in"'.xp.txt"; print ".\t"tota > "'"$in"'.xm.txt"
     };
     if(!($8 in b)){
         b[$8][1]=totb*1; b[$8][4]=$2; totb+=$9;
-        if($2=="+"){print $8"\t"totb > "'$in'.yp.txt"; print ".\t"totb > "'$in'.ym.txt"}
-        else{print ".\t"totb > "'$in'.yp.txt"; print $8"\t"totb > "'$in'.ym.txt"}
+        if($2=="+"){print $8"\t"totb > "'"$in"'.yp.txt"; print ".\t"totb > "'"$in"'.ym.txt"}
+        else{print ".\t"totb > "'"$in"'.yp.txt"; print $8"\t"totb > "'"$in"'.ym.txt"}
     };
     if(a[$3][4]=="+"){x1=a[$3][1]+$5; x2=a[$3][1]+$6}else{x1=a[$3][1]+$4-$5; x2=a[$3][1]+$4-$6};
     if(b[$8][4]=="+"){
@@ -170,10 +170,10 @@ DO_AWK awk -F'\t' '
     }
     print x1"\t"x2"\t"y1"\t"y2
  }
- FILENAME==ARGV[4]{if($1 in a){}else{tota+=$2; print $1"\t"tota > "'$in'.xp.txt"}}
+ FILENAME==ARGV[4]{if($1 in a){}else{tota+=$2; print $1"\t"tota > "'"$in"'.xp.txt"}}
 
- FILENAME==ARGV[3]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'$in'.yp.txt"}}
-' $in.da3 $in.da $fafai1 $fafai2 > $in.da4
+ FILENAME==ARGV[3]{if($1 in b){}else{totb+=$2; print $1"\t"totb > "'"$in"'.yp.txt"}}
+' "$in.da3" "$in.da" "$fafai1" "$fafai2" > "$in.da4"
 cat << EOF > run-R.R
 xp=read.table("$in.xp.txt")
 xm=read.table("$in.xm.txt")
@@ -209,7 +209,7 @@ dev.off()
 EOF
 
 DO_R R --vanilla < run-R.R
-DO_IMAGEMAGICK convert -density 300 $in.pdf $in.png
+DO_IMAGEMAGICK convert -density 300 "$in.pdf" "$in.png"
 
 
 

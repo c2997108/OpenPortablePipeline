@@ -23,26 +23,26 @@ runcmd="$0 -c #opt_c# -m #opt_m# -s #opt_s# -a #opt_a# -b #opt_b# -d #opt_d# -t 
 
 export IM_FUNANNOTATE="nextgenusfs/funannotate:v1.8.17"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
-if [ `basename "$input_3"|grep "gmes_linux_64.*[.]tar[.]gz"|wc -l` = 1 -a `basename "$input_4"` = "gm_key_64.gz" ]; then
+if [ `basename "$input_3"|grep "gmes_linux_64.*[.]tar[.]gz"|wc -l` = 1 -a "$(basename "$input_4")" = "gm_key_64.gz" ]; then
  mkdir -p fun/predict_misc/genemark
  zcat "$input_4" > fun/predict_misc/genemark/.gm_key
  rm -rf gmes_linux_64
  tar vxf "$input_3"
- mv `find . -maxdepth 1 -type d|grep gmes_linux_64` gmes_linux_64
+ mv "$(find . -maxdepth 1 -type d|grep gmes_linux_64)" gmes_linux_64
  sed -i '1s%/usr/bin/perl%/venv/bin/perl%' gmes_linux_64/*.pl
- OPT_GENEMARK_PATH="--GENEMARK_PATH $PWD"/gmes_linux_64
+ OPT_GENEMARK_PATH=(--GENEMARK_PATH "$(pp_container_workdir)/gmes_linux_64")
 else
- OPT_GENEMARK_PATH=""
+ OPT_GENEMARK_PATH=()
 fi
 
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_FUNANNOTATE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_FUNANNOTATE gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
 
 pppair1=()
 pppair2=()
 ppsingle=()
-while IFS= read i; do
+while IFS= read -r i; do
  if [ `echo "$i"|egrep "_1[.]f((ast|)(q|a)|na|sa)(|[.]gz)$"|wc -l||true` = 1 ]; then
   temppair2=`echo "$i"|sed 's/_1[.]\(f\(\(ast\|\)\(q\|a\)\|na\|sa\)\(\|[.]gz\)\)$/_2.\1/'`
  else
@@ -56,9 +56,9 @@ while IFS= read i; do
  fi
 done < <(find "$input_2/" |egrep '(_R1.*|_1)[.]f(ast|)q(|[.]gz)$')
 
-while IFS= read i; do
+while IFS= read -r i; do
  ppinputcheck=0
- for j in ${pppair1[@]:-} ${pppair2[@]:-} ${ppsingle[@]:-}; do
+ for j in ${pppair1[@]+"${pppair1[@]}"} ${pppair2[@]+"${pppair2[@]}"} ${ppsingle[@]+"${ppsingle[@]}"}; do
   if [ "$j" = "$i" ]; then
    ppinputcheck=1
    break
@@ -69,19 +69,19 @@ while IFS= read i; do
  fi
 done < <(find "$input_2/" |egrep '[.]f(ast|)q(|[.]gz)$')
 
-traininput=""
-if [ "${pppair1:-}" != "" ]; then
- traininput="--left ${pppair1[@]} --right ${pppair2[@]}"
+traininput=()
+if [ ${#pppair1[@]} != 0 ]; then
+ traininput=( --left ${pppair1[@]+"${pppair1[@]}"} --right ${pppair2[@]+"${pppair2[@]}"} )
 fi
-if [ "${ppsingle:-}" != "" ]; then
- traininput="$traininput --single ${ppsingle[@]}"
+if [ ${#ppsingle[@]} != 0 ]; then
+ traininput=( ${traininput[@]+"${traininput[@]}"} --single ${ppsingle[@]+"${ppsingle[@]}"} )
 fi
 
 DO_FUNANNOTATE funannotate clean -i "$input_1" -o genome.cleaned.fa $opt_a
 DO_FUNANNOTATE funannotate sort -b scaffold -i genome.cleaned.fa -o genome.cleaned.sorted.fa $opt_b
 DO_FUNANNOTATE funannotate mask -i genome.cleaned.sorted.fa --cpus $N_CPU -o MyAssembly.fa $opt_d
-DO_FUNANNOTATE funannotate train -i MyAssembly.fa -o fun --species "$opt_s" --cpus $N_CPU --memory "$N_MEM_G"G $opt_t $traininput
-DO_FUNANNOTATE funannotate predict $OPT_GENEMARK_PATH -i MyAssembly.fa -o fun -s "$opt_s" --cpus $N_CPU
+DO_FUNANNOTATE funannotate train -i MyAssembly.fa -o fun --species "$opt_s" --cpus $N_CPU --memory "$N_MEM_G"G $opt_t ${traininput[@]+"${traininput[@]}"}
+DO_FUNANNOTATE funannotate predict ${OPT_GENEMARK_PATH[@]+"${OPT_GENEMARK_PATH[@]}"} -i MyAssembly.fa -o fun -s "$opt_s" --cpus $N_CPU
 DO_FUNANNOTATE funannotate update -i fun --cpus $N_CPU
 DO_FUNANNOTATE funannotate annotate -i fun --cpus $N_CPU
 awk -F'\t' '

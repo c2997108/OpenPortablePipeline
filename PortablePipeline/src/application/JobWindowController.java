@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -56,6 +57,7 @@ import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.concurrent.Task;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
@@ -181,10 +183,16 @@ public class JobWindowController {
     private Button savesetting;
 
     @FXML
-    private Button searchbtn;
+    private Button searchresetbtn;
 
     @FXML
     private TextField searchtxt;
+
+    @FXML
+    private TextField jobsearchtxt;
+
+    /** ジョブ一覧の絞り込み結果。元の一覧は jobNodes のまま。 */
+    private FilteredList<JobNode> jobNodesFiltered;
 
     @FXML
     private ListView<String> savedSettingList;
@@ -348,13 +356,9 @@ public class JobWindowController {
 		return;
 	}
 
-	String userdir = System.getProperty("user.dir");
-	if((containsUnicode(userdir)||userdir.contains(" "))
-			&&(runPreset.equals("WSL")||runPreset.equals("Mac")) ) {
-		Alert dialogAlert = new Alert(AlertType.INFORMATION, "Don't put Portable Pipelines in a folder which contains Unicode or space characters.",
-										ButtonType.YES);
-		dialogAlert.showAndWait();
-	}else {
+	// スペースや日本語などの非ASCII文字を含むパスに対応済み。プロセスは引数リストで起動し、
+	// シェル側でもパスをすべてクォートしているので、以前あったインストール先フォルダーの拒否
+	// （WSL / Macプリセット）は廃止した。
 		tabPane.getSelectionModel().select(tabJobList);
 		isSending = true;
 
@@ -368,6 +372,8 @@ public class JobWindowController {
 				try {
 
 					String jobdesc = runSelectedScript;
+					// 実行時に指定した項目を1件ずつ記録し、ジョブ一覧で項目ごとに表示する
+					List<JobParam> jobParams = new ArrayList<JobParam>();
 					//jobリストの最大IDを取得
 					String tempid = previousJobId;
 					//String tempid = arrayNode.get(arrayNode.size()-1).get("id").toString().replace("\"", "");
@@ -392,7 +398,7 @@ public class JobWindowController {
 
 					workid = Integer.valueOf(tempid)+1;
 					cancelledJobIds.remove(String.valueOf(workid));
-					JobNode newJobNode = new JobNode(String.valueOf(workid),"preparing");
+					JobNode newJobNode = new JobNode(String.valueOf(workid),"preparing").submittedNow();
 					tempJobNode = newJobNode;
 					Platform.runLater( () -> {
 						jobNodes.add(newJobNode);
@@ -549,6 +555,14 @@ public class JobWindowController {
 					Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
 					new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
 					}
+					if(runPreset.equals("WSL")) {
+						// wrapper.batは自身の作業ディレクトリ（results/）で "bash WSL-setup.sh" を実行するので、
+						// バッチファイルにインストール先のパスを埋め込む必要がない（スペースや非ASCII文字が入ると
+						// cmd.exeが別のコードページで読んでしまうため）。
+						target=runBinDir + "/WSL-setup.sh";
+						Files.copy(Paths.get(target), Paths.get(link+"/"+Paths.get(target).getFileName()));
+						new File(link+"/"+Paths.get(target).getFileName()).setLastModified(Calendar.getInstance().getTimeInMillis());
+					}
 
 					//analysisGrid.getScene().getRoot().applyCss();
 					//System.out.println("aaaa: "+((Label) analysisGrid.lookup("#txt.opt.opt_1")).getText());
@@ -556,6 +570,9 @@ public class JobWindowController {
 					String currentOptDesc = "";
 					String numCPU = "1";
 					String numMEM = "8";
+					// 入力ファイルの記録はジョブを投入するたびに作り直す
+					PortablePipelineCommon.clearStagedInputs(Paths.get(resultdir));
+					Map<String,String> formLabels = collectFormLabels(runFormValues);
 					for(RunFormValue formValue : runFormValues) {
 						//System.out.println("childId: "+formValue.id);
 						if(formValue.id.startsWith("txt.optdesc.")) {
@@ -565,7 +582,8 @@ public class JobWindowController {
 						if(formValue.id.startsWith("txt.input.")) {
 							String fileid = formValue.id.substring(14);
 							String tempfiles1=formValue.text;
-							jobdesc+=" "+fileid+":"+tempfiles1;
+							jobParams.add(new JobParam(fileid, JobParam.KIND_INPUT,
+									formLabels.getOrDefault(fileid, ""), splitInputFiles(tempfiles1)));
 							if(tempfiles1.startsWith("\"")) {
 								tempfiles1=tempfiles1.substring(1);
 							}
@@ -587,10 +605,11 @@ public class JobWindowController {
 								if(tempstr.equals(fileid)) {
 									if(!tempfiles1s[0].equals("")) {
 										if(formValue.id.substring(10,11).equals("m")) {
-											runcmd=runcmd+"'"+fileid+"'";
+											runcmd=runcmd+PortablePipelineCommon.shellQuote(fileid);
 										}else {
 											File tempFile = new File(tempfiles1s[0]);
-											runcmd=runcmd+"'"+fileid+"/"+tempFile.getName()+"'";
+											// ファイル名に「'」が入っていてもwrapper.shが壊れないようにシェル用にクォートする
+											runcmd=runcmd+PortablePipelineCommon.shellQuote(fileid+"/"+tempFile.getName());
 										}
 									}else {
 										runcmd=runcmd+"''";
@@ -621,14 +640,18 @@ public class JobWindowController {
 											//e2.printStackTrace();
 										}
 										csftp.put(fileName, workdir+"/"+fileid);
+										// リモート実行では入力の実体はリモート側にあるので、ローカルのresults/input_N/には
+										// リンクもコピーも作らない（Windowsでシンボリックリンクを作るには管理者権限が要る）。
+										// 解析後に自分が送った入力を取得し直さないよう、ファイル名だけ記録しておく。
+										PortablePipelineCommon.recordStagedInput(Paths.get(resultdir), fileid, Paths.get(fileName));
 									}else {
 										System.out.println("creating hard link...  "+fileName);
 										try {
 											new File(resultdir+"/"+fileid).mkdirs();
 										}catch(Exception e2) {
 										}
+										mkSymLinkOrCopy(fileName, resultdir+"/"+fileid, runPreset);
 									}
-									mkSymLinkOrCopy(fileName, resultdir+"/"+fileid, runPreset);
 								}
 							}
 						}
@@ -636,7 +659,8 @@ public class JobWindowController {
 						if(formValue.id.startsWith("txt.opt.")) {
 							String optid = formValue.id.substring(8);
 							String tempoptString=formValue.text;
-							jobdesc+=" "+optid+":"+tempoptString;
+							jobParams.add(new JobParam(optid, JobParam.KIND_OPTION,
+									formLabels.getOrDefault(optid, currentOptDesc), List.of(tempoptString)));
 							//System.out.println("test cuD: "+currentOptDesc);
 							if(currentOptDesc.equals("cpu threads")) {
 								numCPU = tempoptString;
@@ -655,7 +679,7 @@ public class JobWindowController {
 							for(int j=0;j<cmdsplit.length;j++) {
 								String tempstr = cmdsplit[j];
 								if(tempstr.equals(optid)) {
-									runcmd=runcmd+"'"+tempoptString+"'";
+									runcmd=runcmd+PortablePipelineCommon.shellQuote(tempoptString);
 									j++;
 									runcmd=runcmd+cmdsplit[j];
 								}else {
@@ -692,23 +716,24 @@ public class JobWindowController {
 							templateFile=runBinDir + "/templates/sshsge-wrapper.sh";
 							cmdString = "cd "+workdir+"; qsub -terse wrapper.sh 2>&1 > save_jid.txt";
 						}else if(runPreset.equals("WSL")){
-							String curDir = new File(PPSetting.getBaseDir() + ".").getAbsoluteFile().getParent();
-							String wslcurDir = "/mnt/"+curDir.substring(0,1).toLowerCase()+curDir.substring(2);
-							wslcurDir = wslcurDir.replaceAll("\\\\", "/");
 							// ppBinDirはPP_BIN_DIRのシステムプロパティで書きかえないファイル
 							// getBaseDir()は結局PP_OUT_DIRのシステムプロパティで書きかえるファイル
-							try (BufferedReader reader = new BufferedReader(new FileReader(runBinDir + "/templates/WSL-wrapper.bat"));
-					             BufferedWriter writer = new BufferedWriter(new FileWriter(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"+"wrapper.bat"))) {
+							// cmd.exeはバッチファイルをUTF-8ではなくコンソール（OEM）のコードページで読むので、wrapper.batは
+							// 実行環境の文字コード（sun.jnu.encoding、日本語WindowsならMS932）とCRLF改行で書き出す。
+							// バッチファイルにパスは入れない。results/を作業ディレクトリとして起動すれば、WSLがそれを
+							// /mnt/<ドライブ>/... に自動で変換する（スペースや非ASCII文字が入っていてもよい）。
+							try (BufferedReader reader = Files.newBufferedReader(Paths.get(runBinDir, "templates", "WSL-wrapper.bat"), StandardCharsets.UTF_8);
+							     Writer writer = PortablePipelineCommon.batchFileWriter(Paths.get(PPSetting.getBaseDir() + ppSetting.get("outputfolder"), String.valueOf(workid), "results", "wrapper.bat"))) {
 								String line;
 								while ((line = reader.readLine()) != null) {
-									line = line.replace("@wslcurDir@", wslcurDir);
 									line = line.replace("@password@", ppSetting.get("password"));
-									writer.write(line+"\n");
+									writer.write(line+"\r\n");
 								}
 							}
 
 							templateFile=runBinDir + "/templates/WSL-wrapper.sh";
-							cmdString = "cmd.exe /c start cmd.exe /k "+ runBinDir.replaceAll("/", "\\\\")+"\\wrapper.bat";
+							// あえて相対名にしている（NoDefaultCurrentDirectoryInExePathが設定されていてもcmd.exeが見つけられるよう".\"を付ける）。プロセスはresults/を作業ディレクトリとして起動する
+							cmdString = "cmd.exe /c start \"PortablePipeline job\" cmd.exe /k .\\wrapper.bat";
 						}else if(runPreset.equals("Mac")){
 							templateFile=runBinDir + "/templates/Mac-wrapper.sh";
 							cmdString = "bash wrapper.sh";
@@ -720,8 +745,8 @@ public class JobWindowController {
 							cmdString = "bash wrapper.sh";
 						}
 
-							try (BufferedReader reader = new BufferedReader(new FileReader(templateFile));
-					             BufferedWriter writer = new BufferedWriter(new FileWriter(outputFile))) {
+							try (BufferedReader reader = Files.newBufferedReader(Paths.get(templateFile), StandardCharsets.UTF_8);
+			             BufferedWriter writer = Files.newBufferedWriter(Paths.get(outputFile), StandardCharsets.UTF_8)) {
 								String line;
 								while ((line = reader.readLine()) != null) {
 									line = line.replace("@imagefolder@", ppSetting.get("imagefolder"));
@@ -765,13 +790,23 @@ public class JobWindowController {
 						appendJobLog(String.valueOf(workid), cmdResults);
 
 					}else {
-						Process process = Runtime.getRuntime().exec(cmdString, null, new File(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/"));
+						File resultsDirFile = new File(PPSetting.getBaseDir() + ppSetting.get("outputfolder")+"/"+workid+"/results/");
+						ProcessBuilder localLauncher;
+						if(runPreset.equals("WSL")) {
+							// "start"は最初のクォート付き引数をウィンドウタイトルとして扱う。wrapper.batは作業ディレクトリ
+							// からの相対で解決されるので、results/のパス（スペースや非ASCII）がコマンド行に現れない。
+							localLauncher = new ProcessBuilder("cmd.exe", "/c", "start", "PortablePipeline job", "cmd.exe", "/k", ".\\wrapper.bat");
+						}else {
+							localLauncher = new ProcessBuilder("bash", "wrapper.sh");
+						}
+						Process process = localLauncher.directory(resultsDirFile).start();
 						process.waitFor();
 
 					}
 
 					System.out.println(jobdesc);
-					JobNode runninngJobNode = new JobNode(String.valueOf(workid),"running",jobdesc);
+					JobNode runninngJobNode = new JobNode(String.valueOf(workid),"running",jobdesc,runSelectedScript,jobParams);
+					runninngJobNode.submittedAt = newJobNode.submittedAt;
 					tempJobNode = runninngJobNode;
 					Platform.runLater( () -> {
 						jobNodes.set( jobNodes.indexOf(newJobNode),runninngJobNode );
@@ -783,7 +818,10 @@ public class JobWindowController {
 					e.printStackTrace();
 					int finalworkid = workid;
 					JobNode finalJobNode = tempJobNode;
-					JobNode runninngJobNode = new JobNode(String.valueOf(finalworkid),"aborted",e.toString());
+					JobNode runninngJobNode = finalJobNode != null
+							? finalJobNode.withFinished("aborted", PortablePipelineCommon.nowStamp())
+							: new JobNode(String.valueOf(finalworkid),"aborted");
+					runninngJobNode.desc = e.toString();
 					Platform.runLater( () -> {
 						jobNodes.set( jobNodes.indexOf(finalJobNode),runninngJobNode );
 						saveJobList();
@@ -800,7 +838,6 @@ public class JobWindowController {
 		};
 
 		jobTransferExecutor.execute(task);
-	}
 
     }
 
@@ -1040,7 +1077,8 @@ public class JobWindowController {
         //ObservableList<JobNode> jobNodes = FXCollections.observableArrayList();
         //jobファイルから読み込んで履歴を表示
 	int numOfJob = 0;
-        ObjectMapper mapperJob = new ObjectMapper();
+        ObjectMapper mapperJob = new ObjectMapper()
+			.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
         try {
 		arrayNode = new ObjectMapper().createArrayNode();
 		List<JobNode> jobs = mapperJob.readValue(new File(PPSetting.getBaseDir()+"jobs.json"), new TypeReference<List<JobNode>>(){});
@@ -1054,7 +1092,7 @@ public class JobWindowController {
 		feature.put("status", job.status);
 		arrayNode.add(feature);
 
-		JobNode tempJobNode = new JobNode(job.id, job.status, job.desc);
+		JobNode tempJobNode = new JobNode(job);
 		jobNodes.add(tempJobNode);
 		numOfJob++;
             }
@@ -1064,7 +1102,13 @@ public class JobWindowController {
         } catch (IOException e) {
             //e.printStackTrace();
         }
-        joblist.setItems(jobNodes);
+        // ジョブ一覧は絞り込み欄の内容で絞ったものを表示する。追加や更新は今までどおり jobNodes に対して行う
+        jobNodesFiltered = new FilteredList<JobNode>(jobNodes, job -> true);
+        joblist.setItems(jobNodesFiltered);
+        jobsearchtxt.textProperty().addListener((observable, oldText, newText) -> {
+            final String text = newText == null ? "" : newText;
+            jobNodesFiltered.setPredicate(job -> job.matchesSearch(text));
+        });
         int numOfJobFinal = numOfJob;
         Platform.runLater(() -> {joblist.scrollTo(numOfJobFinal-1);});
 
@@ -1078,7 +1122,7 @@ public class JobWindowController {
 			System.out.println("Job ID: "+((JobNode)newVal).id +" is selected.");
 			listRecords.clear();
 			//System.out.println(new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt");
-						List<String> lines = Files.readAllLines(Paths.get(PPSetting.getBaseDir() + new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt"), StandardCharsets.UTF_8);
+						List<String> lines = PortablePipelineCommon.readLinesLenient(Paths.get(PPSetting.getBaseDir() + new PPSetting().get("outputfolder")+"/"+tempNode.id+"/results/log.txt"));
 			//System.out.println(lines.size());
 						List<String> templines = new ArrayList<String>();
 						for(String string : lines) {
@@ -1107,14 +1151,18 @@ public class JobWindowController {
         searchtxt.setOnAction((ActionEvent event)->{
 		rebuildScriptNodes(searchtxt.getText(), true);
         });
-        //searchボタンが押された場合
-        searchbtn.setOnAction((ActionEvent event)->{
-		rebuildScriptNodes(searchtxt.getText(), true);
+        //Resetボタン: 検索欄を空にする（空にすると入力のリスナーが一覧を全部に戻す）
+        searchresetbtn.setOnAction((ActionEvent event)->{
+		searchtxt.setText("");
+        });
+        //入力のたびに絞り込む（Searchを押さなくてもよい）
+        searchtxt.textProperty().addListener((observable, oldText, newText) -> {
+		rebuildScriptNodes(newText == null ? "" : newText, true);
         });
 
         // Icon loading logic
         Map<String, Image> categoryIcons = new HashMap<>();
-        String defaultIconPath = "file:"+ ppBinDir + "/image/pipe_icon.png";
+        String defaultIconPath = PortablePipelineCommon.fileUrl(ppBinDir, "image/pipe_icon.png");
         Image defaultIcon = null;
         try {
             defaultIcon = new Image(defaultIconPath);
@@ -1174,7 +1222,7 @@ public class JobWindowController {
                         if (categoryIcons.containsKey(categoryName)) {
                             scriptIcon = categoryIcons.get(categoryName);
                         } else {
-                            String categoryIconPath = "file:"+ ppBinDir + "/image/" + categoryName + ".png";
+                            String categoryIconPath = PortablePipelineCommon.fileUrl(ppBinDir, "image/" + categoryName + ".png");
                             try {
                                 Image loadedIcon = new Image(categoryIconPath);
                                 scriptIcon = loadedIcon;
@@ -1406,6 +1454,8 @@ public class JobWindowController {
 				//cellPane.getChildren().add(b);
 				analysisGrid.add(b, 1, num_item-1);
 				Label tempLabel = new Label(myinputlabel);
+				// ジョブ一覧で項目ごとの見出しに使うので、オプション欄と同じようにIDを付けて拾えるようにする
+				tempLabel.setId("txt.inputdesc."+item.id);
 				Tooltip tooltip = new Tooltip();
 				tooltip.setText(myinputlabel);
 				tempLabel.setTooltip(tooltip);
@@ -1552,7 +1602,7 @@ public class JobWindowController {
 
 								if(workid.equals(selectedJobId)) {
 									try {
-										List<String> lines = Files.readAllLines(Paths.get(saveFolder.toString()+"/results/log.txt"), StandardCharsets.UTF_8);
+										List<String> lines = PortablePipelineCommon.readLinesLenient(Paths.get(saveFolder.toString()+"/results/log.txt"));
 										List<String> templines = new ArrayList<String>();
 										for(String string : lines) {
 											if(templines.size()>=1000) {
@@ -1614,8 +1664,9 @@ public class JobWindowController {
 										}
 									}
 
-									updateJobStatus(tempJobNode,
-											readFinStatus(new File(saveFolder.toString()+"/results/fin_status")));
+									File finStatusFile2 = new File(saveFolder.toString()+"/results/fin_status");
+									updateJobStatus(tempJobNode, readFinStatus(finStatusFile2),
+											PortablePipelineCommon.fileStamp(finStatusFile2.toPath()));
 								}else{
 									//fin_statusがない場合でもsave_pid, save_jidのプロセスが起動しているか調べる
 									System.out.println("#Check whether a server process is running. job: "+tempJobNode.id);
@@ -1651,8 +1702,14 @@ public class JobWindowController {
 										
 									}else {
 										try {
-											if(node.get("preset").asText().equals("WSL")) {
-												Process process = Runtime.getRuntime().exec("bash -c 'ps -p `cat save_pid.txt`'", null, new File(savedOutputFolder+"/"+tempJobNode.id+"/results/"));
+											File savePidFile = new File(savedOutputFolder+"/"+tempJobNode.id+"/results/save_pid.txt");
+											if(!savePidFile.exists()) {
+												// wrapper.shがまだsave_pid.txtを書いていない。WSLの起動やdockerの準備に
+												// 時間がかかっているだけで、ジョブはまだ始まっていない。異常終了とみなさず次の巡回を待つ。
+												System.out.println("save_pid.txt is not created yet. The job has not started. job: "+tempJobNode.id);
+												returnCode = 0;
+											}else if(node.get("preset").asText().equals("WSL")) {
+												Process process = new ProcessBuilder("bash", "-c", "ps -p `cat save_pid.txt`").directory(new File(savedOutputFolder+"/"+tempJobNode.id+"/results/")).start();
 											returnCode = process.waitFor();
 											}else { //Mac & Linux & Linux (SGE)
 												//「`cat ...`」などという書き方がexecの中で直接は使えないようなので、2回に分ける
@@ -1702,7 +1759,8 @@ public class JobWindowController {
 													lsFolderRemove(workdir, channelSftp);
 												}
 											}
-											updateJobStatus(tempJobNode, readFinStatus(finStatusFile));
+											updateJobStatus(tempJobNode, readFinStatus(finStatusFile),
+													PortablePipelineCommon.fileStamp(finStatusFile.toPath()));
 										}else {
 											System.out.println("The job was terminated abnormally.");
 											if(remoteExecution) {
@@ -2020,11 +2078,42 @@ public class JobWindowController {
 			}
 			if(node instanceof TextField && (id.startsWith("txt.input.") || id.startsWith("txt.opt."))) {
 				values.add(new RunFormValue(id, ((TextField)node).getText()));
-			}else if(node instanceof Label && id.startsWith("txt.optdesc.")) {
+			}else if(node instanceof Label && (id.startsWith("txt.optdesc.") || id.startsWith("txt.inputdesc."))) {
 				values.add(new RunFormValue(id, ((Label)node).getText()));
 			}
 		}
 		return values;
+	}
+
+	/** 実行画面の各項目の説明を「項目ID -> 説明」で取り出す。ジョブ一覧の見出しに使う。 */
+	static Map<String,String> collectFormLabels(List<RunFormValue> formValues) {
+		Map<String,String> labels = new LinkedHashMap<String,String>();
+		for(RunFormValue formValue : formValues) {
+			if(formValue.id.startsWith("txt.inputdesc.")) {
+				labels.put(formValue.id.substring(14), formValue.text);
+			}else if(formValue.id.startsWith("txt.optdesc.")) {
+				labels.put(formValue.id.substring(12), formValue.text);
+			}
+		}
+		return labels;
+	}
+
+	/** 実行画面の入力欄の文字列（"a","b" の形）をファイルの一覧に分解する。 */
+	static List<String> splitInputFiles(String text) {
+		List<String> files = new ArrayList<String>();
+		String trimmed = text;
+		if(trimmed.startsWith("\"")) {
+			trimmed = trimmed.substring(1);
+		}
+		if(trimmed.endsWith("\"")) {
+			trimmed = trimmed.substring(0, trimmed.length()-1);
+		}
+		for(String file : trimmed.split("\",\"")) {
+			if(!file.isEmpty()) {
+				files.add(file);
+			}
+		}
+		return files;
 	}
 
 	private String findMissingRequiredInput(List<RunFormValue> formValues) {
@@ -2040,6 +2129,76 @@ public class JobWindowController {
 
 	void requestJobCancellation(String jobId) {
 		cancelledJobIds.add(jobId);
+	}
+
+	/**
+	 * ジョブ一覧の再実行ボタン用。Analysis Scriptsタブを開き、そのジョブのスクリプトを選択して、
+	 * 記録しておいた入力ファイルとオプションを実行画面に入れる。投入はしない（利用者が確認してRunを押す）。
+	 * 戻り値は失敗したときの理由。成功なら空。
+	 */
+	String rerunJob(JobNode job) {
+		if(job == null || job.script == null || job.script.isEmpty()) {
+			return "This job has no record of its script. Only jobs submitted after the job record was added can be re-run.";
+		}
+		ScriptNode target = null;
+		for(ScriptNode scriptNode : ScriptNodesOrig) {
+			if(!scriptNode.isCategoryHeader() && scriptNode.filename.equals(job.script)) {
+				target = scriptNode;
+				break;
+			}
+		}
+		if(target == null) {
+			return "Script not found: " + job.script;
+		}
+		// 検索で絞り込まれていたり、カテゴリが畳まれていたりすると一覧に出てこないので、開いた状態で作り直す
+		categoryExpandedState.put(target.getCategoryName(), true);
+		if(searchtxt != null && !searchtxt.getText().isEmpty()) {
+			searchtxt.setText("");
+		}
+		rebuildScriptNodes("", false);
+		ScriptNode inList = null;
+		for(ScriptNode scriptNode : ScriptNodes) {
+			if(!scriptNode.isCategoryHeader() && scriptNode.filename.equals(job.script)) {
+				inList = scriptNode;
+				break;
+			}
+		}
+		if(inList == null) {
+			return "Script not found in the list: " + job.script;
+		}
+		// 選択すると選択リスナーがその場で実行画面（analysisGrid）を組み立てる
+		scriptlist.getSelectionModel().select(inList);
+		final ScriptNode scrollTarget = inList;
+		// 一覧を作り直した直後はセルの高さが確定していないので、レイアウト後にスクロールする
+		Platform.runLater(() -> scriptlist.scrollTo(scrollTarget));
+
+		// 記録した値を実行画面の各欄に入れる。入力欄はファイル選択ボタンと同じ「"a","b"」の形式にする
+		if(job.params != null) {
+			for(JobParam param : job.params) {
+				if(param == null || param.id == null) {
+					continue;
+				}
+				for(Node node : analysisGrid.getChildren()) {
+					String id = node.getId();
+					if(id == null || !(node instanceof TextField)) {
+						continue;
+					}
+					if(param.isInput() && id.startsWith("txt.input.") && id.endsWith("." + param.id)) {
+						List<String> files = new ArrayList<String>();
+						for(String value : param.values) {
+							if(value != null && !value.isEmpty()) {
+								files.add(value);
+							}
+						}
+						((TextField) node).setText(files.isEmpty() ? "" : "\"" + String.join("\",\"", files) + "\"");
+					}else if(!param.isInput() && id.equals("txt.opt." + param.id)) {
+						((TextField) node).setText(param.values.isEmpty() ? "" : param.values.get(0));
+					}
+				}
+			}
+		}
+		tabPane.getSelectionModel().select(tabAnalysis);
+		return "";
 	}
 
 	private boolean isJobCancelled(String jobId) {
@@ -2059,11 +2218,17 @@ public class JobWindowController {
 	}
 
 	private void updateJobStatus(JobNode checkedJob, String status) {
+		updateJobStatus(checkedJob, status, "");
+	}
+
+	/** 状態を変え、終了日時を記録する。finishedAtが空なら現在時刻を使う。 */
+	private void updateJobStatus(JobNode checkedJob, String status, String finishedAt) {
 		Platform.runLater(() -> {
 			for(int i = 0; i < jobNodes.size(); i++) {
 				JobNode currentJob = jobNodes.get(i);
 				if(currentJob.id.equals(checkedJob.id) && "running".equals(currentJob.status)) {
-					jobNodes.set(i, new JobNode(currentJob.id, status, currentJob.desc));
+					jobNodes.set(i, currentJob.withFinished(status,
+							finishedAt == null || finishedAt.isEmpty() ? PortablePipelineCommon.nowStamp() : finishedAt));
 					saveJobList();
 					break;
 				}
@@ -2132,11 +2297,11 @@ public class JobWindowController {
 		}
 	}
 
-	private static final class RunFormValue {
-		private final String id;
-		private final String text;
+	static final class RunFormValue {
+		final String id;
+		final String text;
 
-		private RunFormValue(String id, String text) {
+		RunFormValue(String id, String text) {
 			this.id = id;
 			this.text = text;
 		}
@@ -2144,14 +2309,8 @@ public class JobWindowController {
 
 
     static void saveJobList() {
-        ArrayNode jobArrayNode = new ObjectMapper().createArrayNode();
-        for(JobNode jobNode: jobNodes) {
-		ObjectNode feature = new ObjectMapper().createObjectNode();
-		feature.put("id", jobNode.id);
-		feature.put("status", jobNode.status);
-		feature.put("desc", jobNode.desc);
-		jobArrayNode.add(feature);
-        }
+        // JobNodeをそのまま書き出す（手組みだと後から増えた項目が保存されないため）
+        List<JobNode> jobArrayNode = new ArrayList<JobNode>(jobNodes);
 	try {
 			//System.out.println(new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT).writeValueAsString(jobArrayNode));
 		//FileWriter file = new FileWriter("jobs.json");
@@ -2269,8 +2428,13 @@ public class JobWindowController {
      * @param destinationPath
      * @throws SftpException
      */
-    @SuppressWarnings("unchecked")
     public static void recursiveFolderDownload(String sourcePath, String destinationPath, ChannelSftp channelSftp) throws SftpException {
+	// 自分がアップロードした入力ファイルは取得し直さない（結果フォルダーの一覧を先に読んでおく）
+	recursiveFolderDownload(sourcePath, destinationPath, channelSftp,
+			PortablePipelineCommon.readStagedInputs(Paths.get(destinationPath)), "");
+    }
+    @SuppressWarnings("unchecked")
+    private static void recursiveFolderDownload(String sourcePath, String destinationPath, ChannelSftp channelSftp, Set<String> stagedInputs, String relativePrefix) throws SftpException {
         Vector<ChannelSftp.LsEntry> fileAndFolderList = channelSftp.ls(sourcePath); // Let list of folder content
 
         if(!(new File(destinationPath)).exists()) {
@@ -2280,7 +2444,11 @@ public class JobWindowController {
         //Iterate through list of folder content
         for (ChannelSftp.LsEntry item : fileAndFolderList) {
 		//System.out.println( channelSftp.stat(channelSftp.realpath(sourcePath + "/" + item.getFilename())).isDir());
+	    String relativePath = relativePrefix + item.getFilename();
             if (!item.getAttrs().isDir()) { // Check if it is a file (not a directory).
+			if(stagedInputs.contains(relativePath)) { //送った入力ファイルそのものはダウンロードしない
+				continue;
+			}
 			System.out.println("download information... "+sourcePath + "/" + item.getFilename());
 		//System.out.println("sftp size:  "+item.getAttrs().getSize());
 		//System.out.println("local size: "+new File(destinationPath + "/" + item.getFilename()).length());
@@ -2299,14 +2467,14 @@ public class JobWindowController {
 				}else {
 					new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.
 					recursiveFolderDownload(sourcePath + "/" + item.getFilename(),
-							destinationPath + "/" + item.getFilename(), channelSftp); // Enter found folder on server to read its contents and create locally.
+							destinationPath + "/" + item.getFilename(), channelSftp, stagedInputs, relativePath + "/"); // Enter found folder on server to read its contents and create locally.
 				}
 			}
                 }
             } else if (!(".".equals(item.getFilename()) || "..".equals(item.getFilename()))) {
                 new File(destinationPath + "/" + item.getFilename()).mkdirs(); // Empty folder copy.
                 recursiveFolderDownload(sourcePath + "/" + item.getFilename(),
-                        destinationPath + "/" + item.getFilename(), channelSftp); // Enter found folder on server to read its contents and create locally.
+                        destinationPath + "/" + item.getFilename(), channelSftp, stagedInputs, relativePath + "/"); // Enter found folder on server to read its contents and create locally.
             }
         }
     }

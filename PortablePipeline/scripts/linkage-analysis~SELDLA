@@ -23,14 +23,14 @@ runcmd="$0 -c #opt_c# -m #opt_m# -b #opt_b# -d #opt_d# -o #opt_o# -r #opt_r# -p 
 export IM_SELDLA="c2997108/seldla:2.3.0"
 export IM_BASE="c2997108/seldla:2.3.0"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 if [ "$opt_d" != "crossbreed" -a "$opt_d" != "haploid" -a "$opt_d" != "duploid" -a "$opt_d" != "selfpollination" ]; then echo "Please specify crossbreed, haploid, duploid, selfpollination for SELDLA mode"; post_processing ; fi
-if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > `echo "$input_1"|sed 's/[.]gz$//'`; input_1=`echo "$input_1"|sed 's/[.]gz$//'`; fi
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_1"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_1" > "$(echo "$input_1"|sed 's/[.]gz$//')"; input_1="$(echo "$input_1"|sed 's/[.]gz$//')"; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 if [ "$input_4" = "" ]; then
  DO_SELDLA SELDLA --mode=$opt_d -o "$opt_o" $opt_b --fasta "$input_1" --vcf "$input_2" --family "$input_3"
  tempclean="${opt_o}_clean.txt"
@@ -51,19 +51,19 @@ for k in `seq 1 $(cat "$input_3"|wc -l)`; do
    FILENAME==ARGV[1]{for(i=4;i<=NF;i++){ph[$1][i]=$i}}
    FILENAME==ARGV[2]{cntP=0; cntM=0; for(i=4;i<=NF;i++){if($i==ph[$2][i]){cntP++}else if($i==rev(ph[$2][i])){cntM++}};
     if(cntP>=cntM){print $0}else{ORS=""; print $1"\t"$2"\t"$3; for(i=4;i<=NF;i++){print "\t"rev($i)}; ORS="\n"; print ""}}
-  ' $i $j|awk -F'\t' '
+  ' "$i" "$j"|awk -F'\t' '
    NR==1{for(i=4;i<=NF;i++){name[i]=$i}}
    NR>1{if($2==old){for(i=4;i<=NF;i++){if($i!=-1 && oldph[i]!=-1){cntT[i]++; if($i!=oldph[i]){cntN[i]++}}}}else{for(i=4;i<=NF;i++){oldph[i]=$i}}; old=$2; for(i=4;i<=NF;i++){if($i!=-1){oldph[i]=$i}}}
    END{for(i=4;i<=NF;i++){print name[i]"\t"cntN[i]"\t"cntT[i]"\t"NR-1}}
-  '|awk '{print $0,$2/$3*100}' > $j.cross
-  cat $j.cross|awk '$NF<='$opt_r > $j.cross.single
+  '|awk '{print $0,$2/$3*100}' > "$j.cross"
+  cat "$j.cross"|awk '$NF<='$opt_r > "$j.cross.single"
   awk -F'\t' -v mode=$opt_d '
    FILENAME==ARGV[1]{a[$1]=1}
    FILENAME==ARGV[2] && FNR=='$k'{ORS="";
     if(mode=="haploid"||mode=="selfpollination"){print $1; for(i=2;i<=NF;i++){if(a[$i]==1){print "\t"$i}}}
     else{print $1"\t"$2; for(i=3;i<=NF;i++){if(a[$i]==1){print "\t"$i}}};
     ORS="\n"; print ""}
-  ' $j.cross.single "$input_3" >> "$input_3.rm"
+  ' "$j.cross.single" "$input_3" >> "$input_3.rm"
  fi
 done
 cat "$input_3.rm"|sed 's/\t/\n/g'|awk -F'\t' '

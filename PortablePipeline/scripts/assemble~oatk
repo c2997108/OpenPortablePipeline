@@ -20,30 +20,28 @@ runcmd="$0 -c #opt_c# -m #opt_m# -a #opt_a# -t #opt_t# -p #opt_p# -f #input_2# #
 export IM_OATK="c2997108/oatk:1.0"
 export IM_SEQKIT="quay.io/biocontainers/seqkit:2.6.1--h9ee0642_0"
 export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.28--h577a1d6_4"
+#gzipの展開にDO_HELIXERを使っているが未定義だったので、annotation~Helixerと同じイメージを指定する
+export IM_HELIXER="c2997108/helixer:v0.3.4_cuda_12.2.2-cudnn8_2"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 #HiFi reads
-input_hifi=""
-while read i; do
- if [ "$input_hifi" = "" ];then
-  input_hifi="$i"
- else
-  input_hifi="$input_hifi $i"
- fi
+input_hifi=()
+while IFS= read -r pp_line; do
+ input_hifi+=("$pp_line")
 done < <(find "$input_1/" |egrep '[.]f((ast|)(q|a)|na|sa)(|[.]gz)$')
 
-echo HiFi reads: "$input_hifi"
+echo HiFi reads: ${input_hifi[@]+"${input_hifi[@]}"}
 
 optpltd=""
 if [ "$opt_p" != "" ];then optpltd="-p /usr/local/oatkdb/$opt_p"; fi
-DO_OATK oatk -o oatk.asm -t $N_CPU -m /usr/local/oatkdb/$opt_t $optpltd $opt_a $input_hifi
+DO_OATK oatk -o oatk.asm -t $N_CPU -m /usr/local/oatkdb/$opt_t $optpltd $opt_a ${input_hifi[@]+"${input_hifi[@]}"}
 
 if [ "$input_2" != "" ]; then
- if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_HELIXER gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+ if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_HELIXER gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
  awk '{if($0~"^>"){sub(/ .*/,"",$0)}; print $0}' "$input_2" | sed 's/\r//' > "$input_2".ref.fa
  input_2="$input_2".ref.fa
 
@@ -53,8 +51,8 @@ if [ "$input_2" != "" ]; then
  fi
  DO_MINIMAP2 minimap2 -x asm10 plastid.fa "$input_2" -t $N_CPU > plastid.fa.minimap2
  cat plastid.fa.minimap2|awk -F'\t' '{len[$1]=$2; n[$1]++; hit1[$1][n[$1]]=$3; hit2[$1][n[$1]]=$4} END{for(i in n){PROCINFO["sorted_in"]="@val_num_asc"; oldstart=-1; oldend=-1; alignlen=0; for(j in hit1[i]){if(hit1[i][j]<oldend){oldend=hit2[i][j]}else{alignlen+=oldend-oldstart; oldstart=hit1[i][j]; oldend=hit2[i][j]}}; alignlen+=oldend-oldstart; percent=alignlen/len[i]; if(percent>0.5){contami=1}else{contami=0}; print i"\t"len[i]"\t"alignlen"\t"percent"\t"contami}}'|sort -k1,1 > plastid.fa.minimap2.contami
- DO_SEQKIT seqkit fx2tab "$input_2" |awk -F'\t' 'FILENAME==ARGV[1]&&$5==1{contami[$1]=1} FILENAME==ARGV[2]&&contami[$1]!=1{print ">"$1"\n"$2}' plastid.fa.minimap2.contami /dev/stdin > `basename "$input_2"`.rem.fa
- cat `basename "$input_2"`.rem.fa plastid.fa > `basename "$input_2"`.cleaned.fa
+ DO_SEQKIT seqkit fx2tab "$input_2" |awk -F'\t' 'FILENAME==ARGV[1]&&$5==1{contami[$1]=1} FILENAME==ARGV[2]&&contami[$1]!=1{print ">"$1"\n"$2}' plastid.fa.minimap2.contami /dev/stdin > "$(basename "$input_2").rem.fa"
+ cat "$(basename "$input_2").rem.fa" plastid.fa > "$(basename "$input_2").cleaned.fa"
 fi
 
 post_processing

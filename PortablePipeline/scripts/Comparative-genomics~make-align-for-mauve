@@ -24,52 +24,62 @@ export IM_MINIMAP2="quay.io/biocontainers/minimap2:2.16--h84994c4_0"
 export IM_BASE="c2997108/centos7:metacor7-mauve"
 export IM_MAUVE="c2997108/centos7:metacor7-mauve"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 mkdir -p reformat_fasta
-(for i in `find $input_1/|egrep "[.](fa|fasta|fsa|fna)$"||true`; do
- echo $ENV_EXONERATE fastareformat "$i" "|"sed 's/\r//g' ">" reformat_fasta/`basename "$i"`
+r_fa=()
+while IFS= read -r pp_line; do r_fa+=("$pp_line"); done < <(find "$input_1"/|egrep "[.](fa|fasta|fsa|fna)$"||true)
+r_fagz=()
+while IFS= read -r pp_line; do r_fagz+=("$pp_line"); done < <(find "$input_1"/|egrep "[.](fa|fasta|fsa|fna)[.]gz$"||true)
+(for i in ${r_fa[@]+"${r_fa[@]}"}; do
+ echo "$ENV_EXONERATE fastareformat $(pp_shell_quote "$i") |sed s/\r//g > $(pp_shell_quote "reformat_fasta/$(basename "$i")")"
 done
-for i in `find $input_1/|egrep "[.](fa|fasta|fsa|fna)[.]gz$"||true`; do
- DO_BASE gzip -dc "$i" > reformat_fasta/`basename "$i" .gz`.temp.fasta
- echo $ENV_EXONERATE fastareformat reformat_fasta/`basename "$i" .gz`.temp.fasta "|"sed 's/\r//g' ">" reformat_fasta/`basename "$i" .gz`";"rm -f reformat_fasta/`basename "$i" .gz`.temp.fasta
+for i in ${r_fagz[@]+"${r_fagz[@]}"}; do
+ DO_BASE gzip -dc "$i" > "reformat_fasta/$(basename "$i" .gz).temp.fasta"
+ echo "$ENV_EXONERATE fastareformat $(pp_shell_quote "reformat_fasta/$(basename "$i" .gz).temp.fasta") |sed s/\r//g > $(pp_shell_quote "reformat_fasta/$(basename "$i" .gz)");rm -f $(pp_shell_quote "reformat_fasta/$(basename "$i" .gz).temp.fasta")"
 done)|DOPARALLELONE
 
 WAITPARALLEL
 
-for i in `find reformat_fasta|egrep "[.](fa|fasta|fsa|fna)$"||true`; do
+r_ref=()
+while IFS= read -r pp_line; do r_ref+=("$pp_line"); done < <(find reformat_fasta|egrep "[.](fa|fasta|fsa|fna)$"||true)
+for i in ${r_ref[@]+"${r_ref[@]}"}; do
  echo "$i"
-done|awk '{if(old!=""){print old"\t"$1}else{print $1}; old=$1}' > list.txt
+done|awk -F'\t' '{if(old!=""){print old"\t"$0}else{print $0}; old=$0}' > list.txt
 
-(for i in `find reformat_fasta|egrep "[.](fa|fasta|fsa|fna)$"||true`; do
- echo $ENV_SAMTOOLS samtools faidx "$i"
+r_ref2=()
+while IFS= read -r pp_line; do r_ref2+=("$pp_line"); done < <(find reformat_fasta|egrep "[.](fa|fasta|fsa|fna)$"||true)
+(for i in ${r_ref2[@]+"${r_ref2[@]}"}; do
+ echo "$ENV_SAMTOOLS samtools faidx $(pp_shell_quote "$i")"
 done)|DOPARALLELONE
 
 WAITPARALLEL
 
 mkdir -p output_for_mauve
-i=`head -n 1 list.txt`
-cat "$i".fai|awk -F'\t' '{print $1"\t1"}' > `basename "$i"`.txt
-DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=length(x);i>0;i--){switch(substr(x,i,1)){case "A":b=b"T";break; case "C":b=b"G";break; case "G":b=b"C";break; case "T":b=b"A";break; case "a":b=b"t";break; case "c":b=b"g";break; case "g":b=b"c";break; case "t":b=b"a";break; default:b=b"N";break}}; return b} BEGIN{print ">'`basename $i`'"; ORS=""} FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2} FILENAME==ARGV[2]{if($2>0){print seq[$1]}else{print revcomp(seq[$1])}} END{print "\n"}' /dev/stdin `basename "$i"`.txt > `basename "$i"`.txt2
-DO_EMBOSS seqret -sequence `basename "$i"`.txt2 -outseq `basename "$i"`.txt2.gb -osformat genbank
-awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai `basename "$i"`.txt `basename "$i"`.txt2.gb > output_for_mauve/`basename "$i"`.gb
+i="$(head -n 1 list.txt)"
+cat "$i".fai|awk -F'\t' '{print $1"\t1"}' > "$(basename "$i").txt"
+DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=length(x);i>0;i--){switch(substr(x,i,1)){case "A":b=b"T";break; case "C":b=b"G";break; case "G":b=b"C";break; case "T":b=b"A";break; case "a":b=b"t";break; case "c":b=b"g";break; case "g":b=b"c";break; case "t":b=b"a";break; default:b=b"N";break}}; return b} BEGIN{print ">'"$(basename "$i")"'"; ORS=""} FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2} FILENAME==ARGV[2]{if($2>0){print seq[$1]}else{print revcomp(seq[$1])}} END{print "\n"}' /dev/stdin "$(basename "$i").txt" > "$(basename "$i").txt2"
+DO_EMBOSS seqret -sequence "$(basename "$i").txt2" -outseq "$(basename "$i").txt2.gb" -osformat genbank
+awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai "$(basename "$i").txt" "$(basename "$i").txt2.gb" > "output_for_mauve/$(basename "$i").gb"
 
+k_list=()
+while IFS= read -r pp_line; do k_list+=("$pp_line"); done < <(tail -n+2 list.txt)
 OLDIFS=$IFS
 IFS=$'\n'
 set -f
-for k in $(tail -n+2 list.txt); do
+for k in ${k_list[@]+"${k_list[@]}"}; do
 #tail -n+2 list.txt |while read k; do
- i=`echo "$k"|cut -f 2`
- j=`echo "$k"|cut -f 1`
- DO_MINIMAP2 minimap2 $opt_a -t $N_CPU "$j" "$i" > `basename "$i"`_`basename "$j"`.paf
- cat `basename "$i"`_`basename "$j"`.paf|awk -F'\t' '{a[$1][$6][$5]+=$10; len[$1]=$2; len2[$6]=$7; a[$1][$6]["mid"]+=($9-$8+1)*($8+$9)/2; a[$1][$6]["n"]+=($9-$8+1)} END{for(i in a){for(j in a[i]){str="1"; if(a[i][j]["-"]>a[i][j]["+"]){str="-1"}; print i"\t"j"\t"a[i][j]["+"]+a[i][j]["-"]"\t"len[i]"\t"a[i][j]["+"]+0"\t"a[i][j]["-"]+0"\t"a[i][j]["mid"]/a[i][j]["n"]/len2[j]"\t"str}}}'|sort -k1,1 -k3,3gr -t$'\t'|awk 'a[$1]==0{a[$1]=1; print $0}'|sort -k2,2 -k7,7n -t$'\t' > `basename "$i"`.txt0
- DO_BASE awk -F'\t' 'FILENAME==ARGV[1]{n[$2]++; data[$2][n[$2]]["id"]=$1; data[$2][n[$2]]["orient"]=$8} FILENAME==ARGV[2]{if($1 in data){if($2>0){for(i=1; i<=length(data[$1]); i++){print data[$1][i]["id"]"\t"data[$1][i]["orient"]*$2; flag[data[$1][i]["id"]]=1}}else{for(i=length(data[$1]); i>=1; i--){print data[$1][i]["id"]"\t"data[$1][i]["orient"]*$2; flag[data[$1][i]["id"]]=1}}}} FILENAME==ARGV[3]&&flag[$1]!=1{print $1"\t1"}'  `basename "$i"`.txt0 `basename "$j"`.txt "$i".fai > `basename "$i"`.txt
- DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=length(x);i>0;i--){switch(substr(x,i,1)){case "A":b=b"T";break; case "C":b=b"G";break; case "G":b=b"C";break; case "T":b=b"A";break; case "a":b=b"t";break; case "c":b=b"g";break; case "g":b=b"c";break; case "t":b=b"a";break; default:b=b"N";break}}; return b} BEGIN{print ">'`basename $i`'"; ORS=""} FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2} FILENAME==ARGV[2]{if($2>0){print seq[$1]}else{print revcomp(seq[$1])}} END{print "\n"}' /dev/stdin `basename "$i"`.txt > `basename "$i"`.txt2
- DO_EMBOSS seqret -sequence `basename "$i"`.txt2 -outseq `basename "$i"`.txt2.gb -osformat genbank
- awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai `basename "$i"`.txt `basename "$i"`.txt2.gb > output_for_mauve/`basename "$i"`.gb
+ i="$(echo "$k"|cut -f 2)"
+ j="$(echo "$k"|cut -f 1)"
+ DO_MINIMAP2 minimap2 $opt_a -t $N_CPU "$j" "$i" > "$(basename "$i")_$(basename "$j").paf"
+ cat "$(basename "$i")_$(basename "$j").paf"|awk -F'\t' '{a[$1][$6][$5]+=$10; len[$1]=$2; len2[$6]=$7; a[$1][$6]["mid"]+=($9-$8+1)*($8+$9)/2; a[$1][$6]["n"]+=($9-$8+1)} END{for(i in a){for(j in a[i]){str="1"; if(a[i][j]["-"]>a[i][j]["+"]){str="-1"}; print i"\t"j"\t"a[i][j]["+"]+a[i][j]["-"]"\t"len[i]"\t"a[i][j]["+"]+0"\t"a[i][j]["-"]+0"\t"a[i][j]["mid"]/a[i][j]["n"]/len2[j]"\t"str}}}'|sort -k1,1 -k3,3gr -t$'\t'|awk 'a[$1]==0{a[$1]=1; print $0}'|sort -k2,2 -k7,7n -t$'\t' > "$(basename "$i").txt0"
+ DO_BASE awk -F'\t' 'FILENAME==ARGV[1]{n[$2]++; data[$2][n[$2]]["id"]=$1; data[$2][n[$2]]["orient"]=$8} FILENAME==ARGV[2]{if($1 in data){if($2>0){for(i=1; i<=length(data[$1]); i++){print data[$1][i]["id"]"\t"data[$1][i]["orient"]*$2; flag[data[$1][i]["id"]]=1}}else{for(i=length(data[$1]); i>=1; i--){print data[$1][i]["id"]"\t"data[$1][i]["orient"]*$2; flag[data[$1][i]["id"]]=1}}}} FILENAME==ARGV[3]&&flag[$1]!=1{print $1"\t1"}'  "$(basename "$i").txt0" "$(basename "$j").txt" "$i".fai > "$(basename "$i").txt"
+ DO_SEQKIT seqkit fx2tab "$i"|awk -F'\t' 'function revcomp(x,  i, b){b=""; for(i=length(x);i>0;i--){switch(substr(x,i,1)){case "A":b=b"T";break; case "C":b=b"G";break; case "G":b=b"C";break; case "T":b=b"A";break; case "a":b=b"t";break; case "c":b=b"g";break; case "g":b=b"c";break; case "t":b=b"a";break; default:b=b"N";break}}; return b} BEGIN{print ">'"$(basename "$i")"'"; ORS=""} FILENAME==ARGV[1]{split($1,arr," "); seq[arr[1]]=$2} FILENAME==ARGV[2]{if($2>0){print seq[$1]}else{print revcomp(seq[$1])}} END{print "\n"}' /dev/stdin "$(basename "$i").txt" > "$(basename "$i").txt2"
+ DO_EMBOSS seqret -sequence "$(basename "$i").txt2" -outseq "$(basename "$i").txt2.gb" -osformat genbank
+ awk -F'\t' 'FILENAME==ARGV[1]{len[$1]=$2} FILENAME==ARGV[2]{start+=1; if($2==1){str=str"     CDS             "start".."start+len[$1]-1"\n                     /gene=\""$1" "$2"\"\n"}else{str=str"     CDS             complement("start".."start+len[$1]-1")\n                     /gene=\""$1" "$2"\"\n"}; start+=len[$1]-1} FILENAME==ARGV[3]{if(FNR==1){print $0; print "FEATURES             Location/Qualifiers"; ORS=""; print str; ORS="\n"}else{print $0}}' "$i".fai "$(basename "$i").txt" "$(basename "$i").txt2.gb" > "output_for_mauve/$(basename "$i").gb"
 done
 set +f
 IFS=$OLDIFS

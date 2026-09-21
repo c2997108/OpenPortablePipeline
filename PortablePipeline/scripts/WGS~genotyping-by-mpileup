@@ -22,13 +22,13 @@ export IM_BWA="quay.io/biocontainers/bwa:0.7.17--pl5.22.0_1"
 export IM_SAMTOOLS="biocontainers/samtools:v1.7.0_cv4"
 export IM_BCF="quay.io/biocontainers/bcftools:1.9--h68d8f2e_7"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
 
 
-if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > `echo "$input_2"|sed 's/[.]gz$//'`; input_2=`echo "$input_2"|sed 's/[.]gz$//'`; fi
+if [ `echo "$input_2"|grep "[.]gz$"|wc -l||true` = 1 ]; then DO_BASE gzip -dc "$input_2" > "$(echo "$input_2"|sed 's/[.]gz$//')"; input_2="$(echo "$input_2"|sed 's/[.]gz$//')"; fi
 ref="$input_2"
 DO_SAMTOOLS samtools faidx "$ref"
 

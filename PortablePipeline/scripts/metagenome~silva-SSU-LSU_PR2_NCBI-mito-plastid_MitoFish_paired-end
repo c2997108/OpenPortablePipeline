@@ -25,7 +25,7 @@ export IM_BLAST="c2997108/ppmultiarch:blast_seqkit_1-metasearchdb"
 export IM_KRONA="c2997108/biocontainers:krona_2.8.1"
 export IM_BASE="c2997108/ppmultiarch:yoshitake_merge"
 
-source $(dirname `readlink -f $0 || echo $0`)/common.sh
+source "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/common.sh"
 
 set -eux
 set -o pipefail
@@ -40,26 +40,30 @@ n=`tail -n 1 "$i".stats|awk -F'\t' -v nmaxreads=$nmaxreads '{print int($4/nmaxre
 #基本的にはnmaxreadsリードずつに分割するけど、1万個以上に分割しそうなときは1万個までに分割するための措置
 if [ $n -lt 10000 ]; then nreads=$nmaxreads; else nreads=`tail -n 1 "$i".stats|awk -F'\t' '{print int($4/10000)}'`; fi
 j=`basename "$i"|sed 's/q[.]gz$/a.gz/; s/q$/a/'`
-if [ `echo $i|grep -E "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
- i2=`echo $i|sed 's/_1[.]f\(ast\|\)\(q\|a\)\([.]gz\|\)$/_2.f\1\2\3/'`;
- j2=`echo $j|sed 's/_1[.]f\(ast\|\)a\([.]gz\|\)$/_2.f\1a\2/'`;
+if [ `echo "$i"|grep -E "_1[.]f(ast|)q([.]gz|)$"|wc -l||true` = 1 ]; then
+ i2=`echo "$i"|sed 's/_1[.]f\(ast\|\)\(q\|a\)\([.]gz\|\)$/_2.f\1\2\3/'`;
+ j2=`echo "$j"|sed 's/_1[.]f\(ast\|\)a\([.]gz\|\)$/_2.f\1a\2/'`;
 else
- i2=`echo $i|sed 's/_R1/_R2/'`
- j2=`echo $j|sed 's/_R1/_R2/'`
+ i2=`echo "$i"|sed 's/_R1/_R2/'`
+ j2=`echo "$j"|sed 's/_R1/_R2/'`
 fi
-for k in `echo "$i"|grep -E "[.]f(ast|)q([.]gz|)$"`; do
+pp_k=()
+while IFS= read -r pp_line; do pp_k+=("$pp_line"); done < <(echo "$i"|grep -E "[.]f(ast|)q([.]gz|)$"||true)
+for k in ${pp_k[@]+"${pp_k[@]}"}; do
  seqkit fq2fa -o fq2fa/"$j" "$i"
  seqkit fq2fa -o fq2fa/"$j2" "$i2"
  i=fq2fa/"$j"
  i2=fq2fa/"$j2"
 done
-seqkit split2 -s $nreads -e .gz -O split/`basename $i` -1 "$i" -2 "$i2"
+seqkit split2 -s $nreads -e .gz -O "split/$(basename "$i")" -1 "$i" -2 "$i2"
 
 EOS
 
 mkdir -p fq2fa
-(for i in `find "$input_1/"|grep -E "(_R1.*|_1)[.]f(ast|)(a|q)([.]gz|)$"||true`; do
- echo $ENV_BLAST bash run-split.sh "$i" "$opt_s"
+pp_r1=()
+while IFS= read -r pp_line; do pp_r1+=("$pp_line"); done < <(find "$input_1"/|grep -E "(_R1.*|_1)[.]f(ast|)(a|q)([.]gz|)$"||true)
+(for i in ${pp_r1[@]+"${pp_r1[@]}"}; do
+ echo "$ENV_BLAST bash run-split.sh $(pp_shell_quote "$i") $opt_s"
 done)|DOPARALLELONE
 
 WAITPARALLEL
@@ -162,7 +166,7 @@ EOF
 
 
 cat << 'EOS' > run-blast.sh
-i=$1
+i="$1"
 bitscore="$2"
 top="$3"
 blastop="$5"
@@ -180,20 +184,20 @@ n0=`zcat "$i"|grep "^>"|wc -l`
 
 j="$i" #split/201205_C5_SUF_0.2um_L1_1.fa.gz/201205_C5_SUF_0.2um_L1_1.part_001.fa.gz
 
-if [ `echo $i|egrep "_1[.]part_[0-9]*[.](fasta|fa)(|[.]gz)$"|wc -l||true` = 1 ]; then #恐らく.gzのみで未圧縮はこの流れではこないけど一応
- i2=`echo $i|sed 's/_1[.]part_\([0-9]*\)[.]\(fasta\|fa\)\(\|[.]gz\)$/_2.part_\1.\2\3/'`;
+if [ `echo "$i"|egrep "_1[.]part_[0-9]*[.](fasta|fa)(|[.]gz)$"|wc -l||true` = 1 ]; then #恐らく.gzのみで未圧縮はこの流れではこないけど一応
+ i2=`echo "$i"|sed 's/_1[.]part_\([0-9]*\)[.]\(fasta\|fa\)\(\|[.]gz\)$/_2.part_\1.\2\3/'`;
  j2="$i2"
 else
- #i2=`echo $i|sed 's/_R1/_R2/'`
- i2=`echo $i|rev|sed 's/1R_/2R_/'|rev`
+ #i2=`echo "$i"|sed 's/_R1/_R2/'`
+ i2=`echo "$i"|rev|sed 's/1R_/2R_/'|rev`
  j2="$i2"
 fi
 
 echo "##blast"
-zcat "$j"|blastn -db $ref -query /dev/stdin -outfmt 6 -out $j.blast -num_threads $cpu $blastop
-zcat "$j2"|blastn -db $ref -query /dev/stdin -outfmt 6 -out $j2.blast -num_threads $cpu $blastop
+zcat "$j"|blastn -db "$ref" -query /dev/stdin -outfmt 6 -out "$j.blast" -num_threads $cpu $blastop
+zcat "$j2"|blastn -db "$ref" -query /dev/stdin -outfmt 6 -out "$j2.blast" -num_threads $cpu $blastop
 
-python3 run-count-paired.py <(zcat $j) <(zcat $j2) $j.blast $j2.blast > $j.all.blast
+python3 run-count-paired.py <(zcat "$j") <(zcat "$j2") "$j.blast" "$j2.blast" > "$j.all.blast"
 
 echo "##filtering"
 awk -F'\t' -v bitscore="$bitscore" -v top="$top" -v alignpercent="$alignpercent" -v alignlength="$alignlength" -v identity="$identity" '
@@ -207,11 +211,11 @@ awk -F'\t' -v bitscore="$bitscore" -v top="$top" -v alignpercent="$alignpercent"
     a[$1]=1; topbit=$12; print $0
    }
   }
- }' <(seqkit fx2tab $j) <(seqkit fx2tab $j2) $j.all.blast > $j.blast.filtered
+ }' <(seqkit fx2tab "$j") <(seqkit fx2tab "$j2") "$j.all.blast" > "$j.blast.filtered"
 
 echo "##determine LCA"
 #blast実行時に配列名の最後が「.」の場合削られるなどヒットした配列名が元の名前から変わるので注意
-awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{print name[$2]"\t"$0}' $ref.path $j.blast.filtered > $j.blast.filtered.name
+awk -F'\t' 'FILENAME==ARGV[1]{name[$1]=$2} FILENAME==ARGV[2]{print name[$2]"\t"$0}' "$ref.path" "$j.blast.filtered" > "$j.blast.filtered.name"
 
 awk -F'\t' '
 function searchLCA(data,  i, j, res, res2, str, n, stopflag){
@@ -248,27 +252,32 @@ function searchLCA(data,  i, j, res, res2, str, n, stopflag){
  else{data[$1]=1}
 }
 END{if(length(data)>0){print searchLCA(data)"\t"oldstr}}
-' $j.blast.filtered.name > $j.blast.filtered.name.lca
+' "$j.blast.filtered.name" > "$j.blast.filtered.name.lca"
 
-awk -F'\t' '{cnt[$1]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' $j.blast.filtered.name.lca > $j.blast.filtered.name.lca.cnt
-awk -F'\t' '{print "root;"$0}' $j.blast.filtered.name.lca.cnt > $j.blast.filtered.name.lca.cnt2
-cnt=`awk -F'\t' '{a+=$2} END{if(a==""){a=0}; print a}' $j.blast.filtered.name.lca.cnt`
-echo -e "No Hit\t"`expr $n0 - $cnt` >> $j.blast.filtered.name.lca.cnt2
+awk -F'\t' '{cnt[$1]++} END{PROCINFO["sorted_in"]="@val_num_desc"; for(i in cnt){print i"\t"cnt[i]}}' "$j.blast.filtered.name.lca" > "$j.blast.filtered.name.lca.cnt"
+awk -F'\t' '{print "root;"$0}' "$j.blast.filtered.name.lca.cnt" > "$j.blast.filtered.name.lca.cnt2"
+cnt=`awk -F'\t' '{a+=$2} END{if(a==""){a=0}; print a}' "$j.blast.filtered.name.lca.cnt"`
+echo -e "No Hit\t"`expr $n0 - $cnt` >> "$j.blast.filtered.name.lca.cnt2"
 
 EOS
 
-find split -mindepth 2 -maxdepth 2|grep -E "(_R1.*|_1)[.]part_[0-9]*[.](fasta|fa)[.]gz$"|while read i; do
- echo $ENV_BLAST bash run-blast.sh "$i" "$opt_d" "$opt_t" $N_CPU "'$opt_b'"
+pp_list=`find split -mindepth 2 -maxdepth 2|grep -E "(_R1.*|_1)[.]part_[0-9]*[.](fasta|fa)[.]gz$"`
+pp_parts=()
+while IFS= read -r pp_line; do if [ -n "$pp_line" ]; then pp_parts+=("$pp_line"); fi; done < <(printf '%s\n' "$pp_list")
+for i in ${pp_parts[@]+"${pp_parts[@]}"}; do
+ #run-blast.shは$6-$8でアライメント率・identity・アライメント長を受け取るので、single-end版と同じ順で渡す（渡していないと閾値が空になり絞り込みが効かない）
+ echo "$ENV_BLAST bash run-blast.sh $(pp_shell_quote "$i") $opt_d $opt_t $N_CPU '$opt_b' $opt_a $opt_i $opt_l"
 done|DOPARALLEL
 
 WAITPARALLEL
 
 mkdir -p result result.temp
 for i in split/*; do
- (echo -e "id\t"`basename $i`; awk -F'\t' '{data[$1]+=$2} END{PROCINFO["sorted_in"]="@val_type_desc"; for(i in data){print i"\t"data[i]}}' "$i"/*.cnt2) > result/`basename $i`.tsv
- tail -n+2 result/`basename $i`.tsv|awk -F'\t' '
+ #入力ファイル名がカウント表(all.counts*.txt/xlsx)の列見出し＝サンプル名になるので識別子として畳む(result/のファイル名は変えない)
+ (echo -e "id\t$(pp_safe_name "$(basename "$i")")"; awk -F'\t' '{data[$1]+=$2} END{PROCINFO["sorted_in"]="@val_type_desc"; for(i in data){print i"\t"data[i]}}' "$i"/*.cnt2) > "result/$(basename "$i").tsv"
+ tail -n+2 "result/$(basename "$i").tsv"|awk -F'\t' '
   {n=split($1,arr,";"); ORS="\t"; print $2; for(i=1;i<n;i++){print arr[i]}; ORS="\n"; print arr[n]}
- ' > result.temp/`basename $i`
+ ' > "result.temp/$(basename "$i")"
 done
 DO_KRONA ktImportText result.temp/* -o all.html
 rm -rf result.temp
